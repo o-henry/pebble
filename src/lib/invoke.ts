@@ -1,11 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../app/appContent";
 import type {
+  CaptureError,
+  CaptureRegionResult,
+  CroppedFramePayload
+} from "../features/capture/captureFrame";
+import type {
   PerformanceLimitRequest,
   PerformanceLimits,
   PerformanceValidationResult
 } from "../features/performance/performanceLimits";
 import type {
+  PhysicalRegion,
   RegionSelection,
   RegionSelectionIssue,
   RegionSelectionRequest
@@ -49,6 +55,12 @@ export interface BackendCommandMap {
   };
   close_region_selector_window: {
     result: void;
+  };
+  capture_region_once: {
+    args: {
+      region: PhysicalRegion;
+    };
+    result: CroppedFramePayload;
   };
 }
 
@@ -141,6 +153,34 @@ export function getRegionSelectorMonitor(): Promise<
 
 export function closeRegionSelectorWindow(): Promise<void> {
   return invokeBackend("close_region_selector_window");
+}
+
+export function captureRegionOnce(
+  region: PhysicalRegion
+): Promise<CaptureRegionResult> {
+  return invokeBackend("capture_region_once", {
+    region
+  })
+    .then((frame) => ({ ok: true as const, frame }))
+    .catch((error: unknown) => {
+      if (isCaptureError(error)) {
+        return { ok: false as const, error };
+      }
+
+      throw error;
+    });
+}
+
+function isCaptureError(error: unknown): error is CaptureError {
+  if (!isRecord(error)) {
+    return false;
+  }
+
+  return (
+    typeof error.code === "string" &&
+    typeof error.monitorId === "string" &&
+    typeof error.message === "string"
+  );
 }
 
 function isRegionSelectionIssue(error: unknown): error is RegionSelectionIssue {

@@ -1,4 +1,7 @@
 mod app_status;
+mod capture_backend;
+#[cfg(test)]
+mod capture_backend_tests;
 mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
@@ -12,8 +15,11 @@ mod window_shell;
 mod window_shell_tests;
 
 use app_status::AppStatus;
+use capture_backend::{CaptureError, CroppedFramePayload};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
-use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
+use region_selection_types::{
+    PhysicalRegion, RegionSelection, RegionSelectionIssue, RegionSelectionRequest,
+};
 use region_selector_window::RegionSelectorWindowShell;
 use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
 
@@ -76,6 +82,11 @@ fn close_region_selector_window(window: tauri::WebviewWindow) -> Result<(), Wind
     region_selector_window::close_region_selector_window(&window)
 }
 
+#[tauri::command]
+fn capture_region_once(region: PhysicalRegion) -> Result<CroppedFramePayload, CaptureError> {
+    capture_backend::capture_region_once(region)
+}
+
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .manage(WindowShellState::default())
@@ -88,7 +99,8 @@ pub fn run() -> tauri::Result<()> {
             open_test_tile_window,
             open_region_selector_window,
             get_region_selector_monitor,
-            close_region_selector_window
+            close_region_selector_window,
+            capture_region_once
         ])
         .run(tauri::generate_context!())
 }
