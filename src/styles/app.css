@@ -100,12 +100,55 @@ h2 {
   line-height: 1.5;
 }
 
+.privacy-banner,
 .limits-section,
 .docs-section {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr);
   gap: 32px;
   border-top: 1px solid #d9e0e2;
+}
+
+.privacy-banner {
+  align-items: center;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr) auto;
+  padding: 24px 0;
+}
+
+.privacy-banner.is-blanked {
+  border-top-color: #d7b55f;
+}
+
+.privacy-state-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.privacy-state-list div {
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid #d9e0e2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.privacy-state-list dt {
+  color: #536166;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.privacy-state-list dd {
+  margin: 8px 0 0;
+  color: #101719;
+  font-weight: 800;
+}
+
+.privacy-banner button {
+  min-width: 146px;
 }
 
 .limits-section {
@@ -196,11 +239,16 @@ h2 {
 
   .principles-grid,
   .limit-list,
+  .privacy-banner,
   .docs-section {
     grid-template-columns: 1fr;
   }
 
   .limits-section {
+    grid-template-columns: 1fr;
+  }
+
+  .privacy-state-list {
     grid-template-columns: 1fr;
   }
 }

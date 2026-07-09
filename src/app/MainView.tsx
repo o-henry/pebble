@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { appStatus } from "./appContent";
 import {
   Docs,
@@ -6,7 +6,13 @@ import {
   Principles,
   WindowShellControls
 } from "./MainSections";
+import { PrivacyBanner } from "./PrivacyBanner";
 import { RegionSelectorSection } from "./RegionSelectorSection";
+import {
+  PRIVACY_BLANK_INITIAL_STATE,
+  privacyBlankReducer,
+  privacyHotkeyAction
+} from "../features/privacy/privacyBlank";
 import {
   REGION_SELECTOR_DEFAULT_SHELL,
   type RegionSelectorWindowShell
@@ -31,6 +37,25 @@ export function MainView() {
     REGION_SELECTOR_DEFAULT_SHELL
   );
   const [selectorError, setSelectorError] = useState<string | null>(null);
+  const [privacy, dispatchPrivacy] = useReducer(
+    privacyBlankReducer,
+    PRIVACY_BLANK_INITIAL_STATE
+  );
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const action = privacyHotkeyAction(event, privacy);
+
+      if (action) {
+        event.preventDefault();
+        dispatchPrivacy(action);
+      }
+    }
+
+    globalThis.addEventListener("keydown", handleKeyDown);
+
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [privacy]);
 
   async function openTile() {
     try {
@@ -83,6 +108,11 @@ export function MainView() {
         </p>
       </section>
 
+      <PrivacyBanner
+        state={privacy}
+        onBlank={() => dispatchPrivacy({ type: "blank" })}
+        onRestore={() => dispatchPrivacy({ type: "restore" })}
+      />
       <Principles />
       <PerformanceLimits />
       <RegionSelectorSection
