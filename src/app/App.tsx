@@ -1,4 +1,5 @@
 import { appStatus, docReferences, principles } from "./appContent";
+import { PERFORMANCE_LIMITS } from "../features/performance/performanceLimits";
 
 export function App() {
   return (
@@ -12,8 +13,9 @@ export function App() {
           Pin a tiny part of your screen. Let local watchers notice what changed.
         </p>
         <p className="trust-copy">
-          Phase 0 is only the desktop scaffold. There is no screen capture, OCR,
-          AI connector, telemetry, or network feature in this build.
+          This build includes the desktop scaffold and hard performance limits.
+          There is no screen capture, OCR, AI connector, telemetry, or network
+          feature in this build.
         </p>
       </section>
 
@@ -24,6 +26,34 @@ export function App() {
             <p>{principle.body}</p>
           </article>
         ))}
+      </section>
+
+      <section className="limits-section" aria-labelledby="limits-title">
+        <div>
+          <p className="section-label">Performance contract</p>
+          <h2 id="limits-title">Low FPS by default</h2>
+        </div>
+        <dl className="limit-list">
+          <div>
+            <dt>Default refresh</dt>
+            <dd>{PERFORMANCE_LIMITS.defaultFps} FPS</dd>
+          </div>
+          <div>
+            <dt>Maximum refresh</dt>
+            <dd>{PERFORMANCE_LIMITS.maxFps} FPS</dd>
+          </div>
+          <div>
+            <dt>Active tiles</dt>
+            <dd>{PERFORMANCE_LIMITS.maxActiveTiles}</dd>
+          </div>
+          <div>
+            <dt>Hard max region</dt>
+            <dd>
+              {PERFORMANCE_LIMITS.maxRegion.width}x
+              {PERFORMANCE_LIMITS.maxRegion.height}
+            </dd>
+          </div>
+        </dl>
       </section>
 
       <section className="docs-section" aria-labelledby="docs-title">

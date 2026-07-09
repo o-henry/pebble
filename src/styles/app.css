@@ -100,12 +100,49 @@ h2 {
   line-height: 1.5;
 }
 
+.limits-section,
 .docs-section {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr);
   gap: 32px;
-  padding: 34px 0 0;
   border-top: 1px solid #d9e0e2;
+}
+
+.limits-section {
+  padding: 34px 0;
+}
+
+.docs-section {
+  padding: 34px 0 0;
+}
+
+.limit-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.limit-list div {
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid #d9e0e2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.limit-list dt {
+  color: #536166;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.limit-list dd {
+  margin: 12px 0 0;
+  color: #101719;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.1;
 }
 
 .doc-list {
@@ -158,7 +195,12 @@ h2 {
   }
 
   .principles-grid,
+  .limit-list,
   .docs-section {
+    grid-template-columns: 1fr;
+  }
+
+  .limits-section {
     grid-template-columns: 1fr;
   }
 }
