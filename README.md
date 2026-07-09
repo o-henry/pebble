@@ -151,27 +151,23 @@ small crop -> local diff -> local OCR if changed -> dedupe -> optional AI text h
 
 ## Status
 
-ScreenPebble is in pre-alpha. Phase 0 is implemented and pushed. Screen
-capture, OCR, AI handoff, and persisted user configuration are not implemented
-yet.
+ScreenPebble is in pre-alpha. The repository currently contains the engineering,
+security, architecture, and workflow contracts that must guide implementation.
 
-| Phase | State | Scope |
-| --- | --- | --- |
-| Phase 0 | Implemented | Tauri + React + TypeScript + Rust scaffold |
-| Phase 1 | Remaining | Performance limit validation |
-| Phase 2 | Remaining | Main window and tile window shell |
-| Phase 3 | Remaining | Region selector model |
-| Phase 4 | Remaining | Region selector overlay UI |
-| Phase 5 | Remaining | Fake capture backend |
-| Phase 6 | Remaining | Capture lifecycle and scheduler |
-| Phase 7 | Remaining | Local diff engine |
-| Phase 8 | Remaining | Privacy blank and hotkey shell |
-| Phase 9 | Remaining | Real capture backend |
-| Phase 10 | Remaining | Live tile |
-| Phase 11 | Remaining | Config-only persistence |
-| Phase 12 | Remaining | Optional local OCR |
-| Phase 13 | Remaining | Optional AI handoff |
-| Phase 14 | Remaining | Release readiness |
+Implementation order:
+
+- [x] Engineering governance.
+- [x] Tauri + React + TypeScript + Rust scaffold.
+- [ ] Performance constants and tests.
+- [ ] Region selector.
+- [ ] Fake capture backend.
+- [ ] Capture lifecycle and scheduler.
+- [ ] Local diff alerts.
+- [ ] Privacy blank and hotkeys.
+- [ ] Real capture backend.
+- [ ] Live tile.
+- [ ] Optional local OCR.
+- [ ] Optional AI handoff.
 
 ## Installation
 

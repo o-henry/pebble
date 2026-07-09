@@ -30,28 +30,6 @@ If a task conflicts with these docs, stop and report the conflict.
 - Run a review/refactor agent before commit.
 - Commit and push after every completed phase.
 
-## Phase Status
-
-Update this table whenever a phase is completed and pushed.
-
-| Phase | State | Commit | Scope |
-| --- | --- | --- | --- |
-| Phase 0 | Implemented | `230d80d` | Scaffold |
-| Phase 1 | Remaining | - | Performance Limits |
-| Phase 2 | Remaining | - | Window Shell |
-| Phase 3 | Remaining | - | Region Selector Model |
-| Phase 4 | Remaining | - | Region Selector UI |
-| Phase 5 | Remaining | - | Fake Capture Backend |
-| Phase 6 | Remaining | - | Capture Lifecycle And Scheduler |
-| Phase 7 | Remaining | - | Diff Engine |
-| Phase 8 | Remaining | - | Privacy Blank And Hotkey Shell |
-| Phase 9 | Remaining | - | Real Capture Backend |
-| Phase 10 | Remaining | - | Live Tile |
-| Phase 11 | Remaining | - | Config Store |
-| Phase 12 | Remaining | - | Optional Local OCR |
-| Phase 13 | Remaining | - | Optional AI Handoff |
-| Phase 14 | Remaining | - | Release Readiness |
-
 ## Phase 0 - Scaffold
 
 Goal: create the minimal app skeleton without capture.
