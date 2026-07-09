@@ -2,12 +2,17 @@ mod app_status;
 mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
+mod region_selection;
+#[cfg(test)]
+mod region_selection_tests;
+mod region_selection_types;
 mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
 
 use app_status::AppStatus;
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
+use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
 
 #[tauri::command]
@@ -25,6 +30,13 @@ fn validate_performance_request(request: PerformanceLimitRequest) -> Performance
     let limits = PerformanceLimits::default();
 
     limits.validate(request).into()
+}
+
+#[tauri::command]
+fn resolve_region_selection(
+    request: RegionSelectionRequest,
+) -> Result<RegionSelection, RegionSelectionIssue> {
+    region_selection::select_region(request)
 }
 
 #[tauri::command]
@@ -49,6 +61,7 @@ pub fn run() -> tauri::Result<()> {
             get_app_status,
             get_performance_limits,
             validate_performance_request,
+            resolve_region_selection,
             get_window_shell_snapshot,
             open_test_tile_window
         ])
@@ -60,7 +73,10 @@ mod tests {
     use super::{
         get_app_status, get_performance_limits,
         performance_limits::{PerformanceLimitErrorCode, PerformanceLimitRequest, RegionSize},
-        validate_performance_request,
+        region_selection_types::{
+            LogicalPoint, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
+        },
+        resolve_region_selection, validate_performance_request,
         window_shell::{TileMode, WindowShellState},
     };
 
@@ -101,6 +117,25 @@ mod tests {
             result.error.expect("validation error").code,
             PerformanceLimitErrorCode::FpsTooHigh
         );
+    }
+
+    #[test]
+    fn resolve_region_selection_returns_physical_region() {
+        let selection = resolve_region_selection(RegionSelectionRequest {
+            monitor: MonitorGeometry {
+                id: "main".to_string(),
+                logical_origin: LogicalPoint { x: 0.0, y: 0.0 },
+                physical_origin: PhysicalPoint { x: 0, y: 0 },
+                scale_factor: 1.0,
+            },
+            start: LogicalPoint { x: 10.0, y: 20.0 },
+            end: LogicalPoint { x: 210.0, y: 170.0 },
+        })
+        .expect("region selection");
+
+        assert_eq!(selection.region.width, 200);
+        assert_eq!(selection.region.height, 150);
+        assert!(selection.warnings.is_empty());
     }
 
     #[test]

@@ -6,6 +6,11 @@ import type {
   PerformanceValidationResult
 } from "../features/performance/performanceLimits";
 import type {
+  RegionSelection,
+  RegionSelectionIssue,
+  RegionSelectionRequest
+} from "../features/region-selector/regionSelection";
+import type {
   TileWindowState,
   WindowShellSnapshot
 } from "../features/window-shell/tileWindowState";
@@ -22,6 +27,12 @@ export interface BackendCommandMap {
       request: PerformanceLimitRequest;
     };
     result: PerformanceValidationResult;
+  };
+  resolve_region_selection: {
+    args: {
+      request: RegionSelectionRequest;
+    };
+    result: RegionSelection;
   };
   get_window_shell_snapshot: {
     result: WindowShellSnapshot;
@@ -81,10 +92,46 @@ export function validateBackendPerformanceRequest(
   });
 }
 
+export function resolveBackendRegionSelection(
+  request: RegionSelectionRequest
+): Promise<
+  | { ok: true; selection: RegionSelection }
+  | { ok: false; error: RegionSelectionIssue }
+> {
+  return invokeBackend("resolve_region_selection", {
+    request
+  })
+    .then((selection) => ({ ok: true as const, selection }))
+    .catch((error: unknown) => {
+      if (isRegionSelectionIssue(error)) {
+        return { ok: false as const, error };
+      }
+
+      throw error;
+    });
+}
+
 export function getWindowShellSnapshot(): Promise<WindowShellSnapshot> {
   return invokeBackend("get_window_shell_snapshot");
 }
 
 export function openTestTileWindow(): Promise<TileWindowState> {
   return invokeBackend("open_test_tile_window");
+}
+
+function isRegionSelectionIssue(error: unknown): error is RegionSelectionIssue {
+  if (!isRecord(error)) {
+    return false;
+  }
+
+  return (
+    typeof error.code === "string" &&
+    typeof error.limit === "number" &&
+    typeof error.actual === "number" &&
+    typeof error.message === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
