@@ -13,6 +13,9 @@ mod diff_engine_types;
 pub mod live_tile;
 #[cfg(test)]
 mod live_tile_tests;
+pub mod pebble_store;
+#[cfg(test)]
+mod pebble_store_tests;
 pub mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
@@ -31,12 +34,13 @@ mod window_shell_tests;
 use app_status::AppStatus;
 use capture_backend::{CaptureError, CroppedFramePayload};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
+use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use region_selection_types::{
     PhysicalRegion, RegionSelection, RegionSelectionIssue, RegionSelectionRequest,
 };
 use region_selector_window::RegionSelectorWindowShell;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
 
 #[tauri::command]
@@ -118,6 +122,30 @@ fn capture_live_tile_once(
     Ok(outcome.response)
 }
 
+#[tauri::command]
+fn load_pebble_config(app: tauri::AppHandle) -> Result<PebbleStoreDocument, PebbleStoreError> {
+    default_pebble_store(&app)?.load_or_default()
+}
+
+#[tauri::command]
+fn save_pebble_config(
+    app: tauri::AppHandle,
+    document: PebbleStoreDocument,
+) -> Result<PebbleStoreDocument, PebbleStoreError> {
+    default_pebble_store(&app)?.save(&document)
+}
+
+fn default_pebble_store(app: &tauri::AppHandle) -> Result<PebbleStore, PebbleStoreError> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| PebbleStoreError::config_path_unavailable())?;
+
+    Ok(PebbleStore::new(PebbleStore::path_for_config_dir(
+        config_dir,
+    )))
+}
+
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .manage(WindowShellState::default())
@@ -133,7 +161,9 @@ pub fn run() -> tauri::Result<()> {
             get_region_selector_monitor,
             close_region_selector_window,
             capture_region_once,
-            capture_live_tile_once
+            capture_live_tile_once,
+            load_pebble_config,
+            save_pebble_config
         ])
         .run(tauri::generate_context!())
 }
