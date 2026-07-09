@@ -76,6 +76,26 @@ Do not add:
 Any permission addition requires a decision note explaining why it is necessary
 and how it is bounded.
 
+## Continuous Security Review
+
+Every change must be reviewed for security-sensitive drift, even when the task is
+not explicitly a security task.
+
+Check for:
+
+- New permissions.
+- New persistence.
+- New network paths.
+- New shell or filesystem access.
+- Capture continuing in inactive states.
+- Full-monitor frames crossing process or UI boundaries.
+- AI handoff becoming enabled by default.
+- Logs, errors, tests, fixtures, or examples containing private screen content,
+  OCR output, secrets, tokens, cookies, or local account data.
+
+If a change introduces any of those surfaces, add tests, narrow the permission,
+or document the decision before committing.
+
 ## Release Blockers
 
 Do not release if any of these are true:

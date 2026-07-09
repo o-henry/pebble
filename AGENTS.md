@@ -153,6 +153,15 @@ Work in atomic changes.
 - Do not mix unrelated refactors with feature work.
 - Do not rewrite user work.
 - Do not use destructive git commands unless the user explicitly asks.
+- Before every commit, inspect what is staged and confirm no secrets, private
+  screen captures, OCR output, frame history, local credentials, or unrelated
+  generated artifacts are included.
+- Before every push, re-run the relevant checks after review fixes and inspect
+  the final committed change one more time.
+
+Read [Git And Security Policy](docs/GIT_AND_SECURITY_POLICY.md) before adding
+new file types, permissions, capture code, OCR, AI handoff, release artifacts, or
+examples.
 
 Default remote:
 

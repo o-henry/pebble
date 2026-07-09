@@ -9,11 +9,12 @@ phase should be a small pullable commit with focused tests and review.
 2. `README.md`
 3. `docs/PRODUCT_SPEC.md`
 4. `docs/SECURITY_AND_PRIVACY.md`
-5. `docs/ENGINEERING_CHARTER.md`
-6. `docs/ARCHITECTURE.md`
-7. `docs/AI_HANDOFF_DESIGN.md`
-8. `docs/DEVELOPMENT_WORKFLOW.md`
-9. This file
+5. `docs/GIT_AND_SECURITY_POLICY.md`
+6. `docs/ENGINEERING_CHARTER.md`
+7. `docs/ARCHITECTURE.md`
+8. `docs/AI_HANDOFF_DESIGN.md`
+9. `docs/DEVELOPMENT_WORKFLOW.md`
+10. This file
 
 If a task conflicts with these docs, stop and report the conflict.
 

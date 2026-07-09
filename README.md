@@ -191,6 +191,7 @@ Read these before changing code:
 - [AI Handoff Design](docs/AI_HANDOFF_DESIGN.md)
 - [Engineering Charter](docs/ENGINEERING_CHARTER.md)
 - [Security And Privacy](docs/SECURITY_AND_PRIVACY.md)
+- [Git And Security Policy](docs/GIT_AND_SECURITY_POLICY.md)
 - [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md)
 
 Current repository state:

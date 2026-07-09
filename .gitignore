@@ -1,0 +1,52 @@
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Dependencies and build outputs
+/node_modules/
+/dist/
+/build/
+/coverage/
+/target/
+/src-tauri/target/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+*.mobileprovision
+
+# Logs and local runtime state
+*.log
+/logs/
+/tmp/
+/temp/
+/.tmp/
+/.cache/
+/.vite/
+
+# ScreenPebble must not persist captured content.
+/captures/
+/screenshots/private/
+/screenpebble-captures/
+/screenpebble-debug-frames/
+/tmp/captures/
+/tmp/screenpebble-captures/
+/tmp/screenpebble-debug-frames/
+*.screenpebble-frame
+
+# Packaging artifacts
+*.dmg
+*.app.tar.gz
+*.msi
+*.AppImage
