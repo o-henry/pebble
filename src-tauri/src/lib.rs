@@ -6,6 +6,10 @@ pub mod capture_lifecycle;
 #[cfg(test)]
 mod capture_lifecycle_tests;
 pub mod capture_scheduler;
+pub mod diff_engine;
+#[cfg(test)]
+mod diff_engine_tests;
+mod diff_engine_types;
 pub mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
