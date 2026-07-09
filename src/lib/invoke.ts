@@ -5,6 +5,10 @@ import type {
   PerformanceLimits,
   PerformanceValidationResult
 } from "../features/performance/performanceLimits";
+import type {
+  TileWindowState,
+  WindowShellSnapshot
+} from "../features/window-shell/tileWindowState";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -18,6 +22,12 @@ export interface BackendCommandMap {
       request: PerformanceLimitRequest;
     };
     result: PerformanceValidationResult;
+  };
+  get_window_shell_snapshot: {
+    result: WindowShellSnapshot;
+  };
+  open_test_tile_window: {
+    result: TileWindowState;
   };
 }
 
@@ -69,4 +79,12 @@ export function validateBackendPerformanceRequest(
   return invokeBackend("validate_performance_request", {
     request
   });
+}
+
+export function getWindowShellSnapshot(): Promise<WindowShellSnapshot> {
+  return invokeBackend("get_window_shell_snapshot");
+}
+
+export function openTestTileWindow(): Promise<TileWindowState> {
+  return invokeBackend("open_test_tile_window");
 }
