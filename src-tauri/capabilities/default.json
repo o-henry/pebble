@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default ScreenPebble capability with no capture, shell, filesystem, network, OCR, or AI permissions.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

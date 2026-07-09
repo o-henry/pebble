@@ -8,11 +8,13 @@ Thumbs.db
 
 # Dependencies and build outputs
 /node_modules/
+/.pnpm-store/
 /dist/
 /build/
 /coverage/
 /target/
 /src-tauri/target/
+/src-tauri/gen/
 
 # Local environment and secrets
 .env

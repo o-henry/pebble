@@ -13,7 +13,8 @@ build logs, upload progress, render jobs, queue numbers, dashboards, timers,
 status rows, and charts.
 
 > Pre-alpha: this repository currently contains the product, security,
-> architecture, and workflow contracts. The app scaffold is not implemented yet.
+> architecture, workflow contracts, and Phase 0 app scaffold. Screen capture is
+> not implemented yet.
 
 The goal is simple: stop babysitting tiny UI states without giving an app
 permission to watch your whole computer.
@@ -156,7 +157,7 @@ security, architecture, and workflow contracts that must guide implementation.
 Implementation order:
 
 - [x] Engineering governance.
-- [ ] Tauri + React + TypeScript + Rust scaffold.
+- [x] Tauri + React + TypeScript + Rust scaffold.
 - [ ] Performance constants and tests.
 - [ ] Region selector.
 - [ ] Fake capture backend.
@@ -196,9 +197,9 @@ Read these before changing code:
 
 Current repository state:
 
-- No app scaffold yet.
-- No runtime dependencies yet.
-- No tests yet because there is no implementation code yet.
+- Phase 0 app scaffold is present.
+- Runtime dependencies are limited to the Tauri/React shell.
+- Tests cover the pre-alpha shell content and Rust app status command.
 - Every future feature is expected to include tests, review, an atomic commit,
   and a push.
 
