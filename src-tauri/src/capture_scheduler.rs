@@ -71,6 +71,23 @@ impl CaptureScheduler {
         results
     }
 
+    pub fn capture_tile_once<B: CaptureBackend>(
+        &mut self,
+        lifecycle: &CaptureLifecycle,
+        backend: &B,
+        tile_id: &str,
+    ) -> Option<SchedulerCaptureResult> {
+        self.sync_lifecycle(lifecycle);
+
+        let task = self.tasks.get_mut(tile_id)?;
+        if lifecycle.should_capture(tile_id) {
+            Some(capture_task_once(task, backend))
+        } else {
+            task.clear_buffer();
+            None
+        }
+    }
+
     pub fn task_count(&self) -> usize {
         self.tasks.len()
     }

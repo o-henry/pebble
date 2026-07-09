@@ -6,6 +6,11 @@ import type {
   CroppedFramePayload
 } from "../features/capture/captureFrame";
 import type {
+  LiveTileCaptureRequest,
+  LiveTileCaptureResponse,
+  LiveTileCaptureResult
+} from "../features/live-tile/liveTile";
+import type {
   PerformanceLimitRequest,
   PerformanceLimits,
   PerformanceValidationResult
@@ -30,15 +35,11 @@ export interface BackendCommandMap {
     result: PerformanceLimits;
   };
   validate_performance_request: {
-    args: {
-      request: PerformanceLimitRequest;
-    };
+    args: { request: PerformanceLimitRequest };
     result: PerformanceValidationResult;
   };
   resolve_region_selection: {
-    args: {
-      request: RegionSelectionRequest;
-    };
+    args: { request: RegionSelectionRequest };
     result: RegionSelection;
   };
   get_window_shell_snapshot: {
@@ -57,10 +58,12 @@ export interface BackendCommandMap {
     result: void;
   };
   capture_region_once: {
-    args: {
-      region: PhysicalRegion;
-    };
+    args: { region: PhysicalRegion };
     result: CroppedFramePayload;
+  };
+  capture_live_tile_once: {
+    args: { request: LiveTileCaptureRequest };
+    result: LiveTileCaptureResponse;
   };
 }
 
@@ -145,30 +148,34 @@ export function openRegionSelectorWindow(): Promise<RegionSelectorWindowShell> {
   return invokeBackend("open_region_selector_window");
 }
 
-export function getRegionSelectorMonitor(): Promise<
-  RegionSelectionRequest["monitor"]
-> {
+export function getRegionSelectorMonitor(): Promise<RegionSelectionRequest["monitor"]> {
   return invokeBackend("get_region_selector_monitor");
 }
 
 export function closeRegionSelectorWindow(): Promise<void> {
   return invokeBackend("close_region_selector_window");
 }
-
 export function captureRegionOnce(
   region: PhysicalRegion
 ): Promise<CaptureRegionResult> {
-  return invokeBackend("capture_region_once", {
-    region
-  })
-    .then((frame) => ({ ok: true as const, frame }))
-    .catch((error: unknown) => {
-      if (isCaptureError(error)) {
-        return { ok: false as const, error };
-      }
+  return recoverCaptureError(
+    invokeBackend("capture_region_once", {
+      region
+    }).then((frame) => ({ ok: true as const, frame }))
+  );
+}
 
-      throw error;
-    });
+export function captureLiveTileOnce(
+  request: LiveTileCaptureRequest
+): Promise<LiveTileCaptureResult> {
+  return recoverCaptureError(
+    invokeBackend("capture_live_tile_once", {
+      request
+    }).then((response) => ({
+      ok: true as const,
+      response
+    }))
+  );
 }
 
 function isCaptureError(error: unknown): error is CaptureError {
@@ -194,6 +201,18 @@ function isRegionSelectionIssue(error: unknown): error is RegionSelectionIssue {
     typeof error.actual === "number" &&
     typeof error.message === "string"
   );
+}
+
+function recoverCaptureError<T>(
+  promise: Promise<T>
+): Promise<T | { ok: false; error: CaptureError }> {
+  return promise.catch((error: unknown) => {
+    if (isCaptureError(error)) {
+      return { ok: false as const, error };
+    }
+
+    throw error;
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -15,6 +15,7 @@ export interface CroppedFramePayload {
 }
 
 export type CaptureErrorCode =
+  | "activeTileLimitExceeded"
   | "captureUnavailable"
   | "invalidRegion"
   | "monitorUnavailable"

@@ -58,6 +58,7 @@ pub struct CaptureError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CaptureErrorCode {
+    ActiveTileLimitExceeded,
     CaptureUnavailable,
     InvalidRegion,
     MonitorUnavailable,

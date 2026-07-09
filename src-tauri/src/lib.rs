@@ -10,6 +10,9 @@ pub mod diff_engine;
 #[cfg(test)]
 mod diff_engine_tests;
 mod diff_engine_types;
+pub mod live_tile;
+#[cfg(test)]
+mod live_tile_tests;
 pub mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
@@ -27,11 +30,13 @@ mod window_shell_tests;
 
 use app_status::AppStatus;
 use capture_backend::{CaptureError, CroppedFramePayload};
+use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use region_selection_types::{
     PhysicalRegion, RegionSelection, RegionSelectionIssue, RegionSelectionRequest,
 };
 use region_selector_window::RegionSelectorWindowShell;
+use tauri::Emitter;
 use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
 
 #[tauri::command]
@@ -98,9 +103,25 @@ fn capture_region_once(region: PhysicalRegion) -> Result<CroppedFramePayload, Ca
     capture_backend::capture_region_once(region)
 }
 
+#[tauri::command]
+fn capture_live_tile_once(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LiveTileState>,
+    request: LiveTileCaptureRequest,
+) -> Result<LiveTileCaptureResponse, CaptureError> {
+    let outcome = state.capture_once(request)?;
+
+    if let Some(event) = &outcome.frame_event {
+        let _ = app.emit(live_tile::live_tile_frame_event_name(), event);
+    }
+
+    Ok(outcome.response)
+}
+
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .manage(WindowShellState::default())
+        .manage(LiveTileState::default())
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_performance_limits,
@@ -111,7 +132,8 @@ pub fn run() -> tauri::Result<()> {
             open_region_selector_window,
             get_region_selector_monitor,
             close_region_selector_window,
-            capture_region_once
+            capture_region_once,
+            capture_live_tile_once
         ])
         .run(tauri::generate_context!())
 }

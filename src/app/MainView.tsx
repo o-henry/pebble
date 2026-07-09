@@ -6,6 +6,7 @@ import {
   Principles,
   WindowShellControls
 } from "./MainSections";
+import { LiveTilePanel } from "./LiveTilePanel";
 import { PrivacyBanner } from "./PrivacyBanner";
 import { RegionSelectorSection } from "./RegionSelectorSection";
 import {
@@ -95,7 +96,7 @@ export function MainView() {
     <main className="app-shell">
       <section className="hero-section" aria-labelledby="screenpebble-title">
         <p className="status-line">
-          {appStatus.phase} · selector shell ready · capture off · AI off
+          {appStatus.phase} · live tile ready · real capture gated · AI off
         </p>
         <h1 id="screenpebble-title">ScreenPebble</h1>
         <p className="hero-copy">
@@ -103,8 +104,8 @@ export function MainView() {
         </p>
         <p className="trust-copy">
           This build includes the desktop scaffold, hard performance limits, and
-          a transparent region selector shell. There is no screen capture, OCR,
-          AI connector, telemetry, or network feature in this build.
+          a low-FPS live tile backed by memory-only cropped frames. There is no
+          OCR, AI connector, telemetry, or network feature in this build.
         </p>
       </section>
 
@@ -120,6 +121,7 @@ export function MainView() {
         error={selectorError}
         onOpen={openSelector}
       />
+      <LiveTilePanel privacyBlankActive={privacy.blankActive} />
       <WindowShellControls
         tile={snapshot.testTile}
         onOpen={openTile}
