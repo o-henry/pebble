@@ -13,6 +13,9 @@ mod diff_engine_types;
 pub mod live_tile;
 #[cfg(test)]
 mod live_tile_tests;
+pub mod ocr_engine;
+#[cfg(test)]
+mod ocr_engine_tests;
 pub mod pebble_store;
 #[cfg(test)]
 mod pebble_store_tests;
@@ -34,6 +37,7 @@ mod window_shell_tests;
 use app_status::AppStatus;
 use capture_backend::{CaptureError, CroppedFramePayload};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
+use ocr_engine::OcrStatus;
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use region_selection_types::{
@@ -135,6 +139,11 @@ fn save_pebble_config(
     default_pebble_store(&app)?.save(&document)
 }
 
+#[tauri::command]
+fn get_ocr_status() -> OcrStatus {
+    ocr_engine::local_ocr_status()
+}
+
 fn default_pebble_store(app: &tauri::AppHandle) -> Result<PebbleStore, PebbleStoreError> {
     let config_dir = app
         .path()
@@ -163,7 +172,8 @@ pub fn run() -> tauri::Result<()> {
             capture_region_once,
             capture_live_tile_once,
             load_pebble_config,
-            save_pebble_config
+            save_pebble_config,
+            get_ocr_status
         ])
         .run(tauri::generate_context!())
 }
