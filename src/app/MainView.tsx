@@ -6,6 +6,11 @@ import {
   Principles,
   WindowShellControls
 } from "./MainSections";
+import { RegionSelectorSection } from "./RegionSelectorSection";
+import {
+  REGION_SELECTOR_DEFAULT_SHELL,
+  type RegionSelectorWindowShell
+} from "../features/region-selector/regionSelectorShell";
 import {
   TEST_TILE_DEFAULT_STATE,
   WINDOW_SHELL_DEFAULT_SNAPSHOT,
@@ -14,6 +19,7 @@ import {
 } from "../features/window-shell/tileWindowState";
 import {
   getWindowShellSnapshot,
+  openRegionSelectorWindow,
   openTestTileWindow
 } from "../lib/invoke";
 
@@ -21,6 +27,10 @@ export function MainView() {
   const [snapshot, setSnapshot] = useState<WindowShellSnapshot>(
     WINDOW_SHELL_DEFAULT_SNAPSHOT
   );
+  const [selectorShell, setSelectorShell] = useState<RegionSelectorWindowShell>(
+    REGION_SELECTOR_DEFAULT_SHELL
+  );
+  const [selectorError, setSelectorError] = useState<string | null>(null);
 
   async function openTile() {
     try {
@@ -45,11 +55,22 @@ export function MainView() {
     }
   }
 
+  async function openSelector() {
+    try {
+      setSelectorShell(await openRegionSelectorWindow());
+      setSelectorError(null);
+    } catch (error) {
+      setSelectorError(
+        error instanceof Error ? error.message : "Selector overlay failed"
+      );
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="hero-section" aria-labelledby="screenpebble-title">
         <p className="status-line">
-          {appStatus.phase} · window shell ready · capture off · AI off
+          {appStatus.phase} · selector shell ready · capture off · AI off
         </p>
         <h1 id="screenpebble-title">ScreenPebble</h1>
         <p className="hero-copy">
@@ -57,13 +78,18 @@ export function MainView() {
         </p>
         <p className="trust-copy">
           This build includes the desktop scaffold, hard performance limits, and
-          a test tile window shell. There is no screen capture, OCR, AI
-          connector, telemetry, or network feature in this build.
+          a transparent region selector shell. There is no screen capture, OCR,
+          AI connector, telemetry, or network feature in this build.
         </p>
       </section>
 
       <Principles />
       <PerformanceLimits />
+      <RegionSelectorSection
+        shell={selectorShell}
+        error={selectorError}
+        onOpen={openSelector}
+      />
       <WindowShellControls
         tile={snapshot.testTile}
         onOpen={openTile}

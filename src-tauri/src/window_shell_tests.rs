@@ -1,4 +1,7 @@
-use crate::window_shell::{TileMode, TileWindowShell, WindowShellState, TEST_TILE_LABEL};
+use crate::{
+    region_selector_window::{RegionSelectorWindowShell, REGION_SELECTOR_LABEL},
+    window_shell::{TileMode, TileWindowShell, WindowShellState, TEST_TILE_LABEL},
+};
 
 #[test]
 fn test_tile_shell_starts_closed_and_always_on_top() {
@@ -19,6 +22,17 @@ fn window_shell_snapshot_exposes_the_test_tile() {
     assert_eq!(snapshot.test_tile.label, TEST_TILE_LABEL);
     assert_eq!(snapshot.test_tile.mode, TileMode::Closed);
     assert_eq!(snapshot.supported_modes.len(), 6);
+}
+
+#[test]
+fn region_selector_shell_is_transparent_and_capture_free() {
+    let shell = RegionSelectorWindowShell::transparent_overlay();
+
+    assert_eq!(shell.label, REGION_SELECTOR_LABEL);
+    assert!(shell.visual_overlay);
+    assert!(shell.native_transparent);
+    assert!(shell.always_on_top);
+    assert!(!shell.capture_active);
 }
 
 #[test]

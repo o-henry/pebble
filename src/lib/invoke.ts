@@ -10,6 +10,7 @@ import type {
   RegionSelectionIssue,
   RegionSelectionRequest
 } from "../features/region-selector/regionSelection";
+import type { RegionSelectorWindowShell } from "../features/region-selector/regionSelectorShell";
 import type {
   TileWindowState,
   WindowShellSnapshot
@@ -39,6 +40,15 @@ export interface BackendCommandMap {
   };
   open_test_tile_window: {
     result: TileWindowState;
+  };
+  open_region_selector_window: {
+    result: RegionSelectorWindowShell;
+  };
+  get_region_selector_monitor: {
+    result: RegionSelectionRequest["monitor"];
+  };
+  close_region_selector_window: {
+    result: void;
   };
 }
 
@@ -117,6 +127,20 @@ export function getWindowShellSnapshot(): Promise<WindowShellSnapshot> {
 
 export function openTestTileWindow(): Promise<TileWindowState> {
   return invokeBackend("open_test_tile_window");
+}
+
+export function openRegionSelectorWindow(): Promise<RegionSelectorWindowShell> {
+  return invokeBackend("open_region_selector_window");
+}
+
+export function getRegionSelectorMonitor(): Promise<
+  RegionSelectionRequest["monitor"]
+> {
+  return invokeBackend("get_region_selector_monitor");
+}
+
+export function closeRegionSelectorWindow(): Promise<void> {
+  return invokeBackend("close_region_selector_window");
 }
 
 function isRegionSelectionIssue(error: unknown): error is RegionSelectionIssue {

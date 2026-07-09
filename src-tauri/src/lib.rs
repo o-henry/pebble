@@ -6,6 +6,7 @@ mod region_selection;
 #[cfg(test)]
 mod region_selection_tests;
 mod region_selection_types;
+mod region_selector_window;
 mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
@@ -13,6 +14,7 @@ mod window_shell_tests;
 use app_status::AppStatus;
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
+use region_selector_window::RegionSelectorWindowShell;
 use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
 
 #[tauri::command]
@@ -54,6 +56,26 @@ async fn open_test_tile_window(
     window_shell::open_test_tile_window(&app, state.inner())
 }
 
+#[tauri::command]
+async fn open_region_selector_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+) -> Result<RegionSelectorWindowShell, WindowShellError> {
+    region_selector_window::open_region_selector_window(&app, Some(&window))
+}
+
+#[tauri::command]
+fn get_region_selector_monitor(
+    window: tauri::WebviewWindow,
+) -> Result<region_selection_types::MonitorGeometry, WindowShellError> {
+    region_selector_window::region_selector_monitor_geometry(&window)
+}
+
+#[tauri::command]
+fn close_region_selector_window(window: tauri::WebviewWindow) -> Result<(), WindowShellError> {
+    region_selector_window::close_region_selector_window(&window)
+}
+
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .manage(WindowShellState::default())
@@ -63,7 +85,10 @@ pub fn run() -> tauri::Result<()> {
             validate_performance_request,
             resolve_region_selection,
             get_window_shell_snapshot,
-            open_test_tile_window
+            open_test_tile_window,
+            open_region_selector_window,
+            get_region_selector_monitor,
+            close_region_selector_window
         ])
         .run(tauri::generate_context!())
 }

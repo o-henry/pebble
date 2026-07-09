@@ -128,7 +128,7 @@ impl TileMode {
 }
 
 impl WindowShellError {
-    fn unavailable(message: impl Into<String>) -> Self {
+    pub(crate) fn unavailable(message: impl Into<String>) -> Self {
         Self {
             code: WindowShellErrorCode::TileWindowUnavailable,
             message: message.into(),
@@ -167,7 +167,7 @@ pub fn open_test_tile_window(
     state.mark_test_tile_live()
 }
 
-fn show_existing_window(window: &WebviewWindow) -> Result<(), WindowShellError> {
+pub(crate) fn show_existing_window(window: &WebviewWindow) -> Result<(), WindowShellError> {
     window
         .show()
         .map_err(|error| WindowShellError::unavailable(error.to_string()))?;
