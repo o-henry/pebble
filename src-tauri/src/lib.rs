@@ -1,3 +1,7 @@
+pub mod ai_handoff;
+#[cfg(test)]
+mod ai_handoff_tests;
+mod ai_handoff_types;
 mod app_status;
 pub mod capture_backend;
 #[cfg(test)]
