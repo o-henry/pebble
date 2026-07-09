@@ -1,14 +1,18 @@
 mod app_status;
-mod capture_backend;
+pub mod capture_backend;
 #[cfg(test)]
 mod capture_backend_tests;
-mod performance_limits;
+pub mod capture_lifecycle;
+#[cfg(test)]
+mod capture_lifecycle_tests;
+pub mod capture_scheduler;
+pub mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
 mod region_selection;
 #[cfg(test)]
 mod region_selection_tests;
-mod region_selection_types;
+pub mod region_selection_types;
 mod region_selector_window;
 mod window_shell;
 #[cfg(test)]
