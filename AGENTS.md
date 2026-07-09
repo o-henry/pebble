@@ -164,9 +164,12 @@ https://github.com/o-henry/pebble.git
 
 Final reports must state:
 
-- 완료 or 미완료.
-- Verification evidence.
-- 해결됨, 검증된 미해결, 검증 필요, 회귀, and 범위 밖 as applicable.
-- Residual risk.
+- Whether the requested work is done.
+- What was verified.
+- Anything that could not be completed, in plain language.
+- Any residual risk, briefly.
+
+Do not use rigid status buckets unless the user explicitly asks for that format.
+Keep completion reports concise and natural.
 
 If the requested scope is complete, stop. Do not invent extra work.
