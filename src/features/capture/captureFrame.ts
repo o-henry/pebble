@@ -15,9 +15,14 @@ export interface CroppedFramePayload {
 }
 
 export type CaptureErrorCode =
+  | "captureUnavailable"
   | "invalidRegion"
   | "monitorUnavailable"
-  | "regionOutOfBounds";
+  | "permissionDenied"
+  | "platformUnavailable"
+  | "regionTooLarge"
+  | "regionOutOfBounds"
+  | "unsupportedPixelFormat";
 
 export interface CaptureError {
   code: CaptureErrorCode;

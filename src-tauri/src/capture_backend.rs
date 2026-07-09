@@ -5,7 +5,7 @@ use crate::{
     region_selection_types::{PhysicalPoint, PhysicalRegion},
 };
 
-const RGBA_BYTES_PER_PIXEL: usize = 4;
+pub(crate) const RGBA_BYTES_PER_PIXEL: usize = 4;
 const FAKE_MONITOR_ID: &str = "main";
 const FAKE_MONITOR_WIDTH: i32 = 800;
 const FAKE_MONITOR_HEIGHT: i32 = 600;
@@ -58,9 +58,14 @@ pub struct CaptureError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CaptureErrorCode {
+    CaptureUnavailable,
     InvalidRegion,
     MonitorUnavailable,
+    PermissionDenied,
+    PlatformUnavailable,
+    RegionTooLarge,
     RegionOutOfBounds,
+    UnsupportedPixelFormat,
 }
 
 pub type CaptureResult = Result<CroppedFramePayload, CaptureError>;
@@ -122,7 +127,7 @@ pub fn capture_region_once(region: PhysicalRegion) -> CaptureResult {
     FakeCaptureBackend::default().capture_region(&region)
 }
 
-fn validate_region_size(region: &PhysicalRegion) -> Result<(), CaptureError> {
+pub(crate) fn validate_region_size(region: &PhysicalRegion) -> Result<(), CaptureError> {
     if region.width < 1 || region.height < 1 {
         return Err(capture_error(
             CaptureErrorCode::InvalidRegion,
@@ -161,7 +166,7 @@ fn fake_region_bytes(region: &PhysicalRegion) -> Result<Vec<u8>, CaptureError> {
     Ok(bytes)
 }
 
-fn byte_len(region: &PhysicalRegion) -> Result<usize, CaptureError> {
+pub(crate) fn byte_len(region: &PhysicalRegion) -> Result<usize, CaptureError> {
     let width = usize::try_from(region.width).map_err(|_| {
         capture_error(
             CaptureErrorCode::InvalidRegion,
@@ -188,7 +193,7 @@ fn byte_len(region: &PhysicalRegion) -> Result<usize, CaptureError> {
         })
 }
 
-fn cropped_frame(region: &PhysicalRegion, bytes: Vec<u8>) -> CroppedFramePayload {
+pub(crate) fn cropped_frame(region: &PhysicalRegion, bytes: Vec<u8>) -> CroppedFramePayload {
     CroppedFramePayload {
         monitor_id: region.monitor_id.clone(),
         region: region.clone(),
@@ -210,10 +215,14 @@ fn fake_pixel(x: i64, y: i64) -> [u8; RGBA_BYTES_PER_PIXEL] {
     ]
 }
 
-fn capture_error(code: CaptureErrorCode, monitor_id: &str, message: &'static str) -> CaptureError {
+pub(crate) fn capture_error(
+    code: CaptureErrorCode,
+    monitor_id: &str,
+    message: impl Into<String>,
+) -> CaptureError {
     CaptureError {
         code,
         monitor_id: monitor_id.to_string(),
-        message: message.to_string(),
+        message: message.into(),
     }
 }

@@ -13,6 +13,9 @@ mod diff_engine_types;
 pub mod performance_limits;
 #[cfg(test)]
 mod performance_limits_tests;
+pub mod platform_capture;
+#[cfg(test)]
+mod platform_capture_tests;
 mod region_selection;
 #[cfg(test)]
 mod region_selection_tests;
