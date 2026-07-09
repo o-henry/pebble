@@ -75,15 +75,13 @@ Each commit must be pushable and reviewable on its own.
 
 ## Verification Reporting
 
-Each completion report must include:
+Each completion report should be concise and natural. Include:
 
-- 완료 or 미완료.
-- Commands run.
+- Whether the requested work is done.
+- Commands run or why checks could not run.
 - What changed.
-- 해결됨 items.
-- 검증 필요 items for non-blocking residual confidence work.
-- 검증된 미해결 items only when an acceptance criterion is unmet.
-- 범위 밖 items only when intentionally deferred.
-- Residual risk.
+- Anything that could not be completed, in plain language.
+- Residual risk, briefly.
 
+Do not use rigid status buckets unless the user explicitly asks for that format.
 If checks cannot run because tooling does not exist yet, say that directly.

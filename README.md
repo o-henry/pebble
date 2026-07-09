@@ -161,10 +161,10 @@ Implementation order:
 - [ ] Region selector.
 - [ ] Fake capture backend.
 - [ ] Capture lifecycle and scheduler.
-- [ ] Real capture backend.
-- [ ] Live tile.
 - [ ] Local diff alerts.
 - [ ] Privacy blank and hotkeys.
+- [ ] Real capture backend.
+- [ ] Live tile.
 - [ ] Optional local OCR.
 - [ ] Optional AI handoff.
 
@@ -185,6 +185,10 @@ Until then, development setup will be added with the scaffold commit.
 Read these before changing code:
 
 - [AGENTS.md](AGENTS.md)
+- [Product Spec](docs/PRODUCT_SPEC.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- [AI Handoff Design](docs/AI_HANDOFF_DESIGN.md)
 - [Engineering Charter](docs/ENGINEERING_CHARTER.md)
 - [Security And Privacy](docs/SECURITY_AND_PRIVACY.md)
 - [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md)
