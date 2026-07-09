@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible ScreenPebble bug.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping harden ScreenPebble. Do not include screenshots, OCR output, tokens, cookies, or private screen content.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Keep this focused and reproducible.
+      placeholder: |
+        1. Open...
+        2. Select...
+        3. Click...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: privacy
+    attributes:
+      label: Does this involve screen capture, OCR, AI handoff, or persistence?
+      options:
+        - "No"
+        - "Screen capture"
+        - "OCR"
+        - "AI handoff"
+        - "Persistence"
+        - "Multiple"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        macOS:
+        ScreenPebble commit/version:
+        pnpm:
+        Rust:
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed private screen content, tokens, cookies, account data, and OCR output from this report.
+          required: true

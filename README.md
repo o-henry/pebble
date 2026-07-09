@@ -3,272 +3,196 @@
 > Pin a tiny part of your screen. Let local watchers notice what changed.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
-[![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy-model)
-[![AI](https://img.shields.io/badge/AI-optional%20%26%20off%20by%20default-4338ca)](#ai-without-the-creepiness)
+[![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
+[![AI](https://img.shields.io/badge/AI-off%20by%20default-4338ca)](#ai-handoff)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-ScreenPebble is being built to turn a small user-selected screen region into a
-low-FPS always-on-top tile. It is for the parts of your screen you keep checking:
-build logs, upload progress, render jobs, queue numbers, dashboards, timers,
-status rows, and charts.
+ScreenPebble is a local-first desktop utility for the tiny parts of your screen
+you keep checking: build logs, queues, upload progress, render jobs, dashboards,
+timers, status rows, and other small visual states.
 
-> Pre-alpha: this repository currently contains the product, security,
-> architecture, workflow contracts, and Phase 0 app scaffold. Screen capture is
-> not implemented yet.
-
-The goal is simple: stop babysitting tiny UI states without giving an app
-permission to watch your whole computer.
+The product idea is intentionally small:
 
 ```text
 select a region -> keep it visible -> detect meaningful changes locally
 ```
 
+![ScreenPebble demo](docs/assets/screenpebble-demo.gif)
+
 ## Why
 
 Some work is not blocked by complexity. It is blocked by waiting.
 
-You keep glancing at the same small area:
+ScreenPebble is for the status surfaces that do not have good webhooks, APIs, or
+notifications. If you can see a small region, the app should help you keep an
+eye on it without becoming a screen recorder, remote desktop app, or hidden
+monitoring tool.
 
-- Did the build fail?
-- Did the upload finish?
-- Did the queue number change?
-- Did the dashboard cell turn red?
-- Did the chart row update?
-- Did the long-running job finally complete?
+## Status
 
-ScreenPebble is designed for those small status surfaces. The product direction
-does not require an API, browser extension, webhook, cloud account, or
-app-specific integration. If you can see the region, you should be able to pin
-it.
+ScreenPebble is pre-alpha and not packaged for end users yet. The current build
+is useful for contributors and early design review.
 
-## What ScreenPebble Is
+Implemented:
 
-- A desktop utility for selected screen regions.
-- A tiny always-on-top live tile.
-- A low-FPS ambient monitor.
-- A local-first change detector.
-- A privacy-aware bridge between visual UI state and optional AI assistance.
+- Tauri 2 + React + TypeScript + Rust desktop scaffold.
+- Hard performance limits: 1 FPS default, 5 FPS max, 3 active tiles, 800x600
+  max region.
+- Region selection model and transparent selector shell.
+- Memory-only fake capture backend for deterministic tests.
+- macOS real-capture adapter at the Rust boundary, guarded by validation and
+  permission errors.
+- Capture lifecycle and scheduler states: live, paused, hidden, blanked,
+  closed, deleted.
+- Local visual diff engine with cooldown and one small in-memory sample per
+  tile.
+- Privacy blank hotkey/state that stops capture.
+- Low-FPS live tile demo path.
+- Config-only store for named regions and safe capture settings.
+- Optional local OCR service boundary, disabled by default.
+- Optional AI handoff policy boundary, disabled by default.
 
-## What ScreenPebble Is Not
+Not shipped yet:
 
-- Not a screen recorder.
-- Not a remote desktop app.
-- Not a hidden monitoring tool.
-- Not a cloud sync service.
-- Not an AI agent framework.
-- Not a stock, trading, brokerage, or financial advice app.
-- Not a workplace-policy bypass tool.
+- Signed installer or Homebrew formula.
+- Real end-user tile creation workflow wired all the way through.
+- Production local OCR adapter.
+- Production AI connector.
+- Telemetry, cloud sync, browser automation, or ChatGPT session automation.
 
-## Core Principles
+## Principles
 
-| Principle | Product behavior |
+| Principle | Behavior |
 | --- | --- |
-| User-selected only | ScreenPebble watches only regions the user pins. |
-| Visible by design | Active capture must have visible tile or visible status. |
-| Low FPS on purpose | Default refresh is 1 FPS; the first public release caps at 5 FPS. |
-| No frame history | Captured pixels are not stored as a timeline, replay, or preview archive. |
-| Local-first | Diff and future OCR should run locally before any AI handoff. |
-| AI is optional | AI connector features are off by default and scoped per region. |
-| Instant privacy | Privacy blank must stop capture loops, not merely hide the tile. |
+| Selected regions only | ScreenPebble works on user-pinned regions, not the whole screen. |
+| Visible by design | Active capture must have a visible tile or visible status. |
+| Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
+| No frame history | Frames are not stored as a timeline, replay, or preview archive. |
+| Local first | Diff runs locally now; future OCR and AI handoff must stay behind local gates. |
+| AI is optional | AI handoff is per region, explicit, and off by default. |
+| Instant privacy | Privacy blank stops capture loops, not just the UI. |
 
-## Planned User Experience
-
-```text
-1. Drag to select a small screen region.
-2. Name it: build-log, upload, dashboard-cell, queue, chart-row.
-3. Keep it as a small always-on-top tile.
-4. Let ScreenPebble detect visual changes locally.
-5. Optionally use local OCR to extract changed text.
-6. Optionally hand compact text to an AI tool when the user enables it.
-```
-
-The important detail: AI should not continuously watch the screen. Local diff
-and OCR should do the cheap work first. AI is for interpretation after a
-meaningful change, not for constant image polling.
-
-## AI Without The Creepiness
-
-ScreenPebble's AI direction is deliberately narrow.
-
-Default behavior:
-
-- No AI connection.
-- No cloud upload.
-- No hidden calls.
-- No browser cookie scraping.
-- No ChatGPT web automation.
-- No whole-screen access.
-
-Future optional behavior:
-
-- Per-region AI enablement.
-- Text-first handoff from local OCR.
-- Image handoff only for explicitly allowed regions.
-- Cooldowns and deduplication to reduce usage.
-- Visible indicator whenever AI handoff is active.
-
-The target is to work well even with cheaper subscription plans: send compact
-text when possible, send images only when necessary, and let the local app do
-most monitoring work.
-
-## Privacy Model
+## Privacy
 
 ScreenPebble should be safe to explain in one sentence:
 
 > It watches only the small regions you pin, locally, with no frame history and
 > no upload by default.
 
-Privacy requirements:
+Never persisted:
 
-- Store configuration only: region coordinates, tile names, tile position,
-  refresh settings, and alert preferences.
-- Never persist captured frames, screenshots, previews, OCR history, browser
-  URLs, clipboard contents, or AI prompts derived from screen content.
-- Stop capture when a tile is paused, hidden, blanked, closed, or deleted.
-- Treat permission changes and AI connector changes as high-risk work requiring
-  explicit review.
+- Captured frames.
+- Screenshots or previews.
+- OCR history.
+- AI prompts derived from screen content.
+- Browser URLs, cookies, tokens, API keys, or clipboard contents.
 
-See [Security And Privacy](docs/SECURITY_AND_PRIVACY.md).
+Persisted configuration is limited to safe settings such as named regions,
+coordinates, and refresh configuration. See
+[Security And Privacy](docs/SECURITY_AND_PRIVACY.md).
 
-## Performance Contract
+## AI Handoff
 
-ScreenPebble is intentionally low-FPS.
+AI is not part of the core capture path.
 
-| Limit | First public release target |
-| --- | ---: |
-| Default refresh | 1 FPS |
-| Maximum refresh | 5 FPS |
-| Active tiles | 3 |
-| Recommended region | 600x300 or smaller |
-| Hard maximum region | 800x600 |
-| Stored frame history | 0 |
+The current code contains a policy boundary for future connectors:
 
-The app should prefer local, cheap checks:
+- AI disabled by default.
+- Per-region authorization required.
+- Privacy blank, paused, hidden, closed, and deleted states block handoff.
+- Text-first payloads from OCR.
+- Image handoff only for explicit image-enabled region settings.
+- Cooldown and dedupe before connector calls.
+- Recoverable connector errors.
 
-```text
-small crop -> local diff -> local OCR if changed -> dedupe -> optional AI text handoff
-```
+ScreenPebble does not scrape browser cookies, automate a logged-in ChatGPT web
+session, reuse app tokens, or stream screen images continuously.
 
-## Status
+## Install From Source
 
-ScreenPebble is in pre-alpha. The repository currently contains the engineering,
-security, architecture, and workflow contracts that must guide implementation.
+Requirements:
 
-Implementation order:
-
-- [x] Engineering governance.
-- [x] Tauri + React + TypeScript + Rust scaffold.
-- [ ] Performance constants and tests.
-- [ ] Region selector.
-- [ ] Fake capture backend.
-- [ ] Capture lifecycle and scheduler.
-- [ ] Local diff alerts.
-- [ ] Privacy blank and hotkeys.
-- [ ] Real capture backend.
-- [ ] Live tile.
-- [ ] Optional local OCR.
-- [ ] Optional AI handoff.
-
-## Installation
-
-Not released yet.
-
-The first release should provide:
+- macOS for the current desktop target.
+- Node.js compatible with the repository lockfile.
+- pnpm 11.
+- Rust stable.
 
 ```bash
-brew install screenpebble
+git clone https://github.com/o-henry/pebble.git
+cd pebble
+pnpm install
+pnpm tauri:build
 ```
 
-Until then, development setup will be added with the scaffold commit.
-
-## Development
-
-Read these before changing code:
-
-- [AGENTS.md](AGENTS.md)
-- [Product Spec](docs/PRODUCT_SPEC.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- [AI Handoff Design](docs/AI_HANDOFF_DESIGN.md)
-- [Engineering Charter](docs/ENGINEERING_CHARTER.md)
-- [Security And Privacy](docs/SECURITY_AND_PRIVACY.md)
-- [Git And Security Policy](docs/GIT_AND_SECURITY_POLICY.md)
-- [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md)
-
-Current repository state:
-
-- Phase 0 app scaffold is present.
-- Runtime dependencies are limited to the Tauri/React shell.
-- Tests cover the pre-alpha shell content and Rust app status command.
-- Every future feature is expected to include tests, review, an atomic commit,
-  and a push.
-
-## Architecture Direction
-
-Planned layers:
+The unsigned development binary is built at:
 
 ```text
-React UI
-Typed frontend command wrappers
-Tauri command boundary
-Rust application services
-OS adapters
+src-tauri/target/release/screenpebble
 ```
 
-Planned service boundaries:
+For development:
 
-- `PerformanceLimits`: FPS, tile, and region limits.
-- `RegionMapper`: logical-to-physical coordinate conversion.
-- `CaptureBackend`: OS capture adapter trait.
-- `CaptureScheduler`: single owner of capture loops.
-- `CaptureLifecycle`: live, paused, hidden, blanked, closed states.
+```bash
+pnpm tauri:dev
+```
+
+## Verify
+
+Run the automated checks:
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+pnpm build
+cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
+```
+
+Before a public demo, also run the
+[manual smoke checklist](docs/MANUAL_SMOKE_CHECKLIST.md).
+
+## Repository Map
+
+```text
+src/                     React UI and typed frontend command wrappers
+src-tauri/src/           Rust services, Tauri commands, and platform adapters
+docs/                    Product, architecture, security, demo, and release docs
+.github/ISSUE_TEMPLATE/  Bug and feature templates
+```
+
+Key Rust boundaries:
+
+- `PerformanceLimits`: FPS, tile count, and region size contract.
+- `CaptureBackend`: memory-only cropped frame source.
+- `CaptureLifecycle`: capture state policy.
+- `CaptureScheduler`: task/buffer ownership.
 - `DiffEngine`: local visual change scoring.
-- `OcrEngine`: optional local OCR adapter.
 - `PebbleStore`: config-only persistence.
-- `AiConnector`: optional, explicit, permissioned handoff.
+- `OcrEngine`: optional local OCR boundary.
+- `AiConnector`: optional explicit handoff boundary.
 
 ## Contributing
 
-ScreenPebble is not accepting broad feature expansion yet. Early contributions
-should strengthen the core contract:
+ScreenPebble is still earning trust before expanding features. Good
+contributions are narrow, tested, and privacy-preserving:
 
-- Smaller, clearer architecture.
-- Better tests.
-- Safer capture lifecycle.
-- Better permission handling.
+- Safer capture lifecycle behavior.
+- Better region selection and multi-monitor handling.
 - Lower resource usage.
-- Clearer user-facing privacy language.
+- Clearer permission-denied flows.
+- Better local diff/OCR quality.
+- Better setup, packaging, and demo docs.
 
-Before opening a change, keep the scope narrow and make the behavior testable.
+Avoid broad feature proposals that add cloud sync, hidden monitoring, telemetry,
+browser automation, or always-on AI.
 
-## Roadmap Philosophy
+Read first:
 
-The product should earn trust before it earns features.
-
-Good additions:
-
-- Better local capture reliability.
-- Better multi-monitor support.
-- Better region selection.
-- Better local diff/OCR.
-- Better privacy indicators.
-- Better setup and packaging.
-
-Bad additions:
-
-- Continuous AI screen watching.
-- Hidden capture.
-- Cloud sync by default.
-- Frame history.
-- High-FPS mirroring.
-- Broad filesystem or browser access.
-- Anything that makes the app hard to explain safely.
-
-## Name
-
-ScreenPebble is a small thing you keep on the side of your workspace. It is not a
-wall-sized monitor, not a recorder, and not a second desktop. It is a pebble:
-small, visible, local, and easy to put away.
+- [AGENTS.md](AGENTS.md)
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- [Engineering Charter](docs/ENGINEERING_CHARTER.md)
+- [Git And Security Policy](docs/GIT_AND_SECURITY_POLICY.md)
+- [AI Handoff Design](docs/AI_HANDOFF_DESIGN.md)
 
 ## License
 
