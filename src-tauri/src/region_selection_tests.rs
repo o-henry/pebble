@@ -1,6 +1,7 @@
 use crate::region_selection::select_region;
 use crate::region_selection_types::{
-    LogicalPoint, MonitorGeometry, PhysicalPoint, RegionSelectionIssueCode, RegionSelectionRequest,
+    LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionIssueCode,
+    RegionSelectionRequest,
 };
 
 #[test]
@@ -55,6 +56,7 @@ fn out_of_range_physical_coordinates_are_rejected_before_casting() {
         MonitorGeometry {
             id: "extreme".to_string(),
             logical_origin: point(0.0, 0.0),
+            logical_size: logical_size(1_000.0, 800.0),
             physical_origin: PhysicalPoint { x: i32::MAX, y: 0 },
             scale_factor: 1.0,
         },
@@ -75,6 +77,7 @@ fn scale_factor_converts_logical_selection_to_physical_pixels() {
         MonitorGeometry {
             id: "retina".to_string(),
             logical_origin: point(100.0, 40.0),
+            logical_size: logical_size(1_000.0, 800.0),
             physical_origin: PhysicalPoint { x: 1200, y: 400 },
             scale_factor: 2.0,
         },
@@ -95,6 +98,7 @@ fn multi_monitor_offsets_are_preserved_in_physical_space() {
         MonitorGeometry {
             id: "left-display".to_string(),
             logical_origin: point(-1280.0, 40.0),
+            logical_size: logical_size(1_280.0, 540.0),
             physical_origin: PhysicalPoint { x: -2560, y: 80 },
             scale_factor: 2.0,
         },
@@ -126,6 +130,17 @@ fn recommended_region_returns_warning_without_rejecting() {
     );
 }
 
+#[test]
+fn selection_outside_monitor_bounds_is_rejected() {
+    let error = select_region(request(point(10.0, 10.0), point(1_930.0, 200.0), monitor()))
+        .expect_err("outside monitor");
+
+    assert_eq!(
+        error.code,
+        RegionSelectionIssueCode::SelectionOutsideMonitor
+    );
+}
+
 fn request(
     start: LogicalPoint,
     end: LogicalPoint,
@@ -142,6 +157,7 @@ fn monitor() -> MonitorGeometry {
     MonitorGeometry {
         id: "main".to_string(),
         logical_origin: point(0.0, 0.0),
+        logical_size: logical_size(1_920.0, 1_080.0),
         physical_origin: PhysicalPoint { x: 0, y: 0 },
         scale_factor: 1.0,
     }
@@ -149,4 +165,8 @@ fn monitor() -> MonitorGeometry {
 
 fn point(x: f64, y: f64) -> LogicalPoint {
     LogicalPoint { x, y }
+}
+
+fn logical_size(width: f64, height: f64) -> LogicalSize {
+    LogicalSize { width, height }
 }

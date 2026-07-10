@@ -33,6 +33,7 @@ export type RegionSelectorAction =
 export const DEFAULT_SELECTOR_MONITOR: MonitorGeometry = {
   id: "selector-overlay",
   logicalOrigin: { x: 0, y: 0 },
+  logicalSize: { width: 960, height: 640 },
   physicalOrigin: { x: 0, y: 0 },
   scaleFactor: 1
 };
@@ -112,7 +113,8 @@ export function createViewportMonitor(
     id: `selector-overlay-${Math.round(width)}x${Math.round(height)}`,
     scaleFactor,
     physicalOrigin: { x: 0, y: 0 },
-    logicalOrigin: { x: 0, y: 0 }
+    logicalOrigin: { x: 0, y: 0 },
+    logicalSize: { width, height }
   };
 }
 
@@ -136,12 +138,4 @@ export function dragRect(
     width: Math.abs(current.x - start.x),
     height: Math.abs(current.y - start.y)
   };
-}
-
-export function dimensionLabel(rect: DragRect | null): string {
-  if (!rect) {
-    return "0 x 0";
-  }
-
-  return `${Math.round(rect.width)} x ${Math.round(rect.height)}`;
 }

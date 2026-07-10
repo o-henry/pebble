@@ -15,8 +15,13 @@ pub struct PlatformCaptureBackend;
 
 impl CaptureBackend for PlatformCaptureBackend {
     fn capture_region(&self, region: &PhysicalRegion) -> CaptureResult {
+        self.capture_region_at_scale(region, 1.0)
+    }
+
+    fn capture_region_at_scale(&self, region: &PhysicalRegion, scale_factor: f64) -> CaptureResult {
         validate_platform_region(region)?;
-        capture_region_platform(region)
+        validate_scale_factor(region, scale_factor)?;
+        capture_region_platform(region, scale_factor)
     }
 }
 
@@ -25,16 +30,38 @@ pub fn capture_real_region_once(region: PhysicalRegion) -> CaptureResult {
 }
 
 #[cfg(target_os = "macos")]
-fn capture_region_platform(region: &PhysicalRegion) -> CaptureResult {
-    platform_capture_macos::capture_region(region)
+pub fn request_screen_capture_access() -> bool {
+    platform_capture_macos::request_screen_capture_access()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn capture_region_platform(region: &PhysicalRegion) -> CaptureResult {
+pub fn request_screen_capture_access() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn capture_region_platform(region: &PhysicalRegion, scale_factor: f64) -> CaptureResult {
+    platform_capture_macos::capture_region(region, scale_factor)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_region_platform(region: &PhysicalRegion, _scale_factor: f64) -> CaptureResult {
     Err(capture_error(
         CaptureErrorCode::PlatformUnavailable,
         &region.monitor_id,
         "Real capture is available only on macOS in this build.",
+    ))
+}
+
+fn validate_scale_factor(region: &PhysicalRegion, scale_factor: f64) -> Result<(), CaptureError> {
+    if scale_factor.is_finite() && scale_factor > 0.0 {
+        return Ok(());
+    }
+
+    Err(capture_error(
+        CaptureErrorCode::InvalidRegion,
+        &region.monitor_id,
+        "Capture scale factor must be finite and positive.",
     ))
 }
 
@@ -110,8 +137,8 @@ pub(crate) mod platform_capture_test_support {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn capture_rect(region: &PhysicalRegion) -> (f64, f64, f64, f64) {
-        platform_capture_macos::test_capture_rect(region)
+    pub fn capture_rect(region: &PhysicalRegion, scale_factor: f64) -> (f64, f64, f64, f64) {
+        platform_capture_macos::test_capture_rect(region, scale_factor)
     }
 
     #[cfg(target_os = "macos")]

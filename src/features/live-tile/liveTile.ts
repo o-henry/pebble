@@ -58,6 +58,7 @@ export type LiveTileAction =
   | { type: "pause" }
   | { type: "privacyBlank" }
   | { type: "close" }
+  | { type: "watchRegion"; region: PhysicalRegion }
   | { type: "setFps"; fps: number }
   | { type: "backendSettled"; response: LiveTileCaptureResponse }
   | { type: "frameReceived"; event: LiveTileFrameEvent };
@@ -83,6 +84,14 @@ export const INITIAL_LIVE_TILE_STATE: LiveTileState = {
   blankGeneration: 0
 };
 
+export function createLiveTileState(region: PhysicalRegion): LiveTileState {
+  return {
+    ...INITIAL_LIVE_TILE_STATE,
+    region,
+    mode: "live"
+  };
+}
+
 export function liveTileReducer(
   state: LiveTileState,
   action: LiveTileAction
@@ -99,19 +108,29 @@ export function liveTileReducer(
       });
     case "close":
       return clearLatestFrame({ ...state, mode: "closed" });
+    case "watchRegion":
+      return clearLatestFrame({
+        ...state,
+        region: action.region,
+        mode: "live"
+      });
     case "setFps":
       return {
         ...state,
         fps: clampLiveTileFps(action.fps)
       };
     case "backendSettled":
-      return action.response.mode === "blanked" ? clearLatestFrame({
-        ...state,
-        effectiveFps: action.response.effectiveFps
-      }) : {
-        ...state,
-        effectiveFps: action.response.effectiveFps
-      };
+      return action.response.mode === "blanked"
+        ? clearLatestFrame({
+            ...state,
+            blankGeneration: action.response.blankGeneration,
+            effectiveFps: action.response.effectiveFps
+          })
+        : {
+            ...state,
+            blankGeneration: action.response.blankGeneration,
+            effectiveFps: action.response.effectiveFps
+          };
     case "frameReceived":
       return applyFrameEvent(state, action.event);
   }
@@ -152,6 +171,17 @@ export function liveTileRequest(
   };
 }
 
+export function createLiveTileRequestScope(
+  tileId: string,
+  randomId = randomScopeId()
+): string {
+  return `${tileId}-${randomId}`;
+}
+
+export function scopedLiveTileRequestId(scope: string, sequence: number): string {
+  return `${scope}-${sequence}`;
+}
+
 export function clampLiveTileFps(fps: number): number {
   const rounded = Math.round(Number.isFinite(fps) ? fps : 1);
 
@@ -184,4 +214,15 @@ function clearLatestFrame(state: LiveTileState): LiveTileState {
     latestSequence: 0,
     renderCount: 0
   };
+}
+
+let fallbackScopeSequence = 0;
+
+function randomScopeId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  fallbackScopeSequence += 1;
+  return `${Date.now()}-${fallbackScopeSequence}`;
 }

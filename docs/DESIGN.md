@@ -2,65 +2,86 @@
 
 ## Purpose
 
-ScreenPebble is an operational desktop tool, not a landing page. The main
-window must make the current observation state, privacy control, and next
-direct action clear before any implementation or product background.
+ScreenPebble is an operational desktop tool. Its interface exists to complete
+one task: select a small screen region and keep that region visible in a compact
+always-on-top window.
+
+## Product Flow
+
+1. The empty main window presents one primary action: `Select a region`.
+2. macOS owns the Screen Recording consent prompt.
+3. The selector explains one gesture: drag over the region and release.
+4. Releasing a valid selection starts observation and opens the Pebble window
+   automatically.
+5. The main window becomes session control for show, reselect, privacy blank,
+   and stop.
+
+There is no test-tile control, performance inspector, or contributor status in
+the user workflow.
 
 ## Information Hierarchy
 
-1. The persistent header identifies the app and its local-only session state.
-2. The command deck exposes the two primary actions: selecting a region and
-   opening a test tile.
-3. The live preview is the dominant work surface.
-4. Region selection, tile diagnostics, and hard performance limits form a
-   secondary inspector rail.
-5. Trust constraints are visible last as a compact reference strip.
+1. Product name and local-only state.
+2. The single current task or active region state.
+3. Direct controls for the floating Pebble.
+4. Compact privacy guarantees.
+
+Implementation details, hard limits, phase labels, and architecture guidance
+belong in documentation rather than the application surface.
 
 ## Layout
 
-- Main window: a single restrained workspace with a 1.48fr primary pane and a
-  0.82fr inspector rail on desktop.
-- Narrow windows: one deliberate vertical column; action buttons remain
-  visible and never overlap content.
-- The region selector is a full-screen dark overlay with a compact fixed HUD.
-- The test tile is a distinct compact dark surface so it reads as a pinned
-  object rather than a smaller copy of the control window.
+- Main window: a restrained task workspace, not a dashboard.
+- Empty state: purpose, one primary action, and a short set of concrete use
+  cases.
+- Active state: selected dimensions, monitor, position, window state, and the
+  smallest useful command set.
+- Selector: full-display overlay with a fixed instruction HUD and visible drag
+  bounds.
+- Pebble: compact resizable always-on-top window with the frame as the dominant
+  area.
+- Narrow windows: one deliberate column with no overlapping controls or text.
 
 ## Typography
 
 - `DM Mono Nerd Font` is the interface face for English, numeric values,
-  status labels, and icons.
-- `Apple SD Gothic Neo`, `Pretendard`, and system sans-serif fonts are fallback
-  faces for Korean glyphs not available in DM Mono Nerd Font.
-- Medium weight carries controls and labels; regular carries supporting text;
-  light is reserved for large display text.
-- Letter spacing remains neutral. Numbers have a stable tabular width.
+  status labels, and controls.
+- `Apple SD Gothic Neo`, `Pretendard`, and system sans-serif fonts are fallbacks
+  for Korean glyphs unavailable in DM Mono Nerd Font.
+- Medium weight carries controls and labels, regular carries supporting text,
+  and light is reserved for the main product statement.
+- Letter spacing remains zero. Numbers use stable tabular widths.
 
 ## Visual System
 
-- Canvas: cool green-gray, not pure white.
-- Surfaces: near-white with one consistent 1px divider color.
-- Ink: charcoal. Teal denotes an active local signal; amber denotes privacy
-  blank; red is reserved for recoverable errors.
-- Panels use square-to-subtle 8px corners. There are no decorative gradients,
+- Canvas: cool neutral gray. Working surfaces: white and near-white.
+- Ink: charcoal. Blue marks the primary action, green marks active local
+  capture, amber marks privacy blank, and red is reserved for recoverable
+  errors or destructive commands.
+- Panels use 8px or smaller corners, 1px dividers, and no decorative gradients,
   floating blobs, or nested card stacks.
-- A status dot, border change, and concise label carry state together; color is
-  never the only signal.
+- Every color state also has a concise text label.
 
 ## Interaction Rules
 
-- `New pebble` always opens the explicit region selector.
-- `Privacy blank` remains visible at the top of the workspace and changes to a
-  restore command while active.
-- Tile controls keep a stable arrangement for live, pause, refresh rate, and
-  close actions.
-- Region selection can be cancelled with the visible close control or Escape.
-- Hover, focus-visible, active, and error states are defined for interactive
-  controls.
+- `Select a region` requests macOS consent before opening the selector.
+- A valid pointer release starts the Pebble without an extra confirmation step.
+- Escape and the visible close control cancel selection without changing the
+  active region.
+- `Hide preview` blanks the floating tile and stops its capture request.
+- Closing the Pebble stops capture but keeps the current region available to
+  reopen.
+- `Stop watching` closes the Pebble and clears the in-memory session region.
+- Live, pause, refresh, and close controls keep stable dimensions in the
+  floating window.
 
 ## Data Honesty
 
-- Empty frame state is labelled as empty or waiting; no synthetic preview data
-  is presented as captured content.
-- Only actual state from the current frontend model is displayed.
-- The interface never suggests screen recording, cloud sync, or active AI.
+- Browser development mode is labelled `Preview mode` and never claims that
+  desktop capture is running.
+- Empty frames are labelled as starting, paused, blanked, or needing attention.
+- Only backend-validated physical regions are accepted from cross-window
+  events.
+- Captured frames remain memory-only and are never represented as stored
+  history.
+- The interface never suggests cloud sync or active AI.

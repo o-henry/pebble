@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default ScreenPebble capability with no capture, shell, filesystem, network, OCR, or AI permissions.",
-  "windows": ["main", "screenpebble-region-selector"],
-  "permissions": ["core:default"]
+  "description": "ScreenPebble webviews may listen for backend events but cannot emit events or access shell, filesystem, network, OCR, or AI APIs.",
+  "windows": ["main", "screenpebble-region-selector", "screenpebble-tile"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
 }

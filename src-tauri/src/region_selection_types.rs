@@ -9,6 +9,13 @@ pub struct LogicalPoint {
     pub y: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogicalSize {
+    pub width: f64,
+    pub height: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhysicalPoint {
@@ -21,6 +28,7 @@ pub struct PhysicalPoint {
 pub struct MonitorGeometry {
     pub id: String,
     pub logical_origin: LogicalPoint,
+    pub logical_size: LogicalSize,
     pub physical_origin: PhysicalPoint,
     pub scale_factor: f64,
 }
@@ -73,6 +81,7 @@ pub struct RegionSelectionIssue {
 pub enum RegionSelectionIssueCode {
     InvalidCoordinate,
     InvalidScaleFactor,
+    SelectionOutsideMonitor,
     RegionTooNarrow,
     RegionTooShort,
     RegionCoordinateOutOfRange,

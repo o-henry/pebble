@@ -1,43 +1,63 @@
+import { LiveTilePanel } from "./LiveTilePanel";
 import {
-  TEST_TILE_DEFAULT_STATE,
-  tileWindowReducer
-} from "../features/window-shell/tileWindowState";
-
-const TILE_VIEW_STATE = tileWindowReducer(TEST_TILE_DEFAULT_STATE, {
-  type: "opened"
-});
+  advanceBrowserSession,
+  regionKey
+} from "../features/pebble-session/pebbleSession";
+import { closePebbleWindow } from "../lib/invoke";
+import { usePebbleSession } from "./usePebbleSession";
 
 export function TileView() {
+  const {
+    session,
+    loading,
+    browserPreview,
+    updateSession,
+    setError
+  } = usePebbleSession();
+
+  async function closeWindow() {
+    try {
+      if (browserPreview) {
+        updateSession(advanceBrowserSession(session, { windowOpen: false }));
+        globalThis.location.hash = "";
+        return;
+      }
+
+      updateSession(await closePebbleWindow());
+    } catch {
+      setError("Pebble window could not be closed.");
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="tile-shell tile-loading" aria-live="polite">
+        Starting pebble
+      </main>
+    );
+  }
+
+  if (!session.region) {
+    return (
+      <main className="tile-shell tile-empty">
+        <p className="section-label">No selected region</p>
+        <h1>Select a region in ScreenPebble</h1>
+      </main>
+    );
+  }
+
   return (
-    <main className="tile-shell" aria-labelledby="tile-title">
-      <header className="tile-topbar">
-        <div className="tile-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
-          <span>ScreenPebble</span>
-        </div>
-        <span className={"mode-badge is-" + TILE_VIEW_STATE.mode}>
-          {TILE_VIEW_STATE.mode}
-        </span>
-      </header>
-      <section className="tile-placeholder">
-        <div className="tile-placeholder__copy">
-          <p className="section-label">Test tile</p>
-          <h1 id="tile-title">{TILE_VIEW_STATE.title}</h1>
-          <p>Capture is off</p>
-        </div>
-        <dl className="tile-status-list">
-          <div>
-            <dt>Mode</dt>
-            <dd>{TILE_VIEW_STATE.mode}</dd>
-          </div>
-          <div>
-            <dt>Topmost</dt>
-            <dd>{TILE_VIEW_STATE.alwaysOnTop ? "On" : "Off"}</dd>
-          </div>
-        </dl>
-      </section>
+    <main
+      className={
+        "tile-shell " + (session.privacyBlankActive ? "is-privacy-blanked" : "")
+      }
+    >
+      <LiveTilePanel
+        key={regionKey(session.region)}
+        region={session.region}
+        privacyBlankActive={session.privacyBlankActive}
+        onClose={closeWindow}
+      />
     </main>
   );
 }

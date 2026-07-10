@@ -3,7 +3,6 @@ import {
   DEFAULT_SELECTOR_MONITOR,
   INITIAL_REGION_SELECTOR_STATE,
   canBeginRegionDrag,
-  dimensionLabel,
   dragRect,
   regionSelectorReducer
 } from "./regionSelectorInteraction";
@@ -86,6 +85,7 @@ describe("region selector interaction", () => {
       monitor: {
         id: "main-display",
         logicalOrigin: { x: 0, y: 0 },
+        logicalSize: { width: 960, height: 640 },
         physicalOrigin: { x: 1000, y: 500 },
         scaleFactor: 2
       }
@@ -109,7 +109,7 @@ describe("region selector interaction", () => {
     });
   });
 
-  it("keeps draft dimensions independent from drag direction", () => {
+  it("keeps the draft rectangle independent from drag direction", () => {
     const rect = dragRect({ x: 210, y: 170 }, { x: 10, y: 20 });
 
     expect(rect).toEqual({
@@ -118,6 +118,5 @@ describe("region selector interaction", () => {
       width: 200,
       height: 150
     });
-    expect(dimensionLabel(rect)).toBe("200 x 150");
   });
 });

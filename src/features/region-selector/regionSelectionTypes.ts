@@ -13,6 +13,11 @@ export interface LogicalPoint {
   y: number;
 }
 
+export interface LogicalSize {
+  width: number;
+  height: number;
+}
+
 export interface PhysicalPoint {
   x: number;
   y: number;
@@ -21,6 +26,7 @@ export interface PhysicalPoint {
 export interface MonitorGeometry {
   id: string;
   logicalOrigin: LogicalPoint;
+  logicalSize: LogicalSize;
   physicalOrigin: PhysicalPoint;
   scaleFactor: number;
 }
@@ -54,6 +60,7 @@ export interface RegionSelection {
 export type RegionSelectionIssueCode =
   | "invalidCoordinate"
   | "invalidScaleFactor"
+  | "selectionOutsideMonitor"
   | "regionTooNarrow"
   | "regionTooShort"
   | "regionCoordinateOutOfRange"
@@ -82,6 +89,8 @@ export const REGION_SELECTION_LIMITS: RegionSelectionLimits = {
 export const ISSUE_MESSAGES: Record<RegionSelectionIssueCode, string> = {
   invalidCoordinate: "Selection coordinates must be finite.",
   invalidScaleFactor: "Monitor scale factor must be greater than zero.",
+  selectionOutsideMonitor:
+    "Selected region must stay inside the active display.",
   regionTooNarrow: "Selected region is too narrow.",
   regionTooShort: "Selected region is too short.",
   regionCoordinateOutOfRange:

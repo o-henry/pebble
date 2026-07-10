@@ -73,6 +73,7 @@ describe("region selection", () => {
       request(point(0, 0), point(100, 100), {
         id: "extreme",
         logicalOrigin: point(0, 0),
+        logicalSize: { width: 1000, height: 800 },
         physicalOrigin: { x: 2147483647, y: 0 },
         scaleFactor: 1
       })
@@ -92,6 +93,7 @@ describe("region selection", () => {
       request(point(0, 0), point(100, 100), {
         id: "invalid-scale",
         logicalOrigin: point(0, 0),
+        logicalSize: { width: 1000, height: 800 },
         physicalOrigin: { x: 0, y: 0 },
         scaleFactor: Number.NaN
       })
@@ -113,6 +115,7 @@ describe("region selection", () => {
       request(point(100.5, 40.5), point(300.25, 190.25), {
         id: "retina",
         logicalOrigin: point(100, 40),
+        logicalSize: { width: 1000, height: 800 },
         physicalOrigin: { x: 1200, y: 400 },
         scaleFactor: 2
       })
@@ -136,6 +139,7 @@ describe("region selection", () => {
       request(point(-1180, 90), point(-980, 210), {
         id: "left-display",
         logicalOrigin: point(-1280, 40),
+        logicalSize: { width: 1280, height: 540 },
         physicalOrigin: { x: -2560, y: 80 },
         scaleFactor: 2
       })
@@ -176,6 +180,15 @@ describe("region selection", () => {
       }
     });
   });
+
+  it("rejects a drag outside the active monitor bounds", () => {
+    const result = selectRegion(request(point(10, 10), point(1930, 200)));
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "selectionOutsideMonitor" }
+    });
+  });
 });
 
 function request(
@@ -194,6 +207,7 @@ function defaultMonitor(): MonitorGeometry {
   return {
     id: "main",
     logicalOrigin: point(0, 0),
+    logicalSize: { width: 1920, height: 1080 },
     physicalOrigin: { x: 0, y: 0 },
     scaleFactor: 1
   };

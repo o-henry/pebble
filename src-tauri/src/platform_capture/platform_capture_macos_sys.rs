@@ -40,6 +40,7 @@ pub(super) struct CGRect {
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
     pub(super) fn CGPreflightScreenCaptureAccess() -> bool;
+    pub(super) fn CGRequestScreenCaptureAccess() -> bool;
     pub(super) fn CGWindowListCreateImage(
         screen_bounds: CGRect,
         list_option: u32,

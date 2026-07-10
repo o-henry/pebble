@@ -12,6 +12,14 @@ const FAKE_MONITOR_HEIGHT: i32 = 600;
 
 pub trait CaptureBackend {
     fn capture_region(&self, region: &PhysicalRegion) -> CaptureResult;
+
+    fn capture_region_at_scale(
+        &self,
+        region: &PhysicalRegion,
+        _scale_factor: f64,
+    ) -> CaptureResult {
+        self.capture_region(region)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -67,6 +75,7 @@ pub enum CaptureErrorCode {
     RegionTooLarge,
     RegionOutOfBounds,
     UnsupportedPixelFormat,
+    UnauthorizedWindow,
 }
 
 pub type CaptureResult = Result<CroppedFramePayload, CaptureError>;

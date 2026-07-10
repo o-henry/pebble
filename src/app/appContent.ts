@@ -19,7 +19,7 @@ export interface Principle {
 export const appStatus: AppStatus = {
   phase: "pre-alpha",
   scaffoldReady: true,
-  captureEnabled: false,
+  captureEnabled: true,
   aiEnabled: false
 };
 

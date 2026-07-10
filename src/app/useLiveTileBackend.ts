@@ -7,7 +7,9 @@ import type {
   LiveTileState
 } from "../features/live-tile/liveTile";
 import {
+  createLiveTileRequestScope,
   liveTileRequest,
+  scopedLiveTileRequestId,
   shouldAcceptLiveTileFrame,
   shouldAcceptLiveTileResponse
 } from "../features/live-tile/liveTile";
@@ -32,10 +34,14 @@ export function useLiveTileBackend({
   const tileRef = useRef(tile);
   const privacyBlankRef = useRef(privacyBlankActive);
   const requestSequenceRef = useRef(0);
+  const requestScopeRef = useRef<string | null>(null);
+  requestScopeRef.current ??= createLiveTileRequestScope(tile.tileId);
   const activeRequestIdRef = useRef<string | null>(null);
   const nextRequest = useCallback((state: LiveTileState, mode: LiveTileMode) => {
-    const requestId =
-      state.tileId + "-" + String(requestSequenceRef.current + 1);
+    const requestId = scopedLiveTileRequestId(
+      requestScopeRef.current ?? createLiveTileRequestScope(state.tileId),
+      requestSequenceRef.current + 1
+    );
 
     requestSequenceRef.current += 1;
     activeRequestIdRef.current = requestId;
@@ -91,7 +97,11 @@ export function useLiveTileBackend({
   }, [backendEnabled, dispatch, tile.tileId]);
 
   useEffect(() => {
-    if (!backendEnabled || requestMode === "live") {
+    if (
+      !backendEnabled ||
+      requestMode === "live" ||
+      requestMode === "blanked"
+    ) {
       return;
     }
 
@@ -115,13 +125,18 @@ export function useLiveTileBackend({
       return;
     }
 
-    return startSequentialPolling(tile.fps, () =>
+    const stopPolling = startSequentialPolling(tile.fps, () =>
       settleBackend(nextRequest(tileRef.current, "live")).catch(
         (reason: unknown) => {
           onError(reason instanceof Error ? reason.message : "Live tile failed");
         }
       )
     );
+
+    return () => {
+      activeRequestIdRef.current = null;
+      stopPolling();
+    };
   }, [
     backendEnabled,
     nextRequest,
@@ -184,6 +199,9 @@ function startSequentialPolling(fps: number, tick: () => Promise<void>) {
     }
   };
   const run = () => {
+    if (cancelled) {
+      return;
+    }
     void tick().finally(schedule);
   };
 

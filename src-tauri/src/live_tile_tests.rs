@@ -1,7 +1,9 @@
 use crate::{
     capture_backend::{CaptureErrorCode, FakeCaptureBackend},
     capture_lifecycle::CaptureTileMode,
-    live_tile::{clamp_live_tile_fps, LiveTileCaptureRequest, LiveTileService},
+    live_tile::{
+        clamp_live_tile_fps, AuthorizedLiveTileCapture, LiveTileCaptureRequest, LiveTileService,
+    },
     region_selection_types::PhysicalRegion,
 };
 
@@ -66,18 +68,27 @@ fn close_removes_live_tile_task_and_latest_frame() {
 }
 
 #[test]
+fn native_window_cleanup_removes_live_tile_task_and_latest_frame() {
+    let mut service = LiveTileService::new(FakeCaptureBackend::default());
+
+    service
+        .capture_once(request(CaptureTileMode::Live, region(10, 20, 24, 24), 1))
+        .expect("live frame");
+    service.close_tile("tile", 2);
+
+    assert_eq!(service.task_count(), 0);
+    assert_eq!(service.latest_frame_count(), 0);
+}
+
+#[test]
 fn privacy_blank_stops_capture_and_drops_latest_frame() {
     let mut service = LiveTileService::new(FakeCaptureBackend::default());
 
     service
         .capture_once(request(CaptureTileMode::Live, region(10, 20, 24, 24), 1))
         .expect("live frame");
-    let blanked = service
-        .capture_once(request(CaptureTileMode::Blanked, region(10, 20, 24, 24), 1))
-        .expect("blanked tile");
+    service.set_privacy_blank(true, 2);
 
-    assert!(!blanked.response.capture_active);
-    assert!(blanked.frame_event.is_none());
     assert_eq!(service.task_count(), 1);
     assert_eq!(service.latest_frame_count(), 0);
 }
@@ -85,18 +96,36 @@ fn privacy_blank_stops_capture_and_drops_latest_frame() {
 #[test]
 fn stale_live_request_after_blank_does_not_capture() {
     let mut service = LiveTileService::new(FakeCaptureBackend::default());
-    let stale_live = request(CaptureTileMode::Live, region(10, 20, 24, 24), 1);
+    let stale_live = request_with_revision(CaptureTileMode::Live, region(10, 20, 24, 24), 1, 1);
 
     service
-        .capture_once(request(CaptureTileMode::Blanked, region(10, 20, 24, 24), 1))
-        .expect("blanked tile");
-    let stale = service
+        .capture_once(request(CaptureTileMode::Live, region(10, 20, 24, 24), 1))
+        .expect("live frame");
+    service.set_privacy_blank(true, 2);
+    service.set_privacy_blank(false, 3);
+    let error = service
         .capture_once(stale_live)
-        .expect("stale live request");
+        .expect_err("stale live request");
 
-    assert_eq!(stale.response.mode, CaptureTileMode::Blanked);
-    assert!(!stale.response.capture_active);
-    assert!(stale.frame_event.is_none());
+    assert_eq!(error.code, CaptureErrorCode::CaptureUnavailable);
+    assert_eq!(service.latest_frame_count(), 0);
+}
+
+#[test]
+fn late_request_after_close_cannot_recreate_capture_state() {
+    let mut service = LiveTileService::new(FakeCaptureBackend::default());
+    let late_request = request_with_revision(CaptureTileMode::Live, region(10, 20, 24, 24), 1, 1);
+
+    service
+        .capture_once(request(CaptureTileMode::Live, region(10, 20, 24, 24), 1))
+        .expect("live frame");
+    service.close_tile("tile", 2);
+    let error = service
+        .capture_once(late_request)
+        .expect_err("late request");
+
+    assert_eq!(error.code, CaptureErrorCode::CaptureUnavailable);
+    assert_eq!(service.task_count(), 0);
     assert_eq!(service.latest_frame_count(), 0);
 }
 
@@ -143,11 +172,33 @@ fn live_tile_fps_is_clamped_to_backend_limits() {
     assert_eq!(high.response.effective_fps, 5);
 }
 
-fn request(mode: CaptureTileMode, region: PhysicalRegion, fps: i32) -> LiveTileCaptureRequest {
-    request_for_tile("tile", mode, region, fps)
+fn request(mode: CaptureTileMode, region: PhysicalRegion, fps: i32) -> AuthorizedLiveTileCapture {
+    request_with_revision(mode, region, fps, 1)
+}
+
+fn request_with_revision(
+    mode: CaptureTileMode,
+    region: PhysicalRegion,
+    fps: i32,
+    session_revision: u64,
+) -> AuthorizedLiveTileCapture {
+    AuthorizedLiveTileCapture::new(
+        raw_request_for_tile("tile", mode, region, fps),
+        1.0,
+        session_revision,
+    )
 }
 
 fn request_for_tile(
+    tile_id: &str,
+    mode: CaptureTileMode,
+    region: PhysicalRegion,
+    fps: i32,
+) -> AuthorizedLiveTileCapture {
+    AuthorizedLiveTileCapture::new(raw_request_for_tile(tile_id, mode, region, fps), 1.0, 1)
+}
+
+fn raw_request_for_tile(
     tile_id: &str,
     mode: CaptureTileMode,
     region: PhysicalRegion,

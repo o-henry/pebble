@@ -1,173 +1,290 @@
-import { useEffect, useReducer, useState } from "react";
-import { appStatus } from "./appContent";
+import { useCallback, useEffect, useState } from "react";
+import { privacyHotkeyAction } from "../features/privacy/privacyBlank";
+import { advanceBrowserSession } from "../features/pebble-session/pebbleSession";
 import {
-  PerformanceLimits,
-  Principles,
-  WindowShellControls
-} from "./MainSections";
-import { LiveTilePanel } from "./LiveTilePanel";
-import { PrivacyBanner } from "./PrivacyBanner";
-import { RegionSelectorSection } from "./RegionSelectorSection";
-import {
-  PRIVACY_BLANK_INITIAL_STATE,
-  privacyBlankReducer,
-  privacyHotkeyAction
-} from "../features/privacy/privacyBlank";
-import {
-  REGION_SELECTOR_DEFAULT_SHELL,
-  type RegionSelectorWindowShell
-} from "../features/region-selector/regionSelectorShell";
-import {
-  TEST_TILE_DEFAULT_STATE,
-  WINDOW_SHELL_DEFAULT_SNAPSHOT,
-  tileWindowReducer,
-  type WindowShellSnapshot
-} from "../features/window-shell/tileWindowState";
-import {
-  getWindowShellSnapshot,
   openRegionSelectorWindow,
-  openTestTileWindow
+  removePebble,
+  requestScreenCaptureAccess,
+  setPebblePrivacyBlank,
+  showPebbleWindow
 } from "../lib/invoke";
+import { usePebbleSession, errorMessage } from "./usePebbleSession";
 
 export function MainView() {
-  const [snapshot, setSnapshot] = useState<WindowShellSnapshot>(
-    WINDOW_SHELL_DEFAULT_SNAPSHOT
-  );
-  const [selectorShell, setSelectorShell] = useState<RegionSelectorWindowShell>(
-    REGION_SELECTOR_DEFAULT_SHELL
-  );
-  const [selectorError, setSelectorError] = useState<string | null>(null);
-  const [privacy, dispatchPrivacy] = useReducer(
-    privacyBlankReducer,
-    PRIVACY_BLANK_INITIAL_STATE
+  const {
+    session,
+    loading,
+    error,
+    browserPreview,
+    updateSession,
+    setError
+  } = usePebbleSession();
+  const [busy, setBusy] = useState(false);
+  const hasRegion = session.region !== null;
+
+  const setPrivacyBlank = useCallback(
+    async (active: boolean) => {
+      try {
+        setBusy(true);
+        if (browserPreview) {
+          updateSession(
+            advanceBrowserSession(session, { privacyBlankActive: active })
+          );
+        } else {
+          updateSession(await setPebblePrivacyBlank(active));
+        }
+        setError(null);
+      } catch (reason) {
+        setError(errorMessage(reason, "Privacy control could not be updated."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [browserPreview, session, setError, updateSession]
   );
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const action = privacyHotkeyAction(event, privacy);
+      const action = privacyHotkeyAction(event, {
+        blankActive: session.privacyBlankActive,
+        lastAction: "none",
+        hotkeyPermission: "notRequested"
+      });
 
-      if (action) {
+      if (action && hasRegion) {
         event.preventDefault();
-        dispatchPrivacy(action);
+        void setPrivacyBlank(action.type === "blank");
       }
     }
 
     globalThis.addEventListener("keydown", handleKeyDown);
-
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
-  }, [privacy]);
+  }, [hasRegion, session.privacyBlankActive, setPrivacyBlank]);
 
-  async function openTile() {
+  async function selectRegion() {
     try {
-      const tile = await openTestTileWindow();
-      setSnapshot((current) => ({ ...current, testTile: tile }));
-    } catch (error) {
-      setSnapshot((current) => ({
-        ...current,
-        testTile: tileWindowReducer(TEST_TILE_DEFAULT_STATE, {
-          type: "errored",
-          message: error instanceof Error ? error.message : "Tile shell failed"
-        })
-      }));
+      setBusy(true);
+      setError(null);
+
+      if (browserPreview) {
+        globalThis.location.hash = "#selector";
+        return;
+      }
+
+      const permissionGranted = await requestScreenCaptureAccess();
+      if (!permissionGranted) {
+        setError(
+          "Allow Screen Recording for ScreenPebble in macOS System Settings, then try again."
+        );
+        return;
+      }
+
+      await openRegionSelectorWindow();
+    } catch (reason) {
+      setError(errorMessage(reason, "Region selector could not be opened."));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function refreshShell() {
+  async function showWindow() {
     try {
-      setSnapshot(await getWindowShellSnapshot());
-    } catch {
-      setSnapshot(WINDOW_SHELL_DEFAULT_SNAPSHOT);
+      setBusy(true);
+      if (browserPreview) {
+        updateSession(advanceBrowserSession(session, { windowOpen: true }));
+        globalThis.location.hash = "#tile";
+      } else {
+        updateSession(await showPebbleWindow());
+      }
+      setError(null);
+    } catch (reason) {
+      setError(errorMessage(reason, "Pebble window could not be opened."));
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function openSelector() {
+  async function stopWatching() {
     try {
-      setSelectorShell(await openRegionSelectorWindow());
-      setSelectorError(null);
-    } catch (error) {
-      setSelectorError(
-        error instanceof Error ? error.message : "Selector overlay failed"
-      );
+      setBusy(true);
+      if (browserPreview) {
+        updateSession(
+          advanceBrowserSession(session, {
+            region: null,
+            windowOpen: false,
+            privacyBlankActive: false
+          })
+        );
+      } else {
+        updateSession(await removePebble());
+      }
+      setError(null);
+    } catch (reason) {
+      setError(errorMessage(reason, "Pebble could not be removed."));
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <main
       className={
-        "app-shell " + (privacy.blankActive ? "is-privacy-blanked" : "")
+        "app-shell " + (session.privacyBlankActive ? "is-privacy-blanked" : "")
       }
     >
       <header className="workspace-header">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
-          <span className="brand-name">ScreenPebble</span>
+          <strong>ScreenPebble</strong>
         </div>
-        <div className="workspace-header__status" aria-label="Application status">
-          <span className="status-dot" aria-hidden="true" />
-          <span>Local session</span>
-          <span className="status-divider" aria-hidden="true" />
-          <span>{appStatus.phase}</span>
+        <div className="workspace-header__actions">
+          <span className="local-status">
+            <span className="status-dot" aria-hidden="true" />
+            {browserPreview ? "Preview mode" : "Local only"}
+          </span>
+          {hasRegion && session.windowOpen ? (
+            <button
+              type="button"
+              className="privacy-action"
+              disabled={busy}
+              onClick={() => void setPrivacyBlank(!session.privacyBlankActive)}
+            >
+              {session.privacyBlankActive ? "Show preview" : "Hide preview"}
+            </button>
+          ) : null}
         </div>
       </header>
 
-      <section className="command-deck" aria-labelledby="screenpebble-title">
-        <div className="command-deck__title">
-          <p className="section-label">Observer console</p>
-          <h1 id="screenpebble-title">ScreenPebble</h1>
-          <p className="command-deck__subtitle">
-            Local screen signals, kept small.
-          </p>
-        </div>
-        <div className="command-deck__actions">
-          <button type="button" className="primary-action" onClick={openSelector}>
-            New pebble
-          </button>
-          <button type="button" className="secondary-action" onClick={openTile}>
-            Open test tile
-          </button>
-        </div>
-        <dl className="command-deck__facts" aria-label="Session guarantees">
-          <div>
-            <dt>Scope</dt>
-            <dd>Selected only</dd>
-          </div>
-          <div>
-            <dt>Storage</dt>
-            <dd>Memory only</dd>
-          </div>
-          <div>
-            <dt>Network</dt>
-            <dd>Off</dd>
-          </div>
-        </dl>
+      <section className="workspace-intro" aria-labelledby="screenpebble-title">
+        <h1 id="screenpebble-title">Keep the part that matters in view.</h1>
+        <p>
+          Select any part of your screen. ScreenPebble keeps it visible while you
+          work elsewhere.
+        </p>
       </section>
 
-      <PrivacyBanner
-        state={privacy}
-        onBlank={() => dispatchPrivacy({ type: "blank" })}
-        onRestore={() => dispatchPrivacy({ type: "restore" })}
-      />
+      {error ? (
+        <p className="workspace-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-      <div className="workspace-grid">
-        <LiveTilePanel privacyBlankActive={privacy.blankActive} />
-        <aside className="operations-rail" aria-label="Pebble controls">
-          <RegionSelectorSection
-            shell={selectorShell}
-            error={selectorError}
-            onOpen={openSelector}
-          />
-          <WindowShellControls
-            tile={snapshot.testTile}
-            onOpen={openTile}
-            onRefresh={refreshShell}
-          />
-          <PerformanceLimits />
-        </aside>
+      {loading ? (
+        <section className="workspace-loading" aria-live="polite">
+          Loading local session
+        </section>
+      ) : hasRegion ? (
+        <ActiveWorkspace
+          session={session}
+          busy={busy}
+          browserPreview={browserPreview}
+          onShow={showWindow}
+          onReselect={selectRegion}
+          onStop={stopWatching}
+        />
+      ) : (
+        <EmptyWorkspace busy={busy} onSelect={selectRegion} />
+      )}
+    </main>
+  );
+}
+
+function EmptyWorkspace({
+  busy,
+  onSelect
+}: {
+  busy: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <section className="empty-workspace" aria-label="Start ScreenPebble">
+      <button
+        type="button"
+        className="primary-action"
+        disabled={busy}
+        onClick={onSelect}
+      >
+        {busy ? "Opening selector" : "Select a region"}
+      </button>
+    </section>
+  );
+}
+
+function ActiveWorkspace({
+  session,
+  busy,
+  browserPreview,
+  onShow,
+  onReselect,
+  onStop
+}: {
+  session: ReturnType<typeof usePebbleSession>["session"];
+  busy: boolean;
+  browserPreview: boolean;
+  onShow: () => void;
+  onReselect: () => void;
+  onStop: () => void;
+}) {
+  const status = session.privacyBlankActive
+    ? "Preview hidden"
+    : session.windowOpen
+      ? "Watching now"
+      : "Window closed";
+  const title = session.privacyBlankActive
+    ? "Selected region is hidden"
+    : session.windowOpen
+      ? "Watching selected region"
+      : "Selected region is ready";
+
+  return (
+    <section className="active-workspace" aria-labelledby="active-title">
+      <div className="active-workspace__summary">
+        <span
+          className={
+            "active-signal " + (session.windowOpen ? "" : "is-inactive")
+          }
+          aria-hidden="true"
+        />
+        <div>
+          <p className="section-label">{status}</p>
+          <h2 id="active-title">{title}</h2>
+          <p>
+            {browserPreview
+              ? "Open the compact pebble to preview the selected area."
+              : session.windowOpen
+                ? "The selected region is visible above your other windows."
+                : "Show the pebble whenever you need it again."}
+          </p>
+        </div>
       </div>
 
-      <Principles />
-    </main>
+      <div className="active-workspace__actions">
+        {!session.windowOpen || browserPreview ? (
+          <button
+            type="button"
+            className="primary-action"
+            disabled={busy}
+            onClick={onShow}
+          >
+            {browserPreview ? "Open tile preview" : "Show pebble"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="secondary-action"
+          disabled={busy}
+          onClick={onReselect}
+        >
+          Select another region
+        </button>
+        <button
+          type="button"
+          className="danger-action"
+          disabled={busy}
+          onClick={onStop}
+        >
+          Stop watching
+        </button>
+      </div>
+    </section>
   );
 }

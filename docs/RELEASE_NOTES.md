@@ -8,11 +8,11 @@ This is a contributor-facing pre-alpha demo build.
 
 - Tauri 2 desktop scaffold with React, TypeScript, and Rust.
 - Hard performance contract for FPS, active tiles, and region size.
-- Region selection model and selector shell.
-- Fake capture backend and guarded macOS capture adapter.
+- One-drag region selection that opens a floating Pebble automatically.
+- Guarded macOS selected-region capture with a fake backend for tests.
 - Capture lifecycle and scheduler with privacy blank behavior.
 - Local visual diff engine with cooldown.
-- Low-FPS live tile demo path.
+- Always-on-top low-FPS live tile with pause, resume, privacy blank, and close.
 - Config-only persistence for safe region settings.
 - Optional local OCR boundary, disabled by default.
 - Optional AI handoff policy boundary, disabled by default.
@@ -32,6 +32,7 @@ This is a contributor-facing pre-alpha demo build.
 
 - No signed installer yet.
 - No Homebrew formula yet.
-- End-user real tile creation flow is still pre-alpha.
+- Multi-monitor selection is still limited to the display containing the main
+  window.
 - Production local OCR adapter is not wired yet.
 - Production AI connector is not wired yet.

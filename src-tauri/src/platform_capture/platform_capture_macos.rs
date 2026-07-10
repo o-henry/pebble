@@ -10,14 +10,14 @@ use platform_capture_macos_sys::*;
 #[path = "platform_capture_macos_sys.rs"]
 mod platform_capture_macos_sys;
 
-pub(super) fn capture_region(region: &PhysicalRegion) -> CaptureResult {
+pub(super) fn capture_region(region: &PhysicalRegion, scale_factor: f64) -> CaptureResult {
     if !preflight_screen_capture_access() {
         return Err(permission_denied(region));
     }
 
     let image = unsafe {
         CGWindowListCreateImage(
-            capture_rect(region),
+            capture_rect(region, scale_factor),
             K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY,
             K_CG_NULL_WINDOW_ID,
             K_CG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING,
@@ -31,19 +31,23 @@ pub(super) fn capture_region(region: &PhysicalRegion) -> CaptureResult {
     Ok(cropped_frame(region, bytes))
 }
 
+pub(super) fn request_screen_capture_access() -> bool {
+    preflight_screen_capture_access() || unsafe { CGRequestScreenCaptureAccess() }
+}
+
 fn preflight_screen_capture_access() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
 }
 
-fn capture_rect(region: &PhysicalRegion) -> CGRect {
+fn capture_rect(region: &PhysicalRegion, scale_factor: f64) -> CGRect {
     CGRect {
         origin: CGPoint {
-            x: f64::from(region.x),
-            y: f64::from(region.y),
+            x: f64::from(region.x) / scale_factor,
+            y: f64::from(region.y) / scale_factor,
         },
         size: CGSize {
-            width: f64::from(region.width),
-            height: f64::from(region.height),
+            width: f64::from(region.width) / scale_factor,
+            height: f64::from(region.height) / scale_factor,
         },
     }
 }
@@ -223,8 +227,11 @@ pub(super) fn test_copy_bgra_rows_to_rgba(
 }
 
 #[cfg(test)]
-pub(super) fn test_capture_rect(region: &PhysicalRegion) -> (f64, f64, f64, f64) {
-    let rect = capture_rect(region);
+pub(super) fn test_capture_rect(
+    region: &PhysicalRegion,
+    scale_factor: f64,
+) -> (f64, f64, f64, f64) {
+    let rect = capture_rect(region, scale_factor);
 
     (
         rect.origin.x,

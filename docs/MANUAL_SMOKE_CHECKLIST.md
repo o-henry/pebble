@@ -14,16 +14,16 @@ Run this before tagging a public demo or recording a new demo GIF.
 
 ```bash
 pnpm install
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
+npm test
+npm run typecheck
+npm run lint
+npm run build
 cd src-tauri
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 cd ..
-pnpm tauri:build
+npm run tauri:build
 ```
 
 ## Manual App Checks

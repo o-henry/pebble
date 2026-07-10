@@ -1,8 +1,10 @@
 use serde::Serialize;
-use tauri::{window::Color, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    window::Color, AppHandle, Manager, Monitor, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 use crate::{
-    region_selection_types::{LogicalPoint, MonitorGeometry, PhysicalPoint},
+    region_selection_types::{LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint},
     window_shell::{show_existing_window, WindowShellError},
 };
 
@@ -58,27 +60,41 @@ pub fn region_selector_monitor_geometry(
 ) -> Result<MonitorGeometry, WindowShellError> {
     ensure_region_selector_window(window)?;
 
-    let position = window
-        .inner_position()
-        .map_err(|error| WindowShellError::unavailable(error.to_string()))?;
-    let scale_factor = window
-        .scale_factor()
-        .map_err(|error| WindowShellError::unavailable(error.to_string()))?;
-    let monitor_id = window
+    let monitor = window
         .current_monitor()
         .map_err(|error| WindowShellError::unavailable(error.to_string()))?
-        .and_then(|monitor| monitor.name().cloned())
-        .unwrap_or_else(|| REGION_SELECTOR_LABEL.to_string());
+        .ok_or_else(|| WindowShellError::unavailable("Active display is unavailable."))?;
+    let position = monitor.position();
+    let size = monitor.size();
+    let scale_factor = monitor.scale_factor();
 
     Ok(MonitorGeometry {
-        id: monitor_id,
+        id: monitor_identifier(&monitor),
         logical_origin: LogicalPoint { x: 0.0, y: 0.0 },
+        logical_size: LogicalSize {
+            width: size.width as f64 / scale_factor,
+            height: size.height as f64 / scale_factor,
+        },
         physical_origin: PhysicalPoint {
             x: position.x,
             y: position.y,
         },
         scale_factor,
     })
+}
+
+pub(crate) fn monitor_identifier(monitor: &Monitor) -> String {
+    let position = monitor.position();
+    let size = monitor.size();
+
+    format!(
+        "display:{}:{}:{}:{}:{:x}",
+        position.x,
+        position.y,
+        size.width,
+        size.height,
+        monitor.scale_factor().to_bits()
+    )
 }
 
 pub fn close_region_selector_window(window: &WebviewWindow) -> Result<(), WindowShellError> {

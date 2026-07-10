@@ -29,9 +29,17 @@ fn real_capture_adapter_maps_invalid_region_to_recoverable_error() {
 #[cfg(target_os = "macos")]
 #[test]
 fn macos_capture_rect_uses_selected_region_dimensions() {
-    let rect = platform_capture_test_support::capture_rect(&region(12, 34, 56, 78));
+    let rect = platform_capture_test_support::capture_rect(&region(12, 34, 56, 78), 1.0);
 
     assert_eq!(rect, (12.0, 34.0, 56.0, 78.0));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_capture_rect_converts_retina_pixels_to_screen_points() {
+    let rect = platform_capture_test_support::capture_rect(&region(12, 34, 56, 78), 2.0);
+
+    assert_eq!(rect, (6.0, 17.0, 28.0, 39.0));
 }
 
 #[cfg(target_os = "macos")]

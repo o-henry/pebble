@@ -4,15 +4,46 @@ import {
   LIVE_TILE_FRAME_EVENT,
   applyFrameEvent,
   clampLiveTileFps,
+  createLiveTileState,
+  createLiveTileRequestScope,
   frameByteLength,
   liveTileReducer,
   liveTileRequest,
   shouldAcceptLiveTileFrame,
   shouldAcceptLiveTileResponse,
+  scopedLiveTileRequestId,
   type LiveTileFrameEvent
 } from "./liveTile";
 
 describe("live tile state", () => {
+  it("scopes request ids to one tile component instance", () => {
+    const firstScope = createLiveTileRequestScope("tile", "instance-a");
+    const secondScope = createLiveTileRequestScope("tile", "instance-b");
+
+    expect(scopedLiveTileRequestId(firstScope, 1)).toBe("tile-instance-a-1");
+    expect(scopedLiveTileRequestId(secondScope, 1)).toBe("tile-instance-b-1");
+    expect(firstScope).not.toBe(secondScope);
+  });
+
+  it("starts live on the user-selected region", () => {
+    const region = {
+      monitorId: "display-2",
+      x: 80,
+      y: 120,
+      width: 420,
+      height: 220
+    };
+    const initial = createLiveTileState(region);
+    const changed = liveTileReducer(initial, {
+      type: "watchRegion",
+      region: { ...region, x: 180 }
+    });
+
+    expect(initial).toMatchObject({ region, mode: "live" });
+    expect(changed).toMatchObject({ region: { ...region, x: 180 }, mode: "live" });
+    expect(changed.latestFrame).toBeNull();
+  });
+
   it("keeps only the latest frame for rendering", () => {
     const live = liveTileReducer(INITIAL_LIVE_TILE_STATE, { type: "resume" });
     const first = applyFrameEvent(
@@ -96,6 +127,24 @@ describe("live tile state", () => {
     expect(blanked.blankGeneration).toBe(1);
     expect(request.mode).toBe("blanked");
     expect(request.blankGeneration).toBe(1);
+  });
+
+  it("adopts the backend privacy generation before capture resumes", () => {
+    const blanked = liveTileReducer(INITIAL_LIVE_TILE_STATE, {
+      type: "backendSettled",
+      response: {
+        requestId: "request-blank",
+        blankGeneration: 4,
+        tileId: INITIAL_LIVE_TILE_STATE.tileId,
+        mode: "blanked",
+        effectiveFps: 1,
+        captureActive: false,
+        frameSequence: null
+      }
+    });
+
+    expect(blanked.blankGeneration).toBe(4);
+    expect(liveTileRequest(blanked, "request-resume", "live").blankGeneration).toBe(4);
   });
 
   it("rejects stale backend responses and privacy blank frames", () => {

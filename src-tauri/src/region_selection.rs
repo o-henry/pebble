@@ -64,7 +64,34 @@ fn validate_geometry(request: &RegionSelectionRequest) -> Result<(), RegionSelec
         ));
     }
 
+    if !request.monitor.logical_size.width.is_finite()
+        || !request.monitor.logical_size.height.is_finite()
+        || request.monitor.logical_size.width <= 0.0
+        || request.monitor.logical_size.height <= 0.0
+    {
+        return Err(issue(RegionSelectionIssueCode::InvalidCoordinate, 0.0, 0.0));
+    }
+
+    if !selection_is_inside_monitor(request) {
+        return Err(issue(
+            RegionSelectionIssueCode::SelectionOutsideMonitor,
+            0.0,
+            0.0,
+        ));
+    }
+
     Ok(())
+}
+
+fn selection_is_inside_monitor(request: &RegionSelectionRequest) -> bool {
+    let left = request.monitor.logical_origin.x;
+    let top = request.monitor.logical_origin.y;
+    let right = left + request.monitor.logical_size.width;
+    let bottom = top + request.monitor.logical_size.height;
+
+    [request.start, request.end]
+        .iter()
+        .all(|point| point.x >= left && point.x <= right && point.y >= top && point.y <= bottom)
 }
 
 fn map_logical_selection_to_physical(
@@ -226,6 +253,9 @@ fn message_for(code: RegionSelectionIssueCode) -> &'static str {
         RegionSelectionIssueCode::InvalidCoordinate => "Selection coordinates must be finite.",
         RegionSelectionIssueCode::InvalidScaleFactor => {
             "Monitor scale factor must be greater than zero."
+        }
+        RegionSelectionIssueCode::SelectionOutsideMonitor => {
+            "Selected region must stay inside the active display."
         }
         RegionSelectionIssueCode::RegionTooNarrow => "Selected region is too narrow.",
         RegionSelectionIssueCode::RegionTooShort => "Selected region is too short.",

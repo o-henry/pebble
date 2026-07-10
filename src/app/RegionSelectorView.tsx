@@ -3,16 +3,18 @@ import type { PointerEvent } from "react";
 import {
   INITIAL_REGION_SELECTOR_STATE,
   canBeginRegionDrag,
+  createRegionSelectionRequest,
   createViewportMonitor,
-  dimensionLabel,
   dragRect,
   regionSelectorReducer
 } from "../features/region-selector/regionSelectorInteraction";
 import type { MonitorGeometry } from "../features/region-selector/regionSelection";
 import {
   closeRegionSelectorWindow,
+  confirmPebbleRegion,
   getRegionSelectorMonitor
 } from "../lib/invoke";
+import { storeBrowserSession } from "../features/pebble-session/pebbleSession";
 import { SelectionBox, SelectorHud, SelectorResult } from "./RegionSelectorParts";
 
 export function RegionSelectorView() {
@@ -22,9 +24,17 @@ export function RegionSelectorView() {
     INITIAL_REGION_SELECTOR_STATE
   );
   const [monitor, setMonitor] = useState<MonitorGeometry | null>(null);
+  const [commitError, setCommitError] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
+  const commitStartedRef = useRef(false);
   const rect = dragRect(state.start, state.current);
   const cancelSelector = useCallback(() => {
     dispatch({ type: "cancel" });
+    if (isBrowserPreviewRuntime()) {
+      globalThis.location.hash = "";
+      return;
+    }
+
     void Promise.resolve()
       .then(() => closeRegionSelectorWindow())
       .catch(() => undefined);
@@ -34,6 +44,51 @@ export function RegionSelectorView() {
   useSelectorMonitor(setMonitor);
   useEscapeCancel(cancelSelector);
 
+  useEffect(() => {
+    if (
+      state.status !== "ready" ||
+      !state.result?.ok ||
+      !state.start ||
+      !state.current ||
+      commitStartedRef.current
+    ) {
+      return;
+    }
+
+    commitStartedRef.current = true;
+    setCommitting(true);
+    setCommitError(null);
+    const request = createRegionSelectionRequest(
+      state.monitor,
+      state.start,
+      state.current
+    );
+
+    if (isBrowserPreviewRuntime()) {
+      storeBrowserSession(globalThis.sessionStorage, {
+        region: state.result.selection.region,
+        windowOpen: false,
+        privacyBlankActive: false,
+        revision: 1
+      });
+      globalThis.location.hash = "";
+      return;
+    }
+
+    confirmPebbleRegion(request).catch((reason: unknown) => {
+      const message =
+        typeof reason === "object" &&
+        reason !== null &&
+        "message" in reason &&
+        typeof reason.message === "string"
+          ? reason.message
+          : "Pebble could not be started.";
+
+      setCommitError(message);
+      setCommitting(false);
+    });
+  }, [state]);
+
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
     if (!canBeginRegionDrag(monitor)) {
       return;
@@ -41,6 +96,9 @@ export function RegionSelectorView() {
 
     const point = pointFromEvent(event);
 
+    commitStartedRef.current = false;
+    setCommitting(false);
+    setCommitError(null);
     event.currentTarget.setPointerCapture(event.pointerId);
     dispatch({
       type: "begin",
@@ -83,11 +141,10 @@ export function RegionSelectorView() {
     >
       <SelectorHud
         status={state.status}
-        dimensions={dimensionLabel(rect)}
         onCancel={cancelSelector}
       />
       {rect ? <SelectionBox rect={rect} /> : null}
-      <SelectorResult state={state} />
+      <SelectorResult state={state} committing={committing} error={commitError} />
     </main>
   );
 }

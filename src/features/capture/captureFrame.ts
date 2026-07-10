@@ -23,14 +23,11 @@ export type CaptureErrorCode =
   | "platformUnavailable"
   | "regionTooLarge"
   | "regionOutOfBounds"
-  | "unsupportedPixelFormat";
+  | "unsupportedPixelFormat"
+  | "unauthorizedWindow";
 
 export interface CaptureError {
   code: CaptureErrorCode;
   monitorId: string;
   message: string;
 }
-
-export type CaptureRegionResult =
-  | { ok: true; frame: CroppedFramePayload }
-  | { ok: false; error: CaptureError };

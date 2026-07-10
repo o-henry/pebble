@@ -1,6 +1,7 @@
 import {
   REGION_SELECTION_LIMITS,
   type LogicalPoint,
+  type LogicalSize,
   type PhysicalPoint,
   type PhysicalRegion,
   type RegionSelectionIssue,
@@ -14,6 +15,7 @@ import { mapLogicalSelectionToPhysical } from "./regionSelectionMapper";
 export {
   REGION_SELECTION_LIMITS,
   type LogicalPoint,
+  type LogicalSize,
   type MonitorGeometry,
   type PhysicalPoint,
   type PhysicalRegion,
@@ -80,7 +82,30 @@ function validateGeometry(
     return issue("invalidScaleFactor", 0, request.monitor.scaleFactor);
   }
 
+  if (!isFinitePositiveSize(request.monitor.logicalSize)) {
+    return issue("invalidCoordinate", 0, 0);
+  }
+
+  if (!selectionIsInsideMonitor(request)) {
+    return issue("selectionOutsideMonitor", 0, 0);
+  }
+
   return null;
+}
+
+function selectionIsInsideMonitor(request: RegionSelectionRequest): boolean {
+  const left = request.monitor.logicalOrigin.x;
+  const top = request.monitor.logicalOrigin.y;
+  const right = left + request.monitor.logicalSize.width;
+  const bottom = top + request.monitor.logicalSize.height;
+
+  return [request.start, request.end].every(
+    (point) =>
+      point.x >= left &&
+      point.x <= right &&
+      point.y >= top &&
+      point.y <= bottom
+  );
 }
 
 function validateMinimumRegion(
@@ -144,4 +169,13 @@ function recommendedWarnings(
 
 function isFinitePoint(point: LogicalPoint | PhysicalPoint): boolean {
   return Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function isFinitePositiveSize(size: LogicalSize): boolean {
+  return (
+    Number.isFinite(size.width) &&
+    Number.isFinite(size.height) &&
+    size.width > 0 &&
+    size.height > 0
+  );
 }

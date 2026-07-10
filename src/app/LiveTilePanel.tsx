@@ -1,37 +1,39 @@
-import { useReducer, useState } from "react";
-import { LiveTileControls, LiveTileStats } from "./LiveTileControls";
-import { LiveFrameCanvas } from "./LiveFrameCanvas";
+import { useCallback, useReducer, useState } from "react";
+import type { PhysicalRegion } from "../features/region-selector/regionSelection";
 import {
-  INITIAL_LIVE_TILE_STATE,
+  createLiveTileState,
   liveTileReducer,
   type LiveTileMode
 } from "../features/live-tile/liveTile";
+import { LiveFrameCanvas } from "./LiveFrameCanvas";
+import { LiveTileControls } from "./LiveTileControls";
 import { useLiveTileBackend } from "./useLiveTileBackend";
 
 export function LiveTilePanel({
-  privacyBlankActive
+  region,
+  privacyBlankActive,
+  onClose
 }: {
+  region: PhysicalRegion;
   privacyBlankActive: boolean;
+  onClose: () => void | Promise<void>;
 }) {
-  const [tile, dispatch] = useReducer(
-    liveTileReducer,
-    INITIAL_LIVE_TILE_STATE
-  );
+  const [tile, dispatch] = useReducer(liveTileReducer, region, createLiveTileState);
   const [error, setError] = useState<string | null>(null);
-  const mode = tile.mode;
-  const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : mode;
+  const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : tile.mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
   const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
-  const frameState = visibleFrame
-    ? String(visibleFrame.width) + " x " + String(visibleFrame.height) + " frame"
-    : visibleMode === "live"
-      ? "Waiting for frame"
-      : "No active frame";
+  const handleBackendError = useCallback((message: string | null) => {
+    setError(message);
+    if (message) {
+      dispatch({ type: "pause" });
+    }
+  }, []);
   const backend = useLiveTileBackend({
     tile,
     requestMode,
     privacyBlankActive,
-    onError: setError,
+    onError: handleBackendError,
     dispatch
   });
 
@@ -40,52 +42,66 @@ export function LiveTilePanel({
     dispatch({ type: "pause" });
   }
 
-  function closeTile() {
+  async function closeTile() {
     backend.clearActiveRequest();
     dispatch({ type: "close" });
+    await onClose();
   }
+
+  const frameState = liveFrameState(visibleMode, visibleFrame !== null, error);
 
   return (
     <section className="live-tile-section" aria-labelledby="live-tile-title">
-      <header className="panel-heading">
-        <div>
-          <p className="section-label">Primary observer</p>
-          <h2 id="live-tile-title">{tile.title}</h2>
-        </div>
-        <span className={"mode-badge is-" + visibleMode}>{visibleMode}</span>
+      <header className="live-tile-heading">
+        <h1 id="live-tile-title">ScreenPebble</h1>
+        <span className={"tile-status is-" + visibleMode} role="status">
+          <span className="status-dot" aria-hidden="true" />
+          {frameState}
+        </span>
       </header>
-      <div className="live-tile-panel">
-        <div
-          className={
-            "live-frame-stage " + (visibleFrame ? "has-frame" : "is-empty")
-          }
-        >
-          <LiveFrameCanvas frame={visibleFrame} />
-          <div className="frame-chrome" aria-hidden="true">
-            <span>{visibleMode}</span>
-            <span>
-              {tile.region.width} x {tile.region.height}
-            </span>
-          </div>
-          <p className="frame-state" role="status">
-            {frameState}
-          </p>
-        </div>
-        <LiveTileStats
-          tile={tile}
-          frame={visibleFrame}
-          privacyBlankActive={privacyBlankActive}
-        />
-        {error ? <p className="live-tile-error">{error}</p> : null}
-        <LiveTileControls
-          fps={tile.fps}
-          mode={visibleMode}
-          onLive={() => dispatch({ type: "resume" })}
-          onPause={pauseTile}
-          onClose={closeTile}
-          onFpsChange={(fps) => dispatch({ type: "setFps", fps })}
-        />
+
+      <div className="live-frame-stage">
+        <LiveFrameCanvas frame={visibleFrame} fallbackRegion={region} />
       </div>
+
+      {error ? (
+        <p className="live-tile-error" role="alert">
+          {captureErrorMessage(error)}
+        </p>
+      ) : null}
+
+      <LiveTileControls
+        mode={visibleMode}
+        onLive={() => dispatch({ type: "resume" })}
+        onPause={pauseTile}
+        onClose={() => void closeTile()}
+      />
     </section>
   );
+}
+
+function liveFrameState(
+  mode: LiveTileMode,
+  hasFrame: boolean,
+  error: string | null
+) {
+  if (error) {
+    return "Capture needs attention";
+  }
+
+  if (mode === "blanked") {
+    return "Preview hidden";
+  }
+
+  if (mode === "paused") {
+    return "Paused";
+  }
+
+  return hasFrame ? "Live" : "Starting";
+}
+
+function captureErrorMessage(message: string) {
+  return /permission/i.test(message)
+    ? "Screen Recording permission is off. Enable ScreenPebble in macOS System Settings, then resume."
+    : message;
 }

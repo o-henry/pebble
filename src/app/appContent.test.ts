@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { appStatus, docReferences, principles } from "./appContent";
 
 describe("app shell content", () => {
-  it("identifies the current phase without enabling capture or AI", () => {
+  it("identifies the current macOS phase with capture enabled and AI off", () => {
     expect(appStatus).toEqual({
       phase: "pre-alpha",
       scaffoldReady: true,
-      captureEnabled: false,
+      captureEnabled: true,
       aiEnabled: false
     });
   });

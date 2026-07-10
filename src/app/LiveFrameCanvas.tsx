@@ -1,15 +1,17 @@
 import { useLayoutEffect, useRef } from "react";
-import { INITIAL_LIVE_TILE_STATE } from "../features/live-tile/liveTile";
 import type { LiveTileState } from "../features/live-tile/liveTile";
+import type { PhysicalRegion } from "../features/region-selector/regionSelection";
 
 export function LiveFrameCanvas({
-  frame
+  frame,
+  fallbackRegion
 }: {
   frame: LiveTileState["latestFrame"];
+  fallbackRegion: PhysicalRegion;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const width = frame?.width ?? INITIAL_LIVE_TILE_STATE.region.width;
-  const height = frame?.height ?? INITIAL_LIVE_TILE_STATE.region.height;
+  const width = frame?.width ?? fallbackRegion.width;
+  const height = frame?.height ?? fallbackRegion.height;
 
   useLayoutEffect(() => {
     const canvas = ref.current;

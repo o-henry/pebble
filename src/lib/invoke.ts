@@ -1,31 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../app/appContent";
-import type {
-  CaptureError,
-  CaptureRegionResult,
-  CroppedFramePayload
-} from "../features/capture/captureFrame";
+import type { CaptureError } from "../features/capture/captureFrame";
 import type {
   LiveTileCaptureRequest,
   LiveTileCaptureResponse,
   LiveTileCaptureResult
 } from "../features/live-tile/liveTile";
+import type { PebbleSessionSnapshot } from "../features/pebble-session/pebbleSession";
 import type {
   PerformanceLimitRequest,
   PerformanceLimits,
   PerformanceValidationResult
 } from "../features/performance/performanceLimits";
 import type {
-  PhysicalRegion,
   RegionSelection,
   RegionSelectionIssue,
   RegionSelectionRequest
 } from "../features/region-selector/regionSelection";
 import type { RegionSelectorWindowShell } from "../features/region-selector/regionSelectorShell";
-import type {
-  TileWindowState,
-  WindowShellSnapshot
-} from "../features/window-shell/tileWindowState";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -42,12 +34,6 @@ export interface BackendCommandMap {
     args: { request: RegionSelectionRequest };
     result: RegionSelection;
   };
-  get_window_shell_snapshot: {
-    result: WindowShellSnapshot;
-  };
-  open_test_tile_window: {
-    result: TileWindowState;
-  };
   open_region_selector_window: {
     result: RegionSelectorWindowShell;
   };
@@ -57,9 +43,28 @@ export interface BackendCommandMap {
   close_region_selector_window: {
     result: void;
   };
-  capture_region_once: {
-    args: { region: PhysicalRegion };
-    result: CroppedFramePayload;
+  get_pebble_session: {
+    result: PebbleSessionSnapshot;
+  };
+  confirm_pebble_region: {
+    args: { request: RegionSelectionRequest };
+    result: PebbleSessionSnapshot;
+  };
+  show_pebble_window: {
+    result: PebbleSessionSnapshot;
+  };
+  set_pebble_privacy_blank: {
+    args: { active: boolean };
+    result: PebbleSessionSnapshot;
+  };
+  remove_pebble: {
+    result: PebbleSessionSnapshot;
+  };
+  close_pebble_window: {
+    result: PebbleSessionSnapshot;
+  };
+  request_screen_capture_access: {
+    result: boolean;
   };
   capture_live_tile_once: {
     args: { request: LiveTileCaptureRequest };
@@ -136,14 +141,6 @@ export function resolveBackendRegionSelection(
     });
 }
 
-export function getWindowShellSnapshot(): Promise<WindowShellSnapshot> {
-  return invokeBackend("get_window_shell_snapshot");
-}
-
-export function openTestTileWindow(): Promise<TileWindowState> {
-  return invokeBackend("open_test_tile_window");
-}
-
 export function openRegionSelectorWindow(): Promise<RegionSelectorWindowShell> {
   return invokeBackend("open_region_selector_window");
 }
@@ -155,14 +152,37 @@ export function getRegionSelectorMonitor(): Promise<RegionSelectionRequest["moni
 export function closeRegionSelectorWindow(): Promise<void> {
   return invokeBackend("close_region_selector_window");
 }
-export function captureRegionOnce(
-  region: PhysicalRegion
-): Promise<CaptureRegionResult> {
-  return recoverCaptureError(
-    invokeBackend("capture_region_once", {
-      region
-    }).then((frame) => ({ ok: true as const, frame }))
-  );
+
+export function getPebbleSession(): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("get_pebble_session");
+}
+
+export function confirmPebbleRegion(
+  request: RegionSelectionRequest
+): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("confirm_pebble_region", { request });
+}
+
+export function showPebbleWindow(): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("show_pebble_window");
+}
+
+export function setPebblePrivacyBlank(
+  active: boolean
+): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("set_pebble_privacy_blank", { active });
+}
+
+export function removePebble(): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("remove_pebble");
+}
+
+export function closePebbleWindow(): Promise<PebbleSessionSnapshot> {
+  return invokeBackend("close_pebble_window");
+}
+
+export function requestScreenCaptureAccess(): Promise<boolean> {
+  return invokeBackend("request_screen_capture_access");
 }
 
 export function captureLiveTileOnce(

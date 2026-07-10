@@ -25,6 +25,20 @@ Default behavior:
 - Notify locally.
 - Store config locally.
 
+Current desktop safeguards:
+
+- macOS owns the Screen Recording consent prompt; selection does not bypass it.
+- The backend validates logical-to-physical selection bounds again before
+  opening a live tile.
+- Live capture commands and cropped-frame events are accepted only by the
+  visible Pebble window, not the main or selector windows.
+- The floating tile is positioned outside the selected source region when the
+  display has room, preventing recursive self-capture.
+- Tile content is capture-protected so ScreenPebble does not ingest its own
+  preview if a user later moves the tile over the source.
+- Native close, in-app close, and stop all clear the scheduler task and latest
+  in-memory frame.
+
 No captured content leaves the machine by default.
 
 ## AI Handoff Policy

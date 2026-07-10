@@ -20,6 +20,9 @@ mod live_tile_tests;
 pub mod ocr_engine;
 #[cfg(test)]
 mod ocr_engine_tests;
+mod pebble_session;
+#[cfg(test)]
+mod pebble_session_tests;
 pub mod pebble_store;
 #[cfg(test)]
 mod pebble_store_tests;
@@ -39,17 +42,16 @@ mod window_shell;
 mod window_shell_tests;
 
 use app_status::AppStatus;
-use capture_backend::{CaptureError, CroppedFramePayload};
+use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
 use ocr_engine::OcrStatus;
+use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
-use region_selection_types::{
-    PhysicalRegion, RegionSelection, RegionSelectionIssue, RegionSelectionRequest,
-};
+use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
 use tauri::{Emitter, Manager};
-use window_shell::{WindowShellError, WindowShellSnapshot, WindowShellState};
+use window_shell::WindowShellError;
 
 #[tauri::command]
 fn get_app_status() -> AppStatus {
@@ -76,21 +78,6 @@ fn resolve_region_selection(
 }
 
 #[tauri::command]
-fn get_window_shell_snapshot(
-    state: tauri::State<'_, WindowShellState>,
-) -> Result<WindowShellSnapshot, WindowShellError> {
-    state.snapshot()
-}
-
-#[tauri::command]
-async fn open_test_tile_window(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, WindowShellState>,
-) -> Result<window_shell::TileWindowShell, WindowShellError> {
-    window_shell::open_test_tile_window(&app, state.inner())
-}
-
-#[tauri::command]
 async fn open_region_selector_window(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -111,23 +98,96 @@ fn close_region_selector_window(window: tauri::WebviewWindow) -> Result<(), Wind
 }
 
 #[tauri::command]
-fn capture_region_once(region: PhysicalRegion) -> Result<CroppedFramePayload, CaptureError> {
-    capture_backend::capture_region_once(region)
+fn get_pebble_session(
+    state: tauri::State<'_, PebbleSessionState>,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    state.snapshot()
+}
+
+#[tauri::command]
+fn confirm_pebble_region(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PebbleSessionState>,
+    request: RegionSelectionRequest,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    pebble_session::confirm_region_selection(&app, &window, state.inner(), request)
+}
+
+#[tauri::command]
+fn show_pebble_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PebbleSessionState>,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    pebble_session::show_active_pebble_window(&app, &window, state.inner())
+}
+
+#[tauri::command]
+fn set_pebble_privacy_blank(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PebbleSessionState>,
+    active: bool,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    pebble_session::set_privacy_blank(&app, &window, state.inner(), active)
+}
+
+#[tauri::command]
+fn remove_pebble(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PebbleSessionState>,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    pebble_session::remove_active_pebble(&app, &window, state.inner())
+}
+
+#[tauri::command]
+fn close_pebble_window(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, PebbleSessionState>,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    pebble_session::close_pebble_window(&app, &window, state.inner())
+}
+
+#[tauri::command]
+fn request_screen_capture_access(window: tauri::WebviewWindow) -> bool {
+    window.label() == "main" && platform_capture::request_screen_capture_access()
 }
 
 #[tauri::command]
 fn capture_live_tile_once(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     state: tauri::State<'_, LiveTileState>,
+    session: tauri::State<'_, PebbleSessionState>,
     request: LiveTileCaptureRequest,
 ) -> Result<LiveTileCaptureResponse, CaptureError> {
-    let outcome = state.capture_once(request)?;
+    if !is_live_tile_window(window.label()) {
+        return Err(capture_error(
+            CaptureErrorCode::UnauthorizedWindow,
+            window.label(),
+            "Live capture is available only from the visible Pebble window.",
+        ));
+    }
+
+    let authorized = session.authorize_capture(request)?;
+    let outcome = state.capture_once(authorized)?;
 
     if let Some(event) = &outcome.frame_event {
-        let _ = app.emit(live_tile::live_tile_frame_event_name(), event);
+        let _ = app.emit_to(
+            pebble_session::PEBBLE_TILE_LABEL,
+            live_tile::live_tile_frame_event_name(),
+            event,
+        );
     }
 
     Ok(outcome.response)
+}
+
+fn is_live_tile_window(label: &str) -> bool {
+    label == pebble_session::PEBBLE_TILE_LABEL
 }
 
 #[tauri::command]
@@ -161,19 +221,23 @@ fn default_pebble_store(app: &tauri::AppHandle) -> Result<PebbleStore, PebbleSto
 
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
-        .manage(WindowShellState::default())
         .manage(LiveTileState::default())
+        .manage(PebbleSessionState::default())
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_performance_limits,
             validate_performance_request,
             resolve_region_selection,
-            get_window_shell_snapshot,
-            open_test_tile_window,
             open_region_selector_window,
             get_region_selector_monitor,
             close_region_selector_window,
-            capture_region_once,
+            get_pebble_session,
+            confirm_pebble_region,
+            show_pebble_window,
+            set_pebble_privacy_blank,
+            remove_pebble,
+            close_pebble_window,
+            request_screen_capture_access,
             capture_live_tile_once,
             load_pebble_config,
             save_pebble_config,
@@ -188,20 +252,30 @@ mod tests {
         get_app_status, get_performance_limits,
         performance_limits::{PerformanceLimitErrorCode, PerformanceLimitRequest, RegionSize},
         region_selection_types::{
-            LogicalPoint, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
+            LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
         resolve_region_selection, validate_performance_request,
-        window_shell::{TileMode, WindowShellState},
     };
 
     #[test]
-    fn app_status_keeps_capture_and_ai_disabled() {
+    fn app_status_reports_platform_capture_without_enabling_ai() {
         let status = get_app_status();
 
         assert_eq!(status.phase, "pre-alpha");
         assert!(status.scaffold_ready);
-        assert!(!status.capture_enabled);
+        assert_eq!(status.capture_enabled, cfg!(target_os = "macos"));
         assert!(!status.ai_enabled);
+    }
+
+    #[test]
+    fn live_capture_is_restricted_to_the_visible_pebble_window() {
+        assert!(super::is_live_tile_window(
+            super::pebble_session::PEBBLE_TILE_LABEL
+        ));
+        assert!(!super::is_live_tile_window("main"));
+        assert!(!super::is_live_tile_window(
+            super::region_selector_window::REGION_SELECTOR_LABEL
+        ));
     }
 
     #[test]
@@ -239,6 +313,10 @@ mod tests {
             monitor: MonitorGeometry {
                 id: "main".to_string(),
                 logical_origin: LogicalPoint { x: 0.0, y: 0.0 },
+                logical_size: LogicalSize {
+                    width: 1_920.0,
+                    height: 1_080.0,
+                },
                 physical_origin: PhysicalPoint { x: 0, y: 0 },
                 scale_factor: 1.0,
             },
@@ -250,14 +328,5 @@ mod tests {
         assert_eq!(selection.region.width, 200);
         assert_eq!(selection.region.height, 150);
         assert!(selection.warnings.is_empty());
-    }
-
-    #[test]
-    fn window_shell_snapshot_starts_with_closed_test_tile() {
-        let state = WindowShellState::default();
-        let snapshot = state.snapshot().expect("window shell snapshot");
-
-        assert_eq!(snapshot.test_tile.mode, TileMode::Closed);
-        assert!(!snapshot.test_tile.capture_active);
     }
 }

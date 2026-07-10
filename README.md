@@ -30,24 +30,25 @@ monitoring tool.
 
 ## Status
 
-ScreenPebble is pre-alpha and not packaged for end users yet. The current build
-is useful for contributors and early design review.
+ScreenPebble is pre-alpha and not packaged for end users yet. The current macOS
+build has a complete local region-to-floating-tile workflow for contributors
+and early testers.
 
 Implemented:
 
 - Tauri 2 + React + TypeScript + Rust desktop scaffold.
 - Hard performance limits: 1 FPS default, 5 FPS max, 3 active tiles, 800x600
   max region.
-- Region selection model and transparent selector shell.
-- Memory-only fake capture backend for deterministic tests.
-- macOS real-capture adapter at the Rust boundary, guarded by validation and
-  permission errors.
+- One-drag region selection that opens the floating tile automatically.
+- Always-on-top live tile with pause, resume, refresh, close, and privacy blank.
+- Real macOS selected-region capture at runtime and a deterministic fake backend
+  for tests.
 - Capture lifecycle and scheduler states: live, paused, hidden, blanked,
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
   tile.
 - Privacy blank hotkey/state that stops capture.
-- Low-FPS live tile demo path.
+- Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
 - Optional local OCR service boundary, disabled by default.
 - Optional AI handoff policy boundary, disabled by default.
@@ -55,7 +56,6 @@ Implemented:
 Not shipped yet:
 
 - Signed installer or Homebrew formula.
-- Real end-user tile creation workflow wired all the way through.
 - Production local OCR adapter.
 - Production AI connector.
 - Telemetry, cloud sync, browser automation, or ChatGPT session automation.
@@ -108,6 +108,20 @@ The current code contains a policy boundary for future connectors:
 ScreenPebble does not scrape browser cookies, automate a logged-in ChatGPT web
 session, reuse app tokens, or stream screen images continuously.
 
+## Use
+
+1. Launch ScreenPebble and select **Select a region**.
+2. Approve the macOS Screen Recording prompt. ScreenPebble cannot capture before
+   macOS grants this permission.
+3. Drag over the small status or output area you want to keep visible.
+4. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
+5. Use **Pause**, **Live**, **Hide preview**, or **Close** as needed. Closing the
+   floating window keeps the region selected so it can be reopened from the main
+   window.
+
+ScreenPebble captures only the selected crop. It does not save frame history or
+send captured pixels over the network.
+
 ## Install From Source
 
 Requirements:
@@ -121,7 +135,7 @@ Requirements:
 git clone https://github.com/o-henry/pebble.git
 cd pebble
 pnpm install
-pnpm tauri:build
+npm run tauri:build
 ```
 
 The unsigned development binary is built at:
@@ -133,7 +147,7 @@ src-tauri/target/release/screenpebble
 For development:
 
 ```bash
-pnpm tauri:dev
+npm run tauri:dev
 ```
 
 ## Verify
@@ -141,10 +155,10 @@ pnpm tauri:dev
 Run the automated checks:
 
 ```bash
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
+npm test
+npm run typecheck
+npm run lint
+npm run build
 cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
 ```
 
@@ -163,7 +177,7 @@ docs/                    Product, architecture, security, demo, and release docs
 Key Rust boundaries:
 
 - `PerformanceLimits`: FPS, tile count, and region size contract.
-- `CaptureBackend`: memory-only cropped frame source.
+- `CaptureBackend`: bounded selected-region capture with a test-only fake.
 - `CaptureLifecycle`: capture state policy.
 - `CaptureScheduler`: task/buffer ownership.
 - `DiffEngine`: local visual change scoring.

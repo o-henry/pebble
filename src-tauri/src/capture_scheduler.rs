@@ -76,12 +76,13 @@ impl CaptureScheduler {
         lifecycle: &CaptureLifecycle,
         backend: &B,
         tile_id: &str,
+        scale_factor: f64,
     ) -> Option<SchedulerCaptureResult> {
         self.sync_lifecycle(lifecycle);
 
         let task = self.tasks.get_mut(tile_id)?;
         if lifecycle.should_capture(tile_id) {
-            Some(capture_task_once(task, backend))
+            Some(capture_task_once_at_scale(task, backend, scale_factor))
         } else {
             task.clear_buffer();
             None
@@ -95,6 +96,21 @@ impl CaptureScheduler {
     pub fn task(&self, tile_id: &str) -> Option<&CaptureTask> {
         self.tasks.get(tile_id)
     }
+}
+
+fn capture_task_once_at_scale<B: CaptureBackend>(
+    task: &mut CaptureTask,
+    backend: &B,
+    scale_factor: f64,
+) -> SchedulerCaptureResult {
+    let frame = backend.capture_region_at_scale(&task.region, scale_factor)?;
+    task.capture_count += 1;
+    task.buffered_frame_bytes = Some(frame.bytes.len());
+
+    Ok(CapturedFrame {
+        tile_id: task.tile_id.clone(),
+        frame,
+    })
 }
 
 impl CaptureTask {

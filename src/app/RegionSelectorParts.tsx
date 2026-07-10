@@ -5,11 +5,9 @@ import type {
 
 export function SelectorHud({
   status,
-  dimensions,
   onCancel
 }: {
   status: string;
-  dimensions: string;
   onCancel: () => void;
 }) {
   return (
@@ -20,7 +18,7 @@ export function SelectorHud({
       <div className="selector-hud__header">
         <div>
           <p className="status-line">ScreenPebble</p>
-          <h1>Region selector</h1>
+          <h1>Select a region</h1>
         </div>
         <button
           type="button"
@@ -32,17 +30,7 @@ export function SelectorHud({
           ×
         </button>
       </div>
-      <dl>
-        <div>
-          <dt>Status</dt>
-          <dd>{status}</dd>
-        </div>
-        <div>
-          <dt>Dimensions</dt>
-          <dd>{dimensions}</dd>
-        </div>
-      </dl>
-      <p className="selector-hud__state">{status}</p>
+      <p className="selector-hud__state">{selectorInstruction(status)}</p>
     </aside>
   );
 }
@@ -66,47 +54,64 @@ export function SelectionBox({ rect }: { rect: DragRect }) {
   );
 }
 
-export function SelectorResult({ state }: { state: RegionSelectorState }) {
-  if (state.status === "cancelled") {
+export function SelectorResult({
+  state,
+  committing,
+  error
+}: {
+  state: RegionSelectorState;
+  committing: boolean;
+  error: string | null;
+}) {
+  if (error) {
     return (
-      <output className="selector-result">
-        <span>Selection</span>
-        <strong>Cancelled</strong>
-      </output>
+      <aside className="selector-result error" role="alert">
+        <span>Could not start</span>
+        <strong>{error}</strong>
+        <span>Drag another region to try again.</span>
+      </aside>
     );
   }
 
+  if (state.status === "cancelled") {
+    return null;
+  }
+
   if (!state.result) {
-    return (
-      <output className="selector-result">
-        <span>Physical region</span>
-        <strong>Awaiting selection</strong>
-      </output>
-    );
+    return null;
   }
 
   if (!state.result.ok) {
     return (
-      <output className="selector-result error">
-        <span>Region limit</span>
+      <aside className="selector-result error" role="alert">
+        <span>Choose another region</span>
         <strong>{state.result.error.message}</strong>
-      </output>
+      </aside>
     );
   }
 
-  const { region, warnings } = state.result.selection;
+  const { warnings } = state.result.selection;
 
   return (
-    <output
+    <aside
       className={
         warnings.length > 0 ? "selector-result warning" : "selector-result"
       }
+      aria-live="polite"
     >
-      <span>Physical region</span>
-      <strong>
-        {region.width} x {region.height} · x {region.x} · y {region.y}
-      </strong>
+      <strong>{committing ? "Starting ScreenPebble" : "Region selected"}</strong>
       {warnings.length > 0 ? <span>{warnings[0].message}</span> : null}
-    </output>
+    </aside>
   );
+}
+
+function selectorInstruction(status: string) {
+  switch (status) {
+    case "dragging":
+      return "Release to start watching";
+    case "ready":
+      return "Opening your floating pebble";
+    default:
+      return "Drag over the part you keep checking";
+  }
 }
