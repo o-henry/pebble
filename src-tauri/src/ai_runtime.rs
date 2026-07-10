@@ -131,7 +131,7 @@ pub async fn connect_chatgpt(
     let login = server
         .request(
             "account/login/start",
-            json!({ "type": "chatgpt" }),
+            chatgpt_login_params(),
             REQUEST_TIMEOUT,
         )
         .await?;
@@ -160,9 +160,10 @@ pub async fn connect_chatgpt(
         }
 
         if params.get("success").and_then(Value::as_bool) != Some(true) {
+            let message = login_failure_message(params.get("error").and_then(Value::as_str));
             return Err(runtime_error(
                 AiRuntimeErrorCode::AuthenticationFailed,
-                "ChatGPT sign-in was not completed.",
+                message,
                 true,
             ));
         }
@@ -536,10 +537,46 @@ fn ensure_authorized_window(window: &WebviewWindow) -> Result<(), AiRuntimeError
 
 fn validate_auth_url(value: &str) -> Result<(), AiRuntimeError> {
     let url = Url::parse(value).map_err(|_| invalid_auth_url_error())?;
-    if url.scheme() == "https" && url.host_str() == Some("auth.openai.com") {
+    let host_allowed = matches!(
+        url.host_str(),
+        Some("chatgpt.com") | Some("auth.openai.com")
+    );
+    let origin_allowed = url.scheme() == "https"
+        && host_allowed
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port_or_known_default() == Some(443);
+    if origin_allowed {
         Ok(())
     } else {
         Err(invalid_auth_url_error())
+    }
+}
+
+fn chatgpt_login_params() -> Value {
+    json!({
+        "type": "chatgpt",
+        "useHostedLoginSuccessPage": true,
+        "appBrand": "chatgpt"
+    })
+}
+
+fn login_failure_message(error: Option<&str>) -> &'static str {
+    let error = error.unwrap_or_default().to_ascii_lowercase();
+    if error.contains("persist_failed")
+        || error.contains("keychain")
+        || error.contains("keyring")
+        || error.contains("secure storage")
+    {
+        "ChatGPT signed in, but ScreenPebble could not access the system credential store. Make sure your login keychain is available, then try again."
+    } else if error.contains("organization") || error.contains("workspace") {
+        "This ChatGPT workspace could not complete sign-in. Try another workspace or account."
+    } else if error.contains("cancel") || error.contains("denied") {
+        "ChatGPT sign-in was cancelled. Try Connect ChatGPT again."
+    } else if error.contains("port") || error.contains("callback") || error.contains("localhost") {
+        "ChatGPT could not return to ScreenPebble. Close other Codex login windows and try again."
+    } else {
+        "ChatGPT sign-in failed. Try Connect ChatGPT again."
     }
 }
 
@@ -607,7 +644,10 @@ impl AppServerProcess {
         secure_directory(&app_data_dir)?;
         secure_directory(&codex_home)?;
 
-        let environment_home = app_data_dir.as_os_str();
+        #[cfg(target_os = "macos")]
+        let environment_home = app.path().home_dir().map_err(|_| sidecar_error())?;
+        #[cfg(not(target_os = "macos"))]
+        let environment_home = app_data_dir.clone();
         let command = app
             .shell()
             .sidecar("codex")
@@ -627,7 +667,7 @@ impl AppServerProcess {
                 "stdio://",
             ])
             .env_clear()
-            .env("HOME", environment_home)
+            .env("HOME", environment_home.as_os_str())
             .env("CODEX_HOME", codex_home.as_os_str())
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .env("LANG", "en_US.UTF-8")
@@ -788,8 +828,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        encode_frame_data_url, normalize_question, select_compact_model, validate_auth_url,
-        AiRuntimeErrorCode,
+        chatgpt_login_params, encode_frame_data_url, login_failure_message, normalize_question,
+        select_compact_model, validate_auth_url, AiRuntimeErrorCode,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
@@ -818,9 +858,41 @@ mod tests {
 
     #[test]
     fn accepts_only_the_official_https_login_host() {
+        assert!(validate_auth_url("https://chatgpt.com/auth/login?x=1").is_ok());
         assert!(validate_auth_url("https://auth.openai.com/oauth/authorize?x=1").is_ok());
         assert!(validate_auth_url("http://auth.openai.com/oauth/authorize").is_err());
         assert!(validate_auth_url("https://auth.openai.com.evil.test/oauth").is_err());
+        assert!(validate_auth_url("https://evil.test@chatgpt.com/oauth").is_err());
+    }
+
+    #[test]
+    fn maps_login_failures_without_exposing_raw_server_errors() {
+        assert_eq!(
+            login_failure_message(Some(
+                "persist_failed: failed to write OAuth tokens to keyring: token=secret"
+            )),
+            "ChatGPT signed in, but ScreenPebble could not access the system credential store. Make sure your login keychain is available, then try again."
+        );
+        assert_eq!(
+            login_failure_message(Some("callback port already in use: token=secret")),
+            "ChatGPT could not return to ScreenPebble. Close other Codex login windows and try again."
+        );
+        assert_eq!(
+            login_failure_message(Some("organization_not_supported")),
+            "This ChatGPT workspace could not complete sign-in. Try another workspace or account."
+        );
+    }
+
+    #[test]
+    fn requests_the_hosted_chatgpt_login_flow() {
+        assert_eq!(
+            chatgpt_login_params(),
+            json!({
+                "type": "chatgpt",
+                "useHostedLoginSuccessPage": true,
+                "appBrand": "chatgpt"
+            })
+        );
     }
 
     #[test]

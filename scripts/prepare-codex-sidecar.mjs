@@ -1,4 +1,12 @@
-import { chmodSync, copyFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,33 +35,55 @@ if (!target) {
 const codexPackageJson = require.resolve("@openai/codex/package.json");
 const codexRequire = createRequire(codexPackageJson);
 const packageJson = codexRequire.resolve(`${target.packageName}/package.json`);
+const packageVersion = JSON.parse(readFileSync(packageJson, "utf8")).version;
 const binaryName = process.platform === "win32" ? "codex.exe" : "codex";
-const source = path.join(
+const vendorTarget = path.join(
   path.dirname(packageJson),
   "vendor",
-  target.triple,
-  "codex",
-  binaryName
+  target.triple
 );
+const source = [
+  path.join(vendorTarget, "bin", binaryName),
+  path.join(vendorTarget, "codex", binaryName)
+].find(existsSync);
+if (!source) {
+  throw new Error(`Codex executable is missing for ${target.triple}.`);
+}
 const destinationDir = path.join(root, "src-tauri", "binaries");
 const destination = path.join(
   destinationDir,
   `codex-${target.triple}${process.platform === "win32" ? ".exe" : ""}`
 );
+const versionMarker = `${destination}.version`;
 
 mkdirSync(destinationDir, { recursive: true });
 
 const sourceSize = statSync(source).size;
 let destinationSize = -1;
+let destinationMode = 0;
 try {
-  destinationSize = statSync(destination).size;
+  const destinationStat = statSync(destination);
+  destinationSize = destinationStat.size;
+  destinationMode = destinationStat.mode;
 } catch {
   // The first preparation creates the sidecar.
 }
 
-if (destinationSize !== sourceSize) {
-  copyFileSync(source, destination);
+let preparedVersion = "";
+try {
+  preparedVersion = readFileSync(versionMarker, "utf8").trim();
+} catch {
+  // A missing marker means the binary predates version-aware preparation.
 }
-chmodSync(destination, 0o755);
 
-console.log(`Prepared Codex app-server sidecar for ${target.triple}.`);
+if (destinationSize !== sourceSize || preparedVersion !== packageVersion) {
+  copyFileSync(source, destination);
+  chmodSync(destination, 0o755);
+  writeFileSync(versionMarker, `${packageVersion}\n`, { mode: 0o644 });
+} else if ((destinationMode & 0o111) === 0) {
+  chmodSync(destination, 0o755);
+}
+
+console.log(
+  `Prepared Codex app-server ${packageVersion} sidecar for ${target.triple}.`
+);

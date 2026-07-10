@@ -25,7 +25,8 @@ ask_selected_region
 
 The webview has no shell, opener, filesystem, or network plugin permission.
 Rust starts only the fixed `codex` sidecar and opens only a validated
-`https://auth.openai.com` OAuth URL.
+`https://chatgpt.com` or `https://auth.openai.com` OAuth URL. The login request
+uses the hosted success page with the ChatGPT brand.
 
 ## Account Isolation
 
@@ -35,6 +36,8 @@ Rust starts only the fixed `codex` sidecar and opens only a validated
 - The sidecar uses ScreenPebble's private app data directory as `CODEX_HOME`.
 - The directory mode is 0700 on Unix.
 - Credentials use the OS keychain.
+- On macOS, only the real `HOME` path is provided so the system can locate the
+  default login keychain; Codex state remains isolated by `CODEX_HOME`.
 - The child environment is cleared before launch, preventing inherited API-key
   or proxy variables from becoming an accidental auth path.
 

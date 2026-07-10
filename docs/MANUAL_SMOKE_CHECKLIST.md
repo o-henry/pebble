@@ -52,7 +52,10 @@ npm run tauri:build
 - No AI request occurs before a visible **Ask** action.
 - A fresh app data directory shows **Connect ChatGPT** and does not reuse another
   Codex installation's account.
-- ChatGPT sign-in opens only `https://auth.openai.com`.
+- ChatGPT sign-in opens only an exact `https://chatgpt.com` or
+  `https://auth.openai.com` host and returns through the hosted success page.
+- ChatGPT sign-in persists successfully in the macOS login keychain without a
+  `persist_failed` or missing-default-keychain error.
 - One question sends one selected crop; no full-screen or temporary image file
   is created.
 - Privacy blank, reselection, or display reconfiguration before upload cancels

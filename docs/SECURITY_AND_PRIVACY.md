@@ -104,10 +104,13 @@ Webviews do not have:
 - Browser history or URL permissions.
 - Clipboard monitoring.
 
-Rust alone starts the fixed bundled sidecar and opens the validated
-`https://auth.openai.com` sign-in URL. The webview cannot launch arbitrary
-commands or URLs. Any permission addition requires a decision note explaining
-why it is necessary and how it is bounded.
+Rust alone starts the fixed bundled sidecar and opens a validated exact-host
+`https://chatgpt.com` or `https://auth.openai.com` sign-in URL. The webview cannot
+launch arbitrary commands or URLs. On macOS, the sidecar receives the real
+`HOME` path only so the system can locate the default login keychain;
+ScreenPebble still clears all other inherited variables and isolates Codex
+state under its private `CODEX_HOME`. Any permission addition requires a
+decision note explaining why it is necessary and how it is bounded.
 
 ## Continuous Security Review
 

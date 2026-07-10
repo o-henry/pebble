@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@openai/codex": "0.131.0",
+    "@openai/codex": "0.144.1",
     "@tauri-apps/cli": "^2.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
