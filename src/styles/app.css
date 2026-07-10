@@ -72,7 +72,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -104,6 +105,7 @@ button:active {
 }
 
 button:focus-visible,
+textarea:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
@@ -162,6 +164,7 @@ h2,
 h3,
 dd,
 button,
+textarea,
 input {
   font-family: var(--font-interface);
 }
@@ -344,6 +347,93 @@ dt {
   gap: 8px;
 }
 
+.region-question {
+  display: grid;
+  gap: 14px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.region-question__header,
+.region-question__connect,
+.region-question__submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.region-question__header > div {
+  display: grid;
+  gap: 5px;
+}
+
+.region-question h3 {
+  font-size: 0.92rem;
+}
+
+.region-question__status,
+.region-question__quiet,
+.region-question__connect span,
+.region-question__submit span {
+  color: var(--ink-muted);
+  font-size: 0.66rem;
+}
+
+.region-question__status {
+  color: var(--green);
+}
+
+.region-question__form {
+  display: grid;
+  gap: 10px;
+}
+
+.region-question textarea {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--ink-strong);
+  background: var(--surface);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.region-question textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.region-question__submit {
+  align-items: end;
+}
+
+.region-question__submit button {
+  min-width: 76px;
+}
+
+.region-question__error,
+.region-question__answer {
+  padding: 11px 12px;
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+.region-question__error {
+  border-left: 3px solid var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.region-question__answer {
+  border-left: 3px solid var(--blue);
+  color: var(--ink-strong);
+  background: var(--blue-soft);
+  white-space: pre-wrap;
+}
+
 @media (max-width: 700px) {
   .app-shell {
     width: min(100vw - 28px, 620px);
@@ -375,6 +465,11 @@ dt {
   .active-workspace__actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .region-question__connect {
+    align-items: start;
+    flex-direction: column;
   }
 }
 

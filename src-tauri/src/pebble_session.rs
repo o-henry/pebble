@@ -57,6 +57,27 @@ struct PebbleSessionData {
     capture_scale_factor: Option<f64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AuthorizedAiCapture {
+    region: PhysicalRegion,
+    scale_factor: f64,
+    session_revision: u64,
+}
+
+impl AuthorizedAiCapture {
+    pub(crate) fn region(&self) -> &PhysicalRegion {
+        &self.region
+    }
+
+    pub(crate) fn scale_factor(&self) -> f64 {
+        self.scale_factor
+    }
+
+    pub(crate) fn session_revision(&self) -> u64 {
+        self.session_revision
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PebbleSessionError {
@@ -224,6 +245,71 @@ impl PebbleSessionState {
             .map_err(|_| PebbleSessionError::state_unavailable())?;
 
         if !frame_delivery_is_current(&data.snapshot, expected_revision) {
+            return Ok(false);
+        }
+
+        let Some(region) = data.snapshot.region.as_ref() else {
+            return Ok(false);
+        };
+        let Some(scale_factor) = data.capture_scale_factor else {
+            return Ok(false);
+        };
+
+        Ok(validate_current_monitor(region, scale_factor, monitors).is_ok())
+    }
+
+    pub fn authorize_ai_capture(
+        &self,
+        monitors: &[MonitorGeometry],
+    ) -> Result<AuthorizedAiCapture, CaptureError> {
+        let data = self.data.lock().map_err(|_| {
+            capture_error(
+                CaptureErrorCode::CaptureUnavailable,
+                MAIN_LIVE_TILE_ID,
+                "Pebble session state is unavailable.",
+            )
+        })?;
+        let region = data.snapshot.region.as_ref().ok_or_else(|| {
+            capture_error(
+                CaptureErrorCode::CaptureUnavailable,
+                MAIN_LIVE_TILE_ID,
+                "No selected region is active.",
+            )
+        })?;
+        if data.snapshot.privacy_blank_active {
+            return Err(capture_error(
+                CaptureErrorCode::UnauthorizedWindow,
+                MAIN_LIVE_TILE_ID,
+                "Image questions stop while the selected region is hidden.",
+            ));
+        }
+
+        let scale_factor = data.capture_scale_factor.ok_or_else(|| {
+            capture_error(
+                CaptureErrorCode::CaptureUnavailable,
+                MAIN_LIVE_TILE_ID,
+                "Capture scale factor is unavailable.",
+            )
+        })?;
+        validate_current_monitor(region, scale_factor, monitors)?;
+
+        Ok(AuthorizedAiCapture {
+            region: region.clone(),
+            scale_factor,
+            session_revision: data.snapshot.revision,
+        })
+    }
+
+    pub fn ai_capture_is_current(
+        &self,
+        expected_revision: u64,
+        monitors: &[MonitorGeometry],
+    ) -> Result<bool, PebbleSessionError> {
+        let data = self
+            .data
+            .lock()
+            .map_err(|_| PebbleSessionError::state_unavailable())?;
+        if data.snapshot.revision != expected_revision || data.snapshot.privacy_blank_active {
             return Ok(false);
         }
 

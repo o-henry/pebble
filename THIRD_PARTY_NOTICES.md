@@ -12,3 +12,16 @@ for its local interface.
 The source copy is included at [src/assets/fonts/OFL.txt](src/assets/fonts/OFL.txt).
 The packaged frontend also includes the same notice at
 `public/licenses/DM-Mono-Nerd-OFL.txt`.
+
+## OpenAI Codex
+
+ScreenPebble bundles the native Codex CLI binary to run the official Codex
+app-server locally for optional ChatGPT account sign-in and explicit
+selected-region questions.
+
+- Project: [OpenAI Codex](https://github.com/openai/codex)
+- Package: `@openai/codex`
+- License: Apache License 2.0
+
+The license text is included at
+`public/licenses/OpenAI-Codex-Apache-2.0.txt`.

@@ -23,4 +23,4 @@ When replacing the synthetic GIF with a real recording:
 2. Show selected-region-only framing.
 3. Show a small live tile.
 4. Toggle privacy blank.
-5. Show local diff/OCR/AI as optional and off by default.
+5. Ask one short question about the selected crop and show the concise answer.

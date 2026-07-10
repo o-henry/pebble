@@ -2,6 +2,7 @@ pub mod ai_handoff;
 #[cfg(test)]
 mod ai_handoff_tests;
 mod ai_handoff_types;
+mod ai_runtime;
 mod app_status;
 pub mod capture_backend;
 #[cfg(test)]
@@ -41,6 +42,7 @@ mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
 
+use ai_runtime::{AiAnswer, AiConnectionStatus, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
 use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
@@ -154,6 +156,59 @@ fn close_pebble_window(
 #[tauri::command]
 fn request_screen_capture_access(window: tauri::WebviewWindow) -> bool {
     window.label() == "main" && platform_capture::request_screen_capture_access()
+}
+
+#[tauri::command]
+async fn get_ai_connection_status(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, AiRuntimeState>,
+) -> Result<AiConnectionStatus, AiRuntimeError> {
+    if window.label() != "main"
+        || !window.is_visible().unwrap_or(false)
+        || window.is_minimized().unwrap_or(true)
+    {
+        return Err(AiRuntimeError {
+            code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
+            message:
+                "ChatGPT connection is available only from the visible main ScreenPebble window."
+                    .to_string(),
+            recoverable: true,
+        });
+    }
+    ai_runtime::get_connection_status(&app, state.inner()).await
+}
+
+#[tauri::command]
+async fn connect_chatgpt(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, AiRuntimeState>,
+) -> Result<AiConnectionStatus, AiRuntimeError> {
+    if window.label() != "main"
+        || !window.is_visible().unwrap_or(false)
+        || window.is_minimized().unwrap_or(true)
+    {
+        return Err(AiRuntimeError {
+            code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
+            message:
+                "ChatGPT connection is available only from the visible main ScreenPebble window."
+                    .to_string(),
+            recoverable: true,
+        });
+    }
+    ai_runtime::connect_chatgpt(&app, state.inner()).await
+}
+
+#[tauri::command]
+async fn ask_selected_region(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    runtime: tauri::State<'_, AiRuntimeState>,
+    session: tauri::State<'_, PebbleSessionState>,
+    question: String,
+) -> Result<AiAnswer, AiRuntimeError> {
+    ai_runtime::ask_selected_region(&app, &window, runtime.inner(), session.inner(), question).await
 }
 
 #[tauri::command]
@@ -271,6 +326,9 @@ fn default_pebble_store(app: &tauri::AppHandle) -> Result<PebbleStore, PebbleSto
 
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(AiRuntimeState::default())
         .manage(LiveTileState::default())
         .manage(PebbleSessionState::default())
         .invoke_handler(tauri::generate_handler![
@@ -288,6 +346,9 @@ pub fn run() -> tauri::Result<()> {
             remove_pebble,
             close_pebble_window,
             request_screen_capture_access,
+            get_ai_connection_status,
+            connect_chatgpt,
+            ask_selected_region,
             capture_live_tile_once,
             load_pebble_config,
             save_pebble_config,
@@ -308,13 +369,13 @@ mod tests {
     };
 
     #[test]
-    fn app_status_reports_platform_capture_without_enabling_ai() {
+    fn app_status_reports_platform_capture_and_explicit_ai_availability() {
         let status = get_app_status();
 
         assert_eq!(status.phase, "pre-alpha");
         assert!(status.scaffold_ready);
         assert_eq!(status.capture_enabled, cfg!(target_os = "macos"));
-        assert!(!status.ai_enabled);
+        assert_eq!(status.ai_enabled, cfg!(target_os = "macos"));
     }
 
     #[test]

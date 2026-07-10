@@ -15,6 +15,7 @@ Thumbs.db
 /target/
 /src-tauri/target/
 /src-tauri/gen/
+/src-tauri/binaries/codex-*
 
 # Local environment and secrets
 .env

@@ -115,6 +115,63 @@ fn capture_authorization_fails_after_display_configuration_changes() {
 }
 
 #[test]
+fn explicit_ai_capture_uses_only_the_backend_selected_region() {
+    let state = PebbleSessionState::default();
+    let selected = state
+        .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
+        .expect("selected region");
+
+    let authorized = state
+        .authorize_ai_capture(&[monitor_geometry()])
+        .expect("authorized AI capture");
+
+    assert_eq!(
+        authorized.region(),
+        selected.region.as_ref().expect("region")
+    );
+    assert_eq!(authorized.scale_factor(), 1.0);
+    assert_eq!(authorized.session_revision(), selected.revision);
+}
+
+#[test]
+fn privacy_blank_blocks_explicit_ai_capture() {
+    let state = PebbleSessionState::default();
+    state
+        .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
+        .expect("selected region");
+    state.set_privacy_blank(true).expect("privacy blank");
+
+    let error = state
+        .authorize_ai_capture(&[monitor_geometry()])
+        .expect_err("blanked capture");
+
+    assert_eq!(error.code, CaptureErrorCode::UnauthorizedWindow);
+}
+
+#[test]
+fn reselected_or_reconfigured_regions_invalidate_ai_delivery() {
+    let state = PebbleSessionState::default();
+    let selected = state
+        .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
+        .expect("selected region");
+    assert!(state
+        .ai_capture_is_current(selected.revision, &[monitor_geometry()])
+        .expect("current capture"));
+
+    state
+        .select_region(selection_request(20.0, 30.0, 320.0, 210.0))
+        .expect("reselected region");
+
+    assert!(!state
+        .ai_capture_is_current(selected.revision, &[monitor_geometry()])
+        .expect("stale capture"));
+    let current_revision = state.snapshot().expect("snapshot").revision;
+    assert!(!state
+        .ai_capture_is_current(current_revision, &[])
+        .expect("reconfigured display"));
+}
+
+#[test]
 fn trusted_selector_monitor_replaces_caller_supplied_geometry() {
     let untrusted = selection_request(10.0, 20.0, 310.0, 200.0);
     let mut trusted_monitor = monitor_geometry();

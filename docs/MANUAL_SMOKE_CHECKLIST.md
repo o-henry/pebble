@@ -13,7 +13,7 @@ Run this before tagging a public demo or recording a new demo GIF.
 ## Build Checks
 
 ```bash
-pnpm install
+npm install
 npm test
 npm run typecheck
 npm run lint
@@ -49,7 +49,16 @@ npm run tauri:build
   logs, docs, fixtures, or tests.
 - Captured frame payloads remain cropped and memory-only.
 - Paused, hidden, blanked, closed, and deleted states do not capture.
-- AI handoff remains disabled by default.
+- No AI request occurs before a visible **Ask** action.
+- A fresh app data directory shows **Connect ChatGPT** and does not reuse another
+  Codex installation's account.
+- ChatGPT sign-in opens only `https://auth.openai.com`.
+- One question sends one selected crop; no full-screen or temporary image file
+  is created.
+- Privacy blank, reselection, or display reconfiguration before upload cancels
+  the request.
+- A subscription without a compatible compact image model fails closed instead
+  of selecting a larger model.
 - OCR remains disabled by default.
 - Core monitoring adds no network requirement.
 

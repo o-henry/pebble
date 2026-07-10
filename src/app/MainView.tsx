@@ -9,6 +9,7 @@ import {
   showPebbleWindow
 } from "../lib/invoke";
 import { usePebbleSession, errorMessage } from "./usePebbleSession";
+import { RegionQuestionPanel } from "./RegionQuestionPanel";
 
 export function MainView() {
   const {
@@ -20,6 +21,7 @@ export function MainView() {
     setError
   } = usePebbleSession();
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const hasRegion = session.region !== null;
 
   const setPrivacyBlank = useCallback(
@@ -139,7 +141,7 @@ export function MainView() {
         <div className="workspace-header__actions">
           <span className="local-status">
             <span className="status-dot" aria-hidden="true" />
-            {browserPreview ? "Preview mode" : "Local only"}
+            {browserPreview ? "Preview mode" : "Local capture"}
           </span>
           {hasRegion && session.windowOpen ? (
             <button
@@ -175,8 +177,9 @@ export function MainView() {
       ) : hasRegion ? (
         <ActiveWorkspace
           session={session}
-          busy={busy}
+          busy={busy || aiBusy}
           browserPreview={browserPreview}
+          onAiBusyChange={setAiBusy}
           onShow={showWindow}
           onReselect={selectRegion}
           onStop={stopWatching}
@@ -215,7 +218,8 @@ function ActiveWorkspace({
   browserPreview,
   onShow,
   onReselect,
-  onStop
+  onStop,
+  onAiBusyChange
 }: {
   session: ReturnType<typeof usePebbleSession>["session"];
   busy: boolean;
@@ -223,6 +227,7 @@ function ActiveWorkspace({
   onShow: () => void;
   onReselect: () => void;
   onStop: () => void;
+  onAiBusyChange: (busy: boolean) => void;
 }) {
   const status = session.privacyBlankActive
     ? "Preview hidden"
@@ -285,6 +290,14 @@ function ActiveWorkspace({
           Stop watching
         </button>
       </div>
+
+      <RegionQuestionPanel
+        key={`${session.region?.monitorId}:${session.region?.x}:${session.region?.y}:${session.region?.width}:${session.region?.height}`}
+        browserPreview={browserPreview}
+        disabled={busy}
+        privacyBlankActive={session.privacyBlankActive}
+        onBusyChange={onAiBusyChange}
+      />
     </section>
   );
 }

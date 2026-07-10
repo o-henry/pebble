@@ -49,7 +49,7 @@ body:
     attributes:
       label: Constraints
       options:
-        - label: This keeps AI off by default.
+        - label: This keeps AI requests attached to an explicit visible user action.
           required: true
         - label: This does not require browser cookie scraping or ChatGPT web automation.
           required: true

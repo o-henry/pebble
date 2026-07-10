@@ -1,160 +1,120 @@
-# AI Handoff Design
+# AI Region Questions
 
-AI support is a future optional capability. It must not be part of the core
-capture path, and it must never make ScreenPebble feel like a hidden screen
-watcher.
+ScreenPebble can answer a question about the selected region without an API key.
+This path is optional and never participates in continuous monitoring.
 
-## Design Goal
-
-Use local monitoring to minimize AI usage.
+## User Flow
 
 ```text
-local crop -> local diff -> local OCR -> dedupe -> optional AI text handoff
+select region -> connect ChatGPT once -> type question -> Ask -> concise answer
 ```
 
-The AI should receive the smallest useful payload:
+The **Ask** action is the consent boundary. ScreenPebble does not call AI on a
+timer, on visual change, at startup, or in the background.
 
-1. OCR text when available.
-2. A compact local change summary.
-3. A cropped image only when the user explicitly allows images for that region.
+## Runtime
 
-## Non-Negotiables
-
-- AI is off by default.
-- AI is enabled per region, not globally by accident.
-- No AI whole-screen access.
-- No continuous image streaming.
-- No hidden background calls.
-- No browser cookie scraping.
-- No ChatGPT web automation.
-- No API key theft or token reuse.
-- No captured frames or OCR history persisted.
-
-## User Consent Model
-
-Each region has independent settings:
+ScreenPebble bundles the official OpenAI Codex app-server as a Tauri sidecar.
+The React webview can invoke three typed Rust commands:
 
 ```text
-AI: off | text on change | image on request | image on change
+get_ai_connection_status
+connect_chatgpt
+ask_selected_region
 ```
 
-Default:
+The webview has no shell, opener, filesystem, or network plugin permission.
+Rust starts only the fixed `codex` sidecar and opens only a validated
+`https://auth.openai.com` OAuth URL.
 
-```text
-AI: off
-```
+## Account Isolation
 
-Before enabling AI, the UI must explain:
+- No API key is requested.
+- Browser cookies are never read.
+- Other Codex or ChatGPT app tokens are never imported.
+- The sidecar uses ScreenPebble's private app data directory as `CODEX_HOME`.
+- The directory mode is 0700 on Unix.
+- Credentials use the OS keychain.
+- The child environment is cleared before launch, preventing inherited API-key
+  or proxy variables from becoming an accidental auth path.
 
-- What data may be handed off.
-- Whether the payload is text or image.
-- That handoff happens only for this region.
-- That capture still stops when paused, hidden, blanked, closed, or deleted.
+## Image Boundary
 
-## Low-Usage Policy
+For every question, Rust:
 
-The connector should use these gates before any AI handoff:
+1. Verifies that the caller is the visible, non-minimized main window.
+2. Reads the selected region from backend session state, never from request
+   coordinates.
+3. Rejects privacy-blanked or missing regions.
+4. Revalidates display identity, bounds, scale, and session revision.
+5. Captures only that physical crop.
+6. Encodes the RGBA bytes as an in-memory PNG data URL.
+7. Revalidates the session and display immediately before `turn/start`.
+8. Sends exactly one image and one bounded question.
 
-1. Region AI setting is enabled.
-2. Tile is live and visible.
-3. Privacy blank is off.
-4. Local diff crosses threshold, or user explicitly requests a handoff.
-5. Cooldown has passed.
-6. OCR text or image payload differs from the previous handoff.
+No frame or prompt is written to a screenshot, temp, history, log, config, or
+thread file.
 
-If any gate fails, do nothing.
+## Usage Limits
 
-## Payload Design
+- Question: 1 to 1,000 Unicode characters.
+- Image: existing ScreenPebble hard limit, at most 800x600 physical pixels.
+- Model: an image-capable model whose id contains `mini` and supports low
+  reasoning effort.
+- Reasoning effort: `low`.
+- Reasoning summary: disabled.
+- Answer: at most 4,000 Unicode characters.
+- Concurrency: one connection or question operation at a time.
+- Conversation: a new ephemeral thread for every question.
 
-Text-first payload:
+If a compact compatible model is unavailable for the signed-in subscription,
+ScreenPebble reports that condition. It does not silently fall back to a larger
+model.
 
-```text
-Region: build-log
-Event: changed
-Observed text:
-error: missing dependency @tauri-apps/api
+## Tool Denial
 
-Instruction:
-Explain what likely happened and suggest the next local debugging step.
-```
+The app-server starts with:
 
-Image payload:
+- Read-only sandbox.
+- Approval policy `never`.
+- Web search disabled.
+- Empty MCP server configuration.
+- Analytics disabled.
+- Instructions forbidding tools, files, shell, web, plugins, skills, memory,
+  and outside context.
 
-- Cropped region only.
-- No full monitor frame.
-- No unrelated screen content.
-- No disk write required to create the payload.
-- Allowed only by explicit region setting or explicit user action.
+ScreenPebble additionally inspects streamed items. Any command, file change,
+web search, plugin, MCP, dynamic tool, image generation, or server approval
+request aborts the response.
 
-## Connector Interface
+## Failure Behavior
 
-Keep connectors behind an adapter:
+The operation fails closed when:
 
-```text
-AiConnector
-  is_enabled(region_id)
-  can_send_text(region_id)
-  can_send_image(region_id)
-  send_text(payload)
-  send_image(payload)
-```
+- ChatGPT is not connected.
+- The question is empty, oversized, or contains unsafe control characters.
+- The selected region is hidden, removed, or reselected.
+- The display is disconnected, rearranged, resized, or rescaled.
+- The main window is hidden or minimized before upload.
+- The sidecar exits, times out, or returns invalid protocol data.
+- No compatible compact image model exists.
+- The model attempts any action outside image reasoning.
 
-The rest of the app should not know whether the connector is a local clipboard
-flow, a local app integration, an MCP adapter, or another explicit integration.
+Errors are recoverable and do not include account email, auth URLs, tokens,
+screen bytes, prompts, sidecar stderr, or local paths.
 
-## MCP Position
+## Tests
 
-MCP can be a later adapter, not the product core.
+Automated tests cover:
 
-Use MCP only if it preserves the same constraints:
+- Question normalization and limits.
+- Official OAuth host validation.
+- Compact image model selection without expensive fallback.
+- Memory-only PNG data URL encoding.
+- Privacy blank and missing-region rejection.
+- Reselection and display reconfiguration invalidation.
+- Webview permission denial for shell and opener plugins.
+- In-memory frame storage policy.
 
-- User-visible enablement.
-- Per-region authorization.
-- No shell, filesystem, browser history, or broad OS tools.
-- No automatic whole-screen access.
-- No continuous image streaming.
-
-If MCP requires a tunnel or account setup, document that clearly. Do not present
-it as required for ScreenPebble's core value.
-
-## ChatGPT Account Direction
-
-The desired user experience is "no OpenAI API key required." That does not mean
-ScreenPebble may automate a logged-in ChatGPT browser session.
-
-Allowed future directions:
-
-- Official connector or app integration.
-- User-initiated copy/open flow.
-- Explicit local connector with a documented pairing flow.
-
-Disallowed:
-
-- Reading ChatGPT cookies.
-- Controlling the ChatGPT web UI invisibly.
-- Reusing account tokens from another app.
-
-## Speaking Results
-
-"AI can speak" should be implemented as local text-to-speech over a text response
-that the user explicitly requested or configured for a region.
-
-Do not implement always-listening or always-speaking behavior. Speaking must have
-clear controls:
-
-- Mute.
-- Stop.
-- Per-region enablement.
-- Cooldown.
-- Visible status while speaking.
-
-## Tests Required Before Shipping AI Handoff
-
-- AI disabled by default.
-- Region without AI permission cannot send text or image.
-- Privacy blank blocks handoff.
-- Paused, hidden, closed, and deleted regions block handoff.
-- Text dedupe works.
-- Cooldown works.
-- Image handoff rejects full-frame payloads.
-- Connector errors are recoverable.
+The manual smoke checklist covers OAuth completion and one real selected-region
+question on macOS.

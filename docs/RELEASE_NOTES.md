@@ -15,7 +15,9 @@ This is a contributor-facing pre-alpha demo build.
 - Always-on-top low-FPS live tile with pause, resume, privacy blank, and close.
 - Config-only persistence for safe region settings.
 - Optional local OCR boundary, disabled by default.
-- Optional AI handoff policy boundary, disabled by default.
+- API-key-free ChatGPT account connection through a bundled official Codex
+  app-server.
+- Explicit one-shot selected-region questions using a compact image model.
 - Manual smoke checklist and issue templates.
 
 ### Security And Privacy
@@ -26,7 +28,9 @@ This is a contributor-facing pre-alpha demo build.
 - No OCR history persistence.
 - No ChatGPT web automation.
 - No browser cookie, token, or API-key reuse.
-- No AI handoff by default.
+- No automatic AI requests; one crop is sent only after **Ask**.
+- No inherited API-key environment, browser cookie access, MCP, web search, or
+  webview shell permission.
 
 ### Known Limits
 
@@ -35,4 +39,3 @@ This is a contributor-facing pre-alpha demo build.
 - Multi-monitor selection is still limited to the display containing the main
   window.
 - Production local OCR adapter is not wired yet.
-- Production AI connector is not wired yet.

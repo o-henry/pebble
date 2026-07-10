@@ -20,7 +20,7 @@ export const appStatus: AppStatus = {
   phase: "pre-alpha",
   scaffoldReady: true,
   captureEnabled: true,
-  aiEnabled: false
+  aiEnabled: true
 };
 
 export const docReferences: DocReference[] = [
@@ -60,7 +60,7 @@ export const principles: Principle[] = [
     body: "Frames, screenshots, previews, and OCR history are not persisted."
   },
   {
-    title: "AI stays optional",
-    body: "AI handoff is future work, off by default, and scoped per region."
+    title: "AI stays explicit",
+    body: "A cropped image is sent only when the user asks about a selected region."
   }
 ];

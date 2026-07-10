@@ -57,7 +57,7 @@ body:
       placeholder: |
         macOS:
         ScreenPebble commit/version:
-        pnpm:
+        npm:
         Rust:
     validations:
       required: true

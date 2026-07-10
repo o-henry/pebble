@@ -11,9 +11,9 @@ they selected.
 The app must make capture visible:
 
 - Every active region has a visible tile or visible status.
-- Every tile shows whether it is live, paused, hidden, blanked, or AI-enabled.
+- Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
-- AI features are off by default and visible when enabled.
+- AI runs only after a visible **Ask** action in the main window.
 
 ## Local-First Default
 
@@ -46,56 +46,68 @@ Current desktop safeguards:
 - Native close, in-app close, and stop all clear the scheduler task and latest
   in-memory frame.
 
-No captured content leaves the machine by default.
+No captured content leaves the machine during monitoring. One selected crop
+leaves the machine only after the user explicitly asks ChatGPT about it.
 
 ## AI Handoff Policy
 
-AI handoff must be explicit in configuration, narrow in scope, and cheap by
-design.
+AI access is explicit, narrow in scope, and cheap by design:
 
-Allowed future behavior:
-
-- Per-region AI enablement.
-- Text-first handoff from local OCR.
-- Image handoff only for explicitly allowed regions.
-- Cooldown and deduplication before AI calls.
-- Visible indicator during AI handoff.
+- No API key is requested or accepted by the UI.
+- The bundled official Codex app-server owns the ChatGPT OAuth flow.
+- ScreenPebble uses a private `CODEX_HOME` under its 0700 app data directory;
+  another Codex installation's login is not read.
+- Credentials use the OS keychain. Browser cookies are never read.
+- The sidecar receives a cleared environment, so inherited API-key variables are
+  not available to it.
+- Each request uses one backend-authorized selected crop encoded as an in-memory
+  PNG data URL. No image temp file is created.
+- The selected region, session revision, display bounds, and display scale are
+  checked before capture and again immediately before upload.
+- Threads are ephemeral, sandboxed read-only, use approval policy `never`, and
+  have web search, MCP servers, and analytics disabled.
+- ScreenPebble accepts only an image-capable `mini` model that supports low
+  reasoning effort.
+- Unexpected tool, shell, file, web, plugin, or MCP activity aborts the response.
+- Questions are limited to 1,000 characters and answers to 4,000 characters.
 
 Disallowed behavior:
 
 - AI watching the whole screen.
 - Continuous image streaming to AI.
-- Hidden background AI calls.
+- Automatic or hidden background AI calls.
 - Browser cookie scraping.
 - ChatGPT web automation using a user's logged-in session.
 - API key theft, token reuse, or reading unrelated app credentials.
 
 ## Low-Usage Monitoring Design
 
-Most monitoring should happen without AI:
+All monitoring happens without AI:
 
 ```text
-small crop -> local diff -> local OCR if changed -> dedupe -> optional AI text handoff
+small crop -> local capture/diff -> local display
 ```
 
-AI should receive compact text or a small image only when local checks show a
-meaningful change and the user has enabled that region.
+The only network image path is a fresh selected crop sent after the user presses
+**Ask**.
 
 ## Permission Rules
 
 Request the smallest permissions needed for the current phase.
 
-Do not add:
+Webviews do not have:
 
-- Shell execution permissions.
+- Shell execution or opener permissions.
 - Broad filesystem permissions.
-- Network permissions for core screen monitoring.
+- Network permissions.
 - Camera or microphone permissions.
 - Browser history or URL permissions.
 - Clipboard monitoring.
 
-Any permission addition requires a decision note explaining why it is necessary
-and how it is bounded.
+Rust alone starts the fixed bundled sidecar and opens the validated
+`https://auth.openai.com` sign-in URL. The webview cannot launch arbitrary
+commands or URLs. Any permission addition requires a decision note explaining
+why it is necessary and how it is bounded.
 
 ## Continuous Security Review
 
@@ -110,7 +122,7 @@ Check for:
 - New shell or filesystem access.
 - Capture continuing in inactive states.
 - Full-monitor frames crossing process or UI boundaries.
-- AI handoff becoming enabled by default.
+- AI calls becoming automatic or detached from the visible **Ask** action.
 - Logs, errors, tests, fixtures, or examples containing private screen content,
   OCR output, secrets, tokens, cookies, or local account data.
 
@@ -124,7 +136,7 @@ Do not release if any of these are true:
 - Frames are written to disk by default.
 - Hidden, paused, or blanked regions keep capturing.
 - Full monitor frames are sent to the UI or AI connector.
-- AI handoff is enabled by default.
+- AI sends data without a visible user request.
 - Telemetry or analytics exist.
 - Permission denied crashes the app.
 - The user cannot see or stop active capture.

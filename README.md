@@ -4,7 +4,7 @@
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
 [![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
-[![AI](https://img.shields.io/badge/AI-off%20by%20default-4338ca)](#ai-handoff)
+[![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-chatgpt)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ScreenPebble is a local-first desktop utility for the tiny parts of your screen
@@ -14,7 +14,7 @@ timers, status rows, and other small visual states.
 The product idea is intentionally small:
 
 ```text
-select a region -> keep it visible -> detect meaningful changes locally
+select a region -> keep it visible -> optionally ask ChatGPT about that crop
 ```
 
 ![ScreenPebble demo](docs/assets/screenpebble-demo.gif)
@@ -51,13 +51,15 @@ Implemented:
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
 - Optional local OCR service boundary, disabled by default.
-- Optional AI handoff policy boundary, disabled by default.
+- API-key-free ChatGPT account connection through the bundled official Codex
+  app-server.
+- Explicit selected-region image questions using a compact image model at low
+  reasoning effort.
 
 Not shipped yet:
 
 - Signed installer or Homebrew formula.
 - Production local OCR adapter.
-- Production AI connector.
 - Telemetry, cloud sync, browser automation, or ChatGPT session automation.
 
 ## Principles
@@ -69,7 +71,7 @@ Not shipped yet:
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
 | Local first | Diff runs locally now; future OCR and AI handoff must stay behind local gates. |
-| AI is optional | AI handoff is per region, explicit, and off by default. |
+| AI is explicit | One selected crop is sent only after the user presses **Ask**. |
 | Instant privacy | Privacy blank stops capture loops, not just the UI. |
 
 ## Privacy
@@ -77,7 +79,7 @@ Not shipped yet:
 ScreenPebble should be safe to explain in one sentence:
 
 > It watches only the small regions you pin, locally, with no frame history and
-> no upload by default.
+> no upload unless you explicitly ask ChatGPT about the selected crop.
 
 Never persisted:
 
@@ -91,22 +93,28 @@ Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
 [Security And Privacy](docs/SECURITY_AND_PRIVACY.md).
 
-## AI Handoff
+## Ask ChatGPT
 
-AI is not part of the core capture path.
+ChatGPT is outside the monitoring loop. ScreenPebble makes no automatic AI
+requests.
 
-The current code contains a policy boundary for future connectors:
+After selecting a region:
 
-- AI disabled by default.
-- Per-region authorization required.
-- Privacy blank, paused, hidden, closed, and deleted states block handoff.
-- Text-first payloads from OCR.
-- Image handoff only for explicit image-enabled region settings.
-- Cooldown and dedupe before connector calls.
-- Recoverable connector errors.
+1. Press **Connect ChatGPT** and complete the official OpenAI sign-in once.
+2. Enter a question and press **Ask**.
+3. ScreenPebble captures the backend-authorized crop once, encodes it in memory,
+   and sends that single image with the question.
+4. The ephemeral answer is shown in the main window and is not persisted.
 
-ScreenPebble does not scrape browser cookies, automate a logged-in ChatGPT web
-session, reuse app tokens, or stream screen images continuously.
+No OpenAI API key is requested. The app bundles the official
+[Codex app-server](https://learn.chatgpt.com/docs/app-server), keeps its account
+storage isolated from other apps, and stores credentials in the OS keychain.
+It selects an image-capable `mini` model with low reasoning effort; if the
+signed-in subscription does not offer a compatible compact model, the request
+fails instead of silently selecting a larger model.
+
+ScreenPebble does not read browser cookies, automate the ChatGPT website, reuse
+another app's tokens, use MCP, or stream screen images continuously.
 
 ## Use
 
@@ -118,6 +126,8 @@ session, reuse app tokens, or stream screen images continuously.
 5. Use **Pause**, **Live**, **Hide preview**, or **Close** as needed. Closing the
    floating window keeps the region selected so it can be reopened from the main
    window.
+6. To ask about the current crop, connect ChatGPT, type a question, and press
+   **Ask**. This sends one fresh crop only for that request.
 
 ScreenPebble captures only the selected crop. It does not save frame history or
 send captured pixels over the network.
@@ -128,13 +138,12 @@ Requirements:
 
 - macOS for the current desktop target.
 - Node.js compatible with the repository lockfile.
-- pnpm 11.
 - Rust stable.
 
 ```bash
 git clone https://github.com/o-henry/pebble.git
 cd pebble
-pnpm install
+npm install
 npm run tauri:build
 ```
 
@@ -170,6 +179,7 @@ Before a public demo, also run the
 ```text
 src/                     React UI and typed frontend command wrappers
 src-tauri/src/           Rust services, Tauri commands, and platform adapters
+scripts/                 Reproducible build-time sidecar preparation
 docs/                    Product, architecture, security, demo, and release docs
 .github/ISSUE_TEMPLATE/  Bug and feature templates
 ```
@@ -183,7 +193,8 @@ Key Rust boundaries:
 - `DiffEngine`: local visual change scoring.
 - `PebbleStore`: config-only persistence.
 - `OcrEngine`: optional local OCR boundary.
-- `AiConnector`: optional explicit handoff boundary.
+- `AiRuntime`: isolated ChatGPT auth, compact-model selection, one-shot image
+  questions, and response limits.
 
 ## Contributing
 

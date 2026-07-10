@@ -15,7 +15,7 @@ impl AppStatus {
             phase: "pre-alpha",
             scaffold_ready: true,
             capture_enabled: cfg!(target_os = "macos"),
-            ai_enabled: false,
+            ai_enabled: cfg!(target_os = "macos"),
         }
     }
 }

@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../app/appContent";
+import type {
+  AiAnswer,
+  AiConnectionStatus
+} from "../features/ai/regionQuestion";
 import type { CaptureError } from "../features/capture/captureFrame";
 import type {
   LiveTileCaptureRequest,
@@ -65,6 +69,16 @@ export interface BackendCommandMap {
   };
   request_screen_capture_access: {
     result: boolean;
+  };
+  get_ai_connection_status: {
+    result: AiConnectionStatus;
+  };
+  connect_chatgpt: {
+    result: AiConnectionStatus;
+  };
+  ask_selected_region: {
+    args: { question: string };
+    result: AiAnswer;
   };
   capture_live_tile_once: {
     args: { request: LiveTileCaptureRequest };
@@ -183,6 +197,27 @@ export function closePebbleWindow(): Promise<PebbleSessionSnapshot> {
 
 export function requestScreenCaptureAccess(): Promise<boolean> {
   return invokeBackend("request_screen_capture_access");
+}
+
+let pendingAiConnectionStatus: Promise<AiConnectionStatus> | null = null;
+
+export function getAiConnectionStatus(): Promise<AiConnectionStatus> {
+  if (!pendingAiConnectionStatus) {
+    pendingAiConnectionStatus = invokeBackend("get_ai_connection_status").finally(
+      () => {
+        pendingAiConnectionStatus = null;
+      }
+    );
+  }
+  return pendingAiConnectionStatus;
+}
+
+export function connectChatGPT(): Promise<AiConnectionStatus> {
+  return invokeBackend("connect_chatgpt");
+}
+
+export function askSelectedRegion(question: string): Promise<AiAnswer> {
+  return invokeBackend("ask_selected_region", { question });
 }
 
 export function captureLiveTileOnce(

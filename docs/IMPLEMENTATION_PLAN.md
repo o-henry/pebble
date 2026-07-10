@@ -376,17 +376,18 @@ Commit message:
 feat: add optional local ocr
 ```
 
-## Phase 13 - Optional AI Handoff
+## Phase 13 - Explicit AI Region Questions
 
-Goal: allow safe text-first AI handoff only after local monitoring works.
+Goal: let a user explicitly ask ChatGPT about one selected crop without an API
+key or automatic AI monitoring.
 
 Build:
 
-- Per-region AI enablement, default off.
-- Connector adapter interface.
-- Text-first payload builder.
-- Cooldown and dedupe.
-- Visible AI handoff indicator.
+- Official Codex app-server sidecar with isolated ChatGPT OAuth.
+- One backend-authorized crop per visible **Ask** action.
+- Memory-only PNG data URL payload.
+- Compact image model selection with low reasoning effort.
+- Ephemeral read-only thread and bounded answer.
 
 Do not build:
 
@@ -394,19 +395,21 @@ Do not build:
 - Browser cookie scraping.
 - Continuous image streaming.
 - Whole-screen AI access.
+- MCP integration.
+- Automatic change-triggered AI calls.
 
 Tests:
 
-- AI disabled by default.
-- Unauthorized region cannot hand off data.
-- Text payload excludes unrelated screen content.
-- Image handoff requires explicit region setting.
-- Cooldown and dedupe reduce repeated calls.
+- No AI request occurs without **Ask**.
+- Unauthorized, blanked, stale, or reconfigured regions cannot upload data.
+- The image payload is a selected crop encoded without a temp file.
+- Expensive non-mini model fallback is rejected.
+- Webviews have no shell or opener permission.
 
 Commit message:
 
 ```text
-feat: add optional ai handoff
+feat: add explicit region questions
 ```
 
 ## Phase 14 - Release Readiness
