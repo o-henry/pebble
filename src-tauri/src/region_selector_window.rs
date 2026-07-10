@@ -64,12 +64,25 @@ pub fn region_selector_monitor_geometry(
         .current_monitor()
         .map_err(|error| WindowShellError::unavailable(error.to_string()))?
         .ok_or_else(|| WindowShellError::unavailable("Active display is unavailable."))?;
+
+    Ok(monitor_geometry(&monitor))
+}
+
+pub(crate) fn available_monitor_geometries(
+    app: &AppHandle,
+) -> Result<Vec<MonitorGeometry>, WindowShellError> {
+    app.available_monitors()
+        .map(|monitors| monitors.iter().map(monitor_geometry).collect())
+        .map_err(|error| WindowShellError::unavailable(error.to_string()))
+}
+
+fn monitor_geometry(monitor: &Monitor) -> MonitorGeometry {
     let position = monitor.position();
     let size = monitor.size();
     let scale_factor = monitor.scale_factor();
 
-    Ok(MonitorGeometry {
-        id: monitor_identifier(&monitor),
+    MonitorGeometry {
+        id: monitor_identifier(monitor),
         logical_origin: LogicalPoint { x: 0.0, y: 0.0 },
         logical_size: LogicalSize {
             width: size.width as f64 / scale_factor,
@@ -80,7 +93,7 @@ pub fn region_selector_monitor_geometry(
             y: position.y,
         },
         scale_factor,
-    })
+    }
 }
 
 pub(crate) fn monitor_identifier(monitor: &Monitor) -> String {

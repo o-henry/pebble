@@ -49,6 +49,10 @@ impl AuthorizedLiveTileCapture {
             session_revision,
         }
     }
+
+    pub(crate) fn session_revision(&self) -> u64 {
+        self.session_revision
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -126,6 +130,13 @@ impl LiveTileState {
             .lock()
             .expect("live tile state lock")
             .set_privacy_blank(active, session_revision);
+    }
+
+    pub fn discard_frame(&self, tile_id: &str) {
+        self.service
+            .lock()
+            .expect("live tile state lock")
+            .discard_frame(tile_id);
     }
 }
 
@@ -226,6 +237,10 @@ impl<B: CaptureBackend> LiveTileService<B> {
 
         self.scheduler.sync_lifecycle(&self.lifecycle);
         self.latest_frames.clear();
+    }
+
+    pub fn discard_frame(&mut self, tile_id: &str) {
+        self.latest_frames.remove(tile_id);
     }
 
     fn capture_frame_event(

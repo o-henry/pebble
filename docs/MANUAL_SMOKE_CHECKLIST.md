@@ -35,6 +35,11 @@ npm run tauri:build
 - Privacy blank 20 times.
 - Create/delete tile 20 times.
 - Permission denied flow.
+- Built-in Retina selection produces a live frame at the expected crop.
+- Retina secondary display with a non-zero origin produces the expected crop.
+- Hide the app with an active tile and verify capture stops until it is visible.
+- Rearrange or disconnect the selected display and verify capture fails closed.
+- Trigger privacy blank and close while capture is active; no late frame appears.
 - Quit and verify no capture task remains.
 
 ## Privacy Checks

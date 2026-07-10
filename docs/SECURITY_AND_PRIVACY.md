@@ -32,6 +32,13 @@ Current desktop safeguards:
   opening a live tile.
 - Live capture commands and cropped-frame events are accepted only by the
   visible Pebble window, not the main or selector windows.
+- Webviews may listen for backend events but cannot emit authoritative session
+  or frame events.
+- The selected display identity, bounds, and scale are checked again immediately
+  before capture and before a frame is delivered.
+- Every captured frame is matched to the current session revision; frames that
+  finish after privacy blank, close, or reselection are discarded.
+- Hidden or minimized Pebble windows cannot request or receive live frames.
 - The floating tile is positioned outside the selected source region when the
   display has room, preventing recursive self-capture.
 - Tile content is capture-protected so ScreenPebble does not ingest its own

@@ -172,10 +172,44 @@ fn capture_live_tile_once(
         ));
     }
 
-    let authorized = session.authorize_capture(request)?;
+    if !capture_window_allows_delivery(
+        window.is_visible().unwrap_or(false),
+        window.is_minimized().unwrap_or(true),
+        true,
+    ) {
+        return Err(capture_error(
+            CaptureErrorCode::UnauthorizedWindow,
+            window.label(),
+            "Live capture stops while the Pebble window is hidden.",
+        ));
+    }
+
+    let monitors = current_monitor_geometries(&app)?;
+    let authorized = session.authorize_capture(request, &monitors)?;
+    let expected_revision = authorized.session_revision();
     let outcome = state.capture_once(authorized)?;
 
     if let Some(event) = &outcome.frame_event {
+        let current = current_monitor_geometries(&app)
+            .ok()
+            .and_then(|monitors| {
+                session
+                    .frame_delivery_is_current(expected_revision, &monitors)
+                    .ok()
+            })
+            .unwrap_or(false);
+        let visible = window.is_visible().unwrap_or(false);
+        let minimized = window.is_minimized().unwrap_or(true);
+
+        if !capture_window_allows_delivery(visible, minimized, current) {
+            state.discard_frame(live_tile::MAIN_LIVE_TILE_ID);
+            return Err(capture_error(
+                CaptureErrorCode::CaptureUnavailable,
+                live_tile::MAIN_LIVE_TILE_ID,
+                "Captured frame was discarded because the Pebble session changed.",
+            ));
+        }
+
         let _ = app.emit_to(
             pebble_session::PEBBLE_TILE_LABEL,
             live_tile::live_tile_frame_event_name(),
@@ -184,6 +218,22 @@ fn capture_live_tile_once(
     }
 
     Ok(outcome.response)
+}
+
+fn current_monitor_geometries(
+    app: &tauri::AppHandle,
+) -> Result<Vec<region_selection_types::MonitorGeometry>, CaptureError> {
+    region_selector_window::available_monitor_geometries(app).map_err(|error| {
+        capture_error(
+            CaptureErrorCode::MonitorUnavailable,
+            live_tile::MAIN_LIVE_TILE_ID,
+            error.message,
+        )
+    })
+}
+
+fn capture_window_allows_delivery(visible: bool, minimized: bool, session_current: bool) -> bool {
+    visible && !minimized && session_current
 }
 
 fn is_live_tile_window(label: &str) -> bool {
@@ -276,6 +326,28 @@ mod tests {
         assert!(!super::is_live_tile_window(
             super::region_selector_window::REGION_SELECTOR_LABEL
         ));
+    }
+
+    #[test]
+    fn hidden_minimized_or_stale_windows_cannot_deliver_frames() {
+        assert!(super::capture_window_allows_delivery(true, false, true));
+        assert!(!super::capture_window_allows_delivery(false, false, true));
+        assert!(!super::capture_window_allows_delivery(true, true, true));
+        assert!(!super::capture_window_allows_delivery(true, false, false));
+    }
+
+    #[test]
+    fn webviews_cannot_emit_authoritative_backend_events() {
+        let capability = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/capabilities/default.json"
+        ));
+
+        assert!(capability.contains("core:event:allow-listen"));
+        assert!(capability.contains("core:event:allow-unlisten"));
+        assert!(!capability.contains("core:event:allow-emit"));
+        assert!(!capability.contains("core:event:allow-emit-to"));
+        assert!(!capability.contains("core:default"));
     }
 
     #[test]

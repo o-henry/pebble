@@ -81,6 +81,18 @@ fn native_window_cleanup_removes_live_tile_task_and_latest_frame() {
 }
 
 #[test]
+fn stale_frame_can_be_discarded_before_delivery() {
+    let mut service = LiveTileService::new(FakeCaptureBackend::default());
+
+    service
+        .capture_once(request(CaptureTileMode::Live, region(10, 20, 24, 24), 1))
+        .expect("live frame");
+    service.discard_frame("tile");
+
+    assert_eq!(service.latest_frame_count(), 0);
+}
+
+#[test]
 fn privacy_blank_stops_capture_and_drops_latest_frame() {
     let mut service = LiveTileService::new(FakeCaptureBackend::default());
 

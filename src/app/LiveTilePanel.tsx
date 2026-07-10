@@ -26,6 +26,7 @@ export function LiveTilePanel({
   const handleBackendError = useCallback((message: string | null) => {
     setError(message);
     if (message) {
+      dispatch({ type: "privacyBlank" });
       dispatch({ type: "pause" });
     }
   }, []);

@@ -12,7 +12,7 @@ use crate::{
         AuthorizedLiveTileCapture, LiveTileCaptureRequest, LiveTileState, MAIN_LIVE_TILE_ID,
     },
     region_selection,
-    region_selection_types::{PhysicalRegion, RegionSelectionRequest},
+    region_selection_types::{MonitorGeometry, PhysicalRegion, RegionSelectionRequest},
     region_selector_window::{
         monitor_identifier, region_selector_monitor_geometry, REGION_SELECTOR_LABEL,
     },
@@ -152,6 +152,7 @@ impl PebbleSessionState {
     pub fn authorize_capture(
         &self,
         request: LiveTileCaptureRequest,
+        monitors: &[MonitorGeometry],
     ) -> Result<AuthorizedLiveTileCapture, CaptureError> {
         let data = self.data.lock().map_err(|_| {
             capture_error(
@@ -191,6 +192,7 @@ impl PebbleSessionState {
                 "Capture scale factor is unavailable.",
             )
         })?;
+        validate_current_monitor(region, scale_factor, monitors)?;
         let sanitized = LiveTileCaptureRequest {
             request_id: request.request_id,
             blank_generation: request.blank_generation,
@@ -210,10 +212,89 @@ impl PebbleSessionState {
             data.snapshot.revision,
         ))
     }
+
+    pub fn frame_delivery_is_current(
+        &self,
+        expected_revision: u64,
+        monitors: &[MonitorGeometry],
+    ) -> Result<bool, PebbleSessionError> {
+        let data = self
+            .data
+            .lock()
+            .map_err(|_| PebbleSessionError::state_unavailable())?;
+
+        if !frame_delivery_is_current(&data.snapshot, expected_revision) {
+            return Ok(false);
+        }
+
+        let Some(region) = data.snapshot.region.as_ref() else {
+            return Ok(false);
+        };
+        let Some(scale_factor) = data.capture_scale_factor else {
+            return Ok(false);
+        };
+
+        Ok(validate_current_monitor(region, scale_factor, monitors).is_ok())
+    }
 }
 
 fn increment_revision(snapshot: &mut PebbleSessionSnapshot) {
     snapshot.revision = snapshot.revision.saturating_add(1);
+}
+
+pub(crate) fn validate_current_monitor(
+    region: &PhysicalRegion,
+    scale_factor: f64,
+    monitors: &[MonitorGeometry],
+) -> Result<(), CaptureError> {
+    let monitor = monitors
+        .iter()
+        .find(|monitor| monitor.id == region.monitor_id)
+        .ok_or_else(|| {
+            capture_error(
+                CaptureErrorCode::MonitorUnavailable,
+                &region.monitor_id,
+                "The selected display configuration has changed.",
+            )
+        })?;
+
+    if monitor.scale_factor.to_bits() != scale_factor.to_bits() {
+        return Err(capture_error(
+            CaptureErrorCode::MonitorUnavailable,
+            &region.monitor_id,
+            "The selected display scale has changed.",
+        ));
+    }
+
+    let monitor_width = (monitor.logical_size.width * scale_factor).round() as i64;
+    let monitor_height = (monitor.logical_size.height * scale_factor).round() as i64;
+    let left = i64::from(region.x);
+    let top = i64::from(region.y);
+    let right = left + i64::from(region.width);
+    let bottom = top + i64::from(region.height);
+    let monitor_left = i64::from(monitor.physical_origin.x);
+    let monitor_top = i64::from(monitor.physical_origin.y);
+
+    if left < monitor_left
+        || top < monitor_top
+        || right > monitor_left + monitor_width
+        || bottom > monitor_top + monitor_height
+    {
+        return Err(capture_error(
+            CaptureErrorCode::RegionOutOfBounds,
+            &region.monitor_id,
+            "The selected region no longer belongs to the active display.",
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn frame_delivery_is_current(
+    snapshot: &PebbleSessionSnapshot,
+    expected_revision: u64,
+) -> bool {
+    snapshot.revision == expected_revision && snapshot.window_open && !snapshot.privacy_blank_active
 }
 
 pub fn confirm_region_selection(
@@ -225,11 +306,7 @@ pub fn confirm_region_selection(
     ensure_window(window, REGION_SELECTOR_LABEL)?;
     let monitor = region_selector_monitor_geometry(window)
         .map_err(|error| PebbleSessionError::window_unavailable(error.message))?;
-    let selected = state.select_region(RegionSelectionRequest {
-        monitor,
-        start: request.start,
-        end: request.end,
-    })?;
+    let selected = state.select_region(trusted_selection_request(request, monitor))?;
     let live_tile = app.state::<LiveTileState>();
     live_tile.close_tile(MAIN_LIVE_TILE_ID, selected.revision.saturating_sub(1));
     live_tile.set_privacy_blank(false, selected.revision);
@@ -240,6 +317,17 @@ pub fn confirm_region_selection(
         .map_err(|error| PebbleSessionError::window_unavailable(error.to_string()))?;
 
     Ok(snapshot)
+}
+
+pub(crate) fn trusted_selection_request(
+    request: RegionSelectionRequest,
+    monitor: MonitorGeometry,
+) -> RegionSelectionRequest {
+    RegionSelectionRequest {
+        monitor,
+        start: request.start,
+        end: request.end,
+    }
 }
 
 pub fn show_active_pebble_window(
