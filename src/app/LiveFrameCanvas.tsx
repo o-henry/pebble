@@ -32,10 +32,10 @@ export function LiveFrameCanvas({
   return (
     <canvas
       ref={ref}
-      className="live-frame-canvas"
+      className={"live-frame-canvas " + (frame ? "has-frame" : "is-empty")}
       width={width}
       height={height}
-      aria-label="Latest live tile frame"
+      aria-label={frame ? "Latest live tile frame" : "No live tile frame"}
     />
   );
 }

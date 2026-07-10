@@ -15,13 +15,16 @@ export function PrivacyBanner({
 
   return (
     <section
-      className={`privacy-banner ${state.blankActive ? "is-blanked" : ""}`}
+      className={"privacy-banner " + (state.blankActive ? "is-blanked" : "")}
       aria-live="polite"
       aria-label="Privacy blank"
     >
-      <div>
-        <p className="section-label">Privacy</p>
-        <h2>{view.title}</h2>
+      <div className="privacy-banner__intro">
+        <span className="privacy-indicator" aria-hidden="true" />
+        <div>
+          <p className="section-label">Privacy control</p>
+          <h2>{view.title}</h2>
+        </div>
       </div>
       <dl className="privacy-state-list">
         <div>
@@ -33,11 +36,17 @@ export function PrivacyBanner({
           <dd>{view.captureLabel}</dd>
         </div>
         <div>
-          <dt>Hotkey</dt>
-          <dd>{state.hotkeyPermission}</dd>
+          <dt>Retention</dt>
+          <dd>memory only</dd>
         </div>
       </dl>
-      <button type="button" onClick={onAction}>
+      <button
+        type="button"
+        className={
+          "privacy-action " + (state.blankActive ? "is-restoring" : "")
+        }
+        onClick={onAction}
+      >
         {view.actionLabel}
       </button>
     </section>

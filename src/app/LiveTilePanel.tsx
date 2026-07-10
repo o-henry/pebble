@@ -21,6 +21,12 @@ export function LiveTilePanel({
   const mode = tile.mode;
   const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
+  const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
+  const frameState = visibleFrame
+    ? String(visibleFrame.width) + " x " + String(visibleFrame.height) + " frame"
+    : visibleMode === "live"
+      ? "Waiting for frame"
+      : "No active frame";
   const backend = useLiveTileBackend({
     tile,
     requestMode,
@@ -41,12 +47,30 @@ export function LiveTilePanel({
 
   return (
     <section className="live-tile-section" aria-labelledby="live-tile-title">
-      <div>
-        <p className="section-label">Live tile</p>
-        <h2 id="live-tile-title">{tile.title}</h2>
-      </div>
+      <header className="panel-heading">
+        <div>
+          <p className="section-label">Primary observer</p>
+          <h2 id="live-tile-title">{tile.title}</h2>
+        </div>
+        <span className={"mode-badge is-" + visibleMode}>{visibleMode}</span>
+      </header>
       <div className="live-tile-panel">
-        <LiveFrameCanvas frame={visibleFrame} />
+        <div
+          className={
+            "live-frame-stage " + (visibleFrame ? "has-frame" : "is-empty")
+          }
+        >
+          <LiveFrameCanvas frame={visibleFrame} />
+          <div className="frame-chrome" aria-hidden="true">
+            <span>{visibleMode}</span>
+            <span>
+              {tile.region.width} x {tile.region.height}
+            </span>
+          </div>
+          <p className="frame-state" role="status">
+            {frameState}
+          </p>
+        </div>
         <LiveTileStats
           tile={tile}
           frame={visibleFrame}
@@ -55,6 +79,7 @@ export function LiveTilePanel({
         {error ? <p className="live-tile-error">{error}</p> : null}
         <LiveTileControls
           fps={tile.fps}
+          mode={visibleMode}
           onLive={() => dispatch({ type: "resume" })}
           onPause={pauseTile}
           onClose={closeTile}

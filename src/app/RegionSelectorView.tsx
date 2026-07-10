@@ -81,7 +81,11 @@ export function RegionSelectorView() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <SelectorHud status={state.status} dimensions={dimensionLabel(rect)} />
+      <SelectorHud
+        status={state.status}
+        dimensions={dimensionLabel(rect)}
+        onCancel={cancelSelector}
+      />
       {rect ? <SelectionBox rect={rect} /> : null}
       <SelectorResult state={state} />
     </main>

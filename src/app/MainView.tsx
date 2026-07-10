@@ -1,7 +1,6 @@
 import { useEffect, useReducer, useState } from "react";
 import { appStatus } from "./appContent";
 import {
-  Docs,
   PerformanceLimits,
   Principles,
   WindowShellControls
@@ -93,20 +92,56 @@ export function MainView() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="hero-section" aria-labelledby="screenpebble-title">
-        <p className="status-line">
-          {appStatus.phase} · live tile ready · real capture gated · AI off
-        </p>
-        <h1 id="screenpebble-title">ScreenPebble</h1>
-        <p className="hero-copy">
-          Pin a tiny part of your screen. Let local watchers notice what changed.
-        </p>
-        <p className="trust-copy">
-          This build includes the desktop scaffold, hard performance limits, and
-          a low-FPS live tile backed by memory-only cropped frames. There is no
-          OCR, AI connector, telemetry, or network feature in this build.
-        </p>
+    <main
+      className={
+        "app-shell " + (privacy.blankActive ? "is-privacy-blanked" : "")
+      }
+    >
+      <header className="workspace-header">
+        <div className="brand-lockup">
+          <span className="brand-mark" aria-hidden="true">
+            <span />
+          </span>
+          <span className="brand-name">ScreenPebble</span>
+        </div>
+        <div className="workspace-header__status" aria-label="Application status">
+          <span className="status-dot" aria-hidden="true" />
+          <span>Local session</span>
+          <span className="status-divider" aria-hidden="true" />
+          <span>{appStatus.phase}</span>
+        </div>
+      </header>
+
+      <section className="command-deck" aria-labelledby="screenpebble-title">
+        <div className="command-deck__title">
+          <p className="section-label">Observer console</p>
+          <h1 id="screenpebble-title">ScreenPebble</h1>
+          <p className="command-deck__subtitle">
+            Local screen signals, kept small.
+          </p>
+        </div>
+        <div className="command-deck__actions">
+          <button type="button" className="primary-action" onClick={openSelector}>
+            New pebble
+          </button>
+          <button type="button" className="secondary-action" onClick={openTile}>
+            Open test tile
+          </button>
+        </div>
+        <dl className="command-deck__facts" aria-label="Session guarantees">
+          <div>
+            <dt>Scope</dt>
+            <dd>Selected only</dd>
+          </div>
+          <div>
+            <dt>Storage</dt>
+            <dd>Memory only</dd>
+          </div>
+          <div>
+            <dt>Network</dt>
+            <dd>Off</dd>
+          </div>
+        </dl>
       </section>
 
       <PrivacyBanner
@@ -114,20 +149,25 @@ export function MainView() {
         onBlank={() => dispatchPrivacy({ type: "blank" })}
         onRestore={() => dispatchPrivacy({ type: "restore" })}
       />
+
+      <div className="workspace-grid">
+        <LiveTilePanel privacyBlankActive={privacy.blankActive} />
+        <aside className="operations-rail" aria-label="Pebble controls">
+          <RegionSelectorSection
+            shell={selectorShell}
+            error={selectorError}
+            onOpen={openSelector}
+          />
+          <WindowShellControls
+            tile={snapshot.testTile}
+            onOpen={openTile}
+            onRefresh={refreshShell}
+          />
+          <PerformanceLimits />
+        </aside>
+      </div>
+
       <Principles />
-      <PerformanceLimits />
-      <RegionSelectorSection
-        shell={selectorShell}
-        error={selectorError}
-        onOpen={openSelector}
-      />
-      <LiveTilePanel privacyBlankActive={privacy.blankActive} />
-      <WindowShellControls
-        tile={snapshot.testTile}
-        onOpen={openTile}
-        onRefresh={refreshShell}
-      />
-      <Docs />
     </main>
   );
 }

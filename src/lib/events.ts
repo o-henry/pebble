@@ -3,6 +3,7 @@ import {
   LIVE_TILE_FRAME_EVENT,
   type LiveTileFrameEvent
 } from "../features/live-tile/liveTile";
+import { isTauriRuntime } from "./runtime";
 
 export function listenToLiveTileFrames(
   tileId: string,
@@ -17,13 +18,6 @@ export function listenToLiveTileFrames(
       onFrame(event.payload);
     }
   });
-}
-
-function isTauriRuntime() {
-  return Object.prototype.hasOwnProperty.call(
-    globalThis,
-    "__TAURI_INTERNALS__"
-  );
 }
 
 function noop() {

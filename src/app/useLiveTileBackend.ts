@@ -13,6 +13,7 @@ import {
 } from "../features/live-tile/liveTile";
 import { listenToLiveTileFrames } from "../lib/events";
 import { captureLiveTileOnce } from "../lib/invoke";
+import { isTauriRuntime } from "../lib/runtime";
 
 export function useLiveTileBackend({
   tile,
@@ -27,12 +28,14 @@ export function useLiveTileBackend({
   onError: (message: string | null) => void;
   dispatch: (action: LiveTileAction) => void;
 }) {
+  const backendEnabled = isTauriRuntime();
   const tileRef = useRef(tile);
   const privacyBlankRef = useRef(privacyBlankActive);
   const requestSequenceRef = useRef(0);
   const activeRequestIdRef = useRef<string | null>(null);
   const nextRequest = useCallback((state: LiveTileState, mode: LiveTileMode) => {
-    const requestId = `${state.tileId}-${requestSequenceRef.current + 1}`;
+    const requestId =
+      state.tileId + "-" + String(requestSequenceRef.current + 1);
 
     requestSequenceRef.current += 1;
     activeRequestIdRef.current = requestId;
@@ -75,11 +78,20 @@ export function useLiveTileBackend({
   }, [dispatch, privacyBlankActive]);
 
   useEffect(() => {
-    return subscribeFrames(tile.tileId, dispatch, privacyBlankRef, activeRequestIdRef);
-  }, [dispatch, tile.tileId]);
+    if (!backendEnabled) {
+      return;
+    }
+
+    return subscribeFrames(
+      tile.tileId,
+      dispatch,
+      privacyBlankRef,
+      activeRequestIdRef
+    );
+  }, [backendEnabled, dispatch, tile.tileId]);
 
   useEffect(() => {
-    if (requestMode === "live") {
+    if (!backendEnabled || requestMode === "live") {
       return;
     }
 
@@ -88,19 +100,38 @@ export function useLiveTileBackend({
     }, 0);
 
     return () => globalThis.clearTimeout(timeout);
-  }, [nextRequest, settleBackend, requestMode, tile.fps, tile.region, tile.tileId]);
+  }, [
+    backendEnabled,
+    nextRequest,
+    settleBackend,
+    requestMode,
+    tile.fps,
+    tile.region,
+    tile.tileId
+  ]);
 
   useEffect(() => {
-    if (requestMode !== "live") {
+    if (!backendEnabled || requestMode !== "live") {
       return;
     }
 
     return startSequentialPolling(tile.fps, () =>
-      settleBackend(nextRequest(tileRef.current, "live")).catch((reason: unknown) => {
-        onError(reason instanceof Error ? reason.message : "Live tile failed");
-      })
+      settleBackend(nextRequest(tileRef.current, "live")).catch(
+        (reason: unknown) => {
+          onError(reason instanceof Error ? reason.message : "Live tile failed");
+        }
+      )
     );
-  }, [nextRequest, onError, requestMode, settleBackend, tile.fps, tile.region, tile.tileId]);
+  }, [
+    backendEnabled,
+    nextRequest,
+    onError,
+    requestMode,
+    settleBackend,
+    tile.fps,
+    tile.region,
+    tile.tileId
+  ]);
 
   return {
     clearActiveRequest: () => {
@@ -119,16 +150,24 @@ function subscribeFrames(
   let active = true;
 
   listenToLiveTileFrames(tileId, (event) => {
-    if (shouldAcceptLiveTileFrame(activeRequestIdRef.current, privacyBlankRef.current, event)) {
+    if (
+      shouldAcceptLiveTileFrame(
+        activeRequestIdRef.current,
+        privacyBlankRef.current,
+        event
+      )
+    ) {
       dispatch({ type: "frameReceived", event });
     }
-  }).then((nextUnlisten) => {
-    if (active) {
-      unlisten = nextUnlisten;
-    } else {
-      nextUnlisten();
-    }
-  }).catch(() => undefined);
+  })
+    .then((nextUnlisten) => {
+      if (active) {
+        unlisten = nextUnlisten;
+      } else {
+        nextUnlisten();
+      }
+    })
+    .catch(() => undefined);
 
   return () => {
     active = false;
