@@ -473,11 +473,9 @@ pub fn close_pebble_window(
     state: &PebbleSessionState,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
     ensure_window(window, PEBBLE_TILE_LABEL)?;
-    let snapshot = state.set_window_open(false)?;
-    clear_live_tile(app, snapshot.revision);
-    emit_session(app, &snapshot);
+    let snapshot = mark_pebble_window_hidden(app, state)?;
     window
-        .close()
+        .hide()
         .map_err(|error| PebbleSessionError::window_unavailable(error.to_string()))?;
     Ok(snapshot)
 }
@@ -570,17 +568,20 @@ fn open_pebble_window(
     let close_app = app.clone();
     let close_state = state.clone();
     let close_capture = app.state::<LiveTileState>().inner().clone();
+    let close_window = window.clone();
     window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed) {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
             match close_state.set_window_open(false) {
                 Ok(snapshot) => {
                     close_capture.close_tile(MAIN_LIVE_TILE_ID, snapshot.revision);
                     emit_session(&close_app, &snapshot);
                 }
-                Err(_) => {
-                    close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX);
-                }
+                Err(_) => close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX),
             }
+            let _ = close_window.hide();
+        } else if matches!(event, WindowEvent::Destroyed) {
+            close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX);
         }
     });
 
@@ -590,6 +591,16 @@ fn open_pebble_window(
 fn clear_live_tile(app: &AppHandle, session_revision: u64) {
     app.state::<LiveTileState>()
         .close_tile(MAIN_LIVE_TILE_ID, session_revision);
+}
+
+fn mark_pebble_window_hidden(
+    app: &AppHandle,
+    state: &PebbleSessionState,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    let snapshot = state.set_window_open(false)?;
+    clear_live_tile(app, snapshot.revision);
+    emit_session(app, &snapshot);
+    Ok(snapshot)
 }
 
 fn pebble_window_position(

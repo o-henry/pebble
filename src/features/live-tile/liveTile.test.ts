@@ -129,6 +129,16 @@ describe("live tile state", () => {
     expect(request.blankGeneration).toBe(1);
   });
 
+  it("hidden windows discard pixels while preserving live intent", () => {
+    const live = liveTileReducer(INITIAL_LIVE_TILE_STATE, { type: "resume" });
+    const withFrame = applyFrameEvent(live, frameEvent(1, 2, 2));
+    const hidden = liveTileReducer(withFrame, { type: "windowHidden" });
+
+    expect(hidden.mode).toBe("live");
+    expect(hidden.latestFrame).toBeNull();
+    expect(hidden.renderCount).toBe(0);
+  });
+
   it("adopts the backend privacy generation before capture resumes", () => {
     const blanked = liveTileReducer(INITIAL_LIVE_TILE_STATE, {
       type: "backendSettled",

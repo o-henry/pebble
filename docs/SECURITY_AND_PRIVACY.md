@@ -45,6 +45,8 @@ Current desktop safeguards:
   preview if a user later moves the tile over the source.
 - Native close and stop both clear the scheduler task and latest in-memory
   frame.
+- Adaptive colors are sampled locally from the existing selected crop, are not
+  persisted, and reset as soon as the window is hidden or privacy blank is on.
 
 No captured content leaves the machine during monitoring. One selected crop
 leaves the machine only after the user explicitly asks AI about it.

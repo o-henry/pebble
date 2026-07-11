@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type {
   LiveTileAction,
@@ -16,6 +16,8 @@ import {
 import { listenToLiveTileFrames } from "../lib/events";
 import { captureLiveTileOnce } from "../lib/invoke";
 import { isTauriRuntime } from "../lib/runtime";
+import { useDocumentVisibility } from "./useDocumentVisibility";
+import { useCaptureVisibilityGuards } from "./useCaptureVisibilityGuards";
 
 export function useLiveTileBackend({
   tile,
@@ -31,12 +33,20 @@ export function useLiveTileBackend({
   dispatch: (action: LiveTileAction) => void;
 }) {
   const backendEnabled = isTauriRuntime();
+  const documentVisible = useDocumentVisibility();
   const tileRef = useRef(tile);
   const privacyBlankRef = useRef(privacyBlankActive);
   const requestSequenceRef = useRef(0);
   const requestScopeRef = useRef<string | null>(null);
   requestScopeRef.current ??= createLiveTileRequestScope(tile.tileId);
   const activeRequestIdRef = useRef<string | null>(null);
+  useCaptureVisibilityGuards({
+    documentVisible,
+    privacyBlankActive,
+    activeRequestIdRef,
+    privacyBlankRef,
+    dispatch
+  });
   const nextRequest = useCallback((state: LiveTileState, mode: LiveTileMode) => {
     const requestId = scopedLiveTileRequestId(
       requestScopeRef.current ?? createLiveTileRequestScope(state.tileId),
@@ -70,19 +80,6 @@ export function useLiveTileBackend({
     tileRef.current = tile;
   }, [tile]);
 
-  useLayoutEffect(() => {
-    privacyBlankRef.current = privacyBlankActive;
-    if (privacyBlankActive) {
-      activeRequestIdRef.current = null;
-    }
-  }, [privacyBlankActive]);
-
-  useEffect(() => {
-    if (privacyBlankActive) {
-      globalThis.queueMicrotask(() => dispatch({ type: "privacyBlank" }));
-    }
-  }, [dispatch, privacyBlankActive]);
-
   useEffect(() => {
     if (!backendEnabled) {
       return;
@@ -99,6 +96,7 @@ export function useLiveTileBackend({
   useEffect(() => {
     if (
       !backendEnabled ||
+      !documentVisible ||
       requestMode === "live" ||
       requestMode === "blanked"
     ) {
@@ -112,6 +110,7 @@ export function useLiveTileBackend({
     return () => globalThis.clearTimeout(timeout);
   }, [
     backendEnabled,
+    documentVisible,
     nextRequest,
     settleBackend,
     requestMode,
@@ -121,7 +120,7 @@ export function useLiveTileBackend({
   ]);
 
   useEffect(() => {
-    if (!backendEnabled || requestMode !== "live") {
+    if (!backendEnabled || !documentVisible || requestMode !== "live") {
       return;
     }
 
@@ -139,6 +138,7 @@ export function useLiveTileBackend({
     };
   }, [
     backendEnabled,
+    documentVisible,
     nextRequest,
     onError,
     requestMode,

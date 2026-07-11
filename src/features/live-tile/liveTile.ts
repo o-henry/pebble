@@ -56,6 +56,7 @@ export interface LiveTileState {
 export type LiveTileAction =
   | { type: "resume" }
   | { type: "pause" }
+  | { type: "windowHidden" }
   | { type: "privacyBlank" }
   | { type: "close" }
   | { type: "watchRegion"; region: PhysicalRegion }
@@ -101,6 +102,8 @@ export function liveTileReducer(
       return { ...state, mode: "live" };
     case "pause":
       return { ...state, mode: "paused" };
+    case "windowHidden":
+      return clearLatestFrame(state);
     case "privacyBlank":
       return clearLatestFrame({
         ...state,

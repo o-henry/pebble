@@ -38,6 +38,20 @@ fn session_accepts_a_valid_region_and_tracks_window_state() {
 }
 
 #[test]
+fn hiding_the_window_preserves_the_region_and_disables_capture() {
+    let state = PebbleSessionState::default();
+    let selected = state
+        .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
+        .expect("selected region");
+    state.set_window_open(true).expect("opened window");
+    let hidden = state.set_window_open(false).expect("hidden window");
+
+    assert_eq!(hidden.region, selected.region);
+    assert!(!hidden.window_open);
+    assert!(!frame_delivery_is_current(&hidden, hidden.revision));
+}
+
+#[test]
 fn session_accepts_a_full_display_region() {
     let snapshot = PebbleSessionState::default()
         .select_region(selection_request(0.0, 0.0, 1920.0, 1080.0))
