@@ -22,12 +22,14 @@ pub const UPDATE_FEED_EVENT: &str = "pebble://update-feed";
 #[serde(rename_all = "camelCase")]
 pub enum UpdateKind {
     Watch,
+    Source,
 }
 
 impl UpdateKind {
     fn label(self) -> &'static str {
         match self {
             Self::Watch => "WATCH",
+            Self::Source => "SOURCE",
         }
     }
 }
@@ -105,6 +107,15 @@ pub fn snapshot(state: &ActivityFeedState) -> UpdateFeedSnapshot {
 
 pub fn record_watch(app: &tauri::AppHandle, state: &ActivityFeedState, summary: &str) {
     record_and_emit(app, state, UpdateKind::Watch, summary, None);
+}
+
+pub fn record_source(
+    app: &tauri::AppHandle,
+    state: &ActivityFeedState,
+    summary: &str,
+    source_url: &str,
+) {
+    record_and_emit(app, state, UpdateKind::Source, summary, Some(source_url));
 }
 
 fn record_and_emit(

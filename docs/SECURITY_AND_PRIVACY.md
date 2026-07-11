@@ -118,6 +118,13 @@ changes. It does not claim semantic understanding, text recognition, or
 domain-specific prediction. The only network image path remains a fresh
 selected crop sent after the user presses **Ask**.
 
+Public Source Watch is a separate opt-in network path. It accepts one
+user-entered public HTTPS URL for the current app session and checks it every 15
+minutes. DNS is resolved and pinned to public addresses, redirects and system
+proxies are disabled, private and reserved ranges are rejected, responses are
+limited to 512 KB, and only a title fingerprint plus source URL is retained.
+Captured pixels and OCR text are never converted into search queries.
+
 ## Permission Rules
 
 Request the smallest permissions needed for the current phase.

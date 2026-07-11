@@ -28,6 +28,7 @@ import type {
 } from "../features/region-selector/regionSelection";
 import type { RegionSelectorWindowShell } from "../features/region-selector/regionSelectorShell";
 import type { UpdateFeedSnapshot } from "../features/updates/updateFeed";
+import type { PublicSourceStatus } from "../features/updates/publicSource";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -104,6 +105,16 @@ export interface BackendCommandMap {
   };
   get_update_feed: {
     result: UpdateFeedSnapshot;
+  };
+  get_public_source_status: {
+    result: PublicSourceStatus;
+  };
+  follow_public_source: {
+    args: { url: string };
+    result: PublicSourceStatus;
+  };
+  unfollow_public_source: {
+    result: PublicSourceStatus;
   };
   capture_live_tile_once: {
     args: { request: LiveTileCaptureRequest };
@@ -272,6 +283,18 @@ export function setSmartWatch(enabled: boolean): Promise<SmartWatchStatus> {
 
 export function getUpdateFeed(): Promise<UpdateFeedSnapshot> {
   return invokeBackend("get_update_feed");
+}
+
+export function getPublicSourceStatus(): Promise<PublicSourceStatus> {
+  return invokeBackend("get_public_source_status");
+}
+
+export function followPublicSource(url: string): Promise<PublicSourceStatus> {
+  return invokeBackend("follow_public_source", { url });
+}
+
+export function unfollowPublicSource(): Promise<PublicSourceStatus> {
+  return invokeBackend("unfollow_public_source");
 }
 
 export function captureLiveTileOnce(

@@ -160,6 +160,17 @@ large increase in red, amber, or green content. It does not claim to understand
 text or predict domain-specific outcomes. Production local OCR remains future
 work.
 
+## Public Source Watch
+
+The expanded Updates area can follow one user-entered public HTTPS RSS, Atom,
+JSON, or web URL for the current app session. Pebble checks it every 15 minutes
+and appends only the latest public title and source link when it changes.
+
+Pebble never derives a search query from captured screen content. Source Watch
+does not use cookies, browser sessions, credentials, proxies, redirects, custom
+ports, local hosts, private IP ranges, or responses larger than 512 KB. Article
+bodies are neither displayed nor saved.
+
 ## Use
 
 1. Launch Pebble and click its macOS menu bar item to open the compact window.

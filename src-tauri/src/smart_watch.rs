@@ -21,21 +21,11 @@ pub struct SmartWatchState {
     data: Arc<Mutex<SmartWatchData>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct SmartWatchData {
     enabled: bool,
     revision: Option<u64>,
     notifications_sent: u16,
-}
-
-impl Default for SmartWatchData {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            revision: None,
-            notifications_sent: 0,
-        }
-    }
 }
 
 impl SmartWatchState {
