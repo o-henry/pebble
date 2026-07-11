@@ -27,6 +27,7 @@ import type {
   RegionSelectionRequest
 } from "../features/region-selector/regionSelection";
 import type { RegionSelectorWindowShell } from "../features/region-selector/regionSelectorShell";
+import type { UpdateFeedSnapshot } from "../features/updates/updateFeed";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -100,6 +101,9 @@ export interface BackendCommandMap {
   set_smart_watch: {
     args: { enabled: boolean; consentVersion: number };
     result: SmartWatchStatus;
+  };
+  get_update_feed: {
+    result: UpdateFeedSnapshot;
   };
   capture_live_tile_once: {
     args: { request: LiveTileCaptureRequest };
@@ -264,6 +268,10 @@ export function setSmartWatch(enabled: boolean): Promise<SmartWatchStatus> {
     enabled,
     consentVersion: SMART_WATCH_CONSENT_VERSION
   });
+}
+
+export function getUpdateFeed(): Promise<UpdateFeedSnapshot> {
+  return invokeBackend("get_update_feed");
 }
 
 export function captureLiveTileOnce(

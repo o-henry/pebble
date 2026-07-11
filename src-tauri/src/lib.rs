@@ -1,3 +1,6 @@
+mod activity_feed;
+#[cfg(test)]
+mod activity_feed_tests;
 pub mod ai_handoff;
 #[cfg(test)]
 mod ai_handoff_tests;
@@ -45,6 +48,7 @@ mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
 
+use activity_feed::{ActivityFeedState, UpdateFeedSnapshot};
 use ai_runtime::{AiAnswer, AiConnectionStatus, AiProvider, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
 use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
@@ -259,6 +263,19 @@ async fn ask_selected_region(
 }
 
 #[tauri::command]
+fn get_update_feed(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, ActivityFeedState>,
+) -> Result<UpdateFeedSnapshot, WindowShellError> {
+    if !is_pebble_window(window.label()) {
+        return Err(WindowShellError::unavailable(
+            "Updates are available only from the Pebble window.",
+        ));
+    }
+    Ok(activity_feed::snapshot(state.inner()))
+}
+
+#[tauri::command]
 fn get_smart_watch_status(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, SmartWatchState>,
@@ -415,6 +432,13 @@ fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::M
             }
         }
     };
+    if matches!(insight.kind, MonitorInsightKind::Change) {
+        activity_feed::record_watch(
+            app,
+            app.state::<ActivityFeedState>().inner(),
+            &insight.summary,
+        );
+    }
     let _ = app.emit_to(
         pebble_session::PEBBLE_TILE_LABEL,
         MONITOR_INSIGHT_EVENT,
@@ -487,6 +511,7 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AiRuntimeState::default())
+        .manage(ActivityFeedState::default())
         .manage(LiveTileState::default())
         .manage(monitoring::MonitoringState::default())
         .manage(SmartWatchState::default())
@@ -515,6 +540,7 @@ pub fn run() -> tauri::Result<()> {
             get_ai_connection_status,
             connect_ai_provider,
             ask_selected_region,
+            get_update_feed,
             get_smart_watch_status,
             set_smart_watch,
             capture_live_tile_once,

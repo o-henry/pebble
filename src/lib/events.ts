@@ -10,9 +10,11 @@ import {
 } from "../features/pebble-session/pebbleSession";
 import { isTauriRuntime } from "./runtime";
 import type { SmartWatchStatus } from "../features/ai/smartWatch";
+import type { UpdateEntry } from "../features/updates/updateFeed";
 
 export const MONITOR_INSIGHT_EVENT = "pebble://monitor-insight";
 export const SMART_WATCH_STATUS_EVENT = "pebble://smart-watch-status";
+export const UPDATE_FEED_EVENT = "pebble://update-feed";
 
 export interface MonitorInsight {
   kind: "baseline" | "change";
@@ -67,6 +69,17 @@ export function listenToSmartWatchStatus(
   }
   return listen<SmartWatchStatus>(SMART_WATCH_STATUS_EVENT, (event) => {
     onStatus(event.payload);
+  });
+}
+
+export function listenToUpdateFeed(
+  onEntry: (entry: UpdateEntry) => void
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return Promise.resolve(noop);
+  }
+  return listen<UpdateEntry>(UPDATE_FEED_EVENT, (event) => {
+    onEntry(event.payload);
   });
 }
 

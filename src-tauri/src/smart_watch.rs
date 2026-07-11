@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::Emitter;
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 1;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 2;
 pub const SMART_WATCH_SESSION_LIMIT: u16 = 24;
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 

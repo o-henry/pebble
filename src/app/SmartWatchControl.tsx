@@ -97,6 +97,7 @@ export function SmartWatchControl({
           <strong>SMART WATCH NOTICE</strong>
           <p>THE SELECTED REGION IS COMPARED ONLY ON THIS MAC.</p>
           <p>NO AUTOMATIC OPENAI OR CLAUDE UPLOAD. CLOUD AI RUNS ONLY WHEN YOU PRESS ASK.</p>
+          <p>GENERAL WATCH ALERTS ARE APPENDED TO DOWNLOADS/PEBBLE/PEBBLE-UPDATES.MD.</p>
           <p>ALERTS ARE LIMITED TO 24 PER APP SESSION AND STOP ON PAUSE, HIDE, PRIVACY, OR RESELECTION.</p>
           <div>
             <button type="button" className="secondary-action" onClick={() => setNoticeOpen(false)}>

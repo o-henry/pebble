@@ -62,6 +62,8 @@ Implemented:
   change cooldown, and at most 24 native alerts per app session.
 - Local-only material-change alerts through the menu bar and native
   notifications; Watch never uploads frames.
+- Collapsible Updates feed whose generic Watch summaries are appended to one
+  local Markdown journal under Downloads after the Watch notice is accepted.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
@@ -105,6 +107,11 @@ Never persisted:
 - OCR history.
 - AI prompts derived from screen content.
 - Browser URLs, cookies, tokens, API keys, or clipboard contents.
+
+Generic Watch alert summaries are an explicit exception: after the versioned
+Watch notice is accepted, they are appended to
+`Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
+questions, and AI answers are never written to that journal.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See

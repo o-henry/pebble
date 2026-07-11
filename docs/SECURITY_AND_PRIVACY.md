@@ -15,6 +15,7 @@ The app must make capture visible:
 - Privacy blank is always reachable.
 - The first **Watch** activation requires a visible scope notice and consent.
 - Watch starts off for every newly selected region and remains local-only.
+- The Watch notice discloses the Downloads journal before any summary is saved.
 - AI runs only after a visible **Ask** action in the expanded Pebble drawer.
 
 ## Local-First Default
@@ -102,8 +103,15 @@ small crop -> local capture/diff -> broad local visual signal -> local notificat
 Watch is off by default. Its first activation requires a versioned local
 consent receipt, and every new region requires a fresh opt-in. It is limited by
 the diff engine's five-minute material-change cooldown and a maximum of 24
-notifications per app session. It keeps only small in-memory statistics and never
-stores frames, OCR, or notification content.
+notifications per app session. It keeps only small in-memory statistics.
+
+After consent, Pebble appends only generalized Watch summaries and explicitly
+followed public-source titles to one local Markdown document at
+`Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
+text, manual AI questions, AI answers, article bodies, credentials, or browser
+session data to that journal.
+The journal directory is mode 0700, the file is mode 0600, symbolic-link
+targets are rejected, and the document stops accepting entries at 25 MB.
 
 The current local classifier can report broad brightness and color-distribution
 changes. It does not claim semantic understanding, text recognition, or

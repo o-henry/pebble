@@ -17,7 +17,7 @@ import {
   AiConnectionPrompt,
   type AiConnectionState
 } from "./AiConnectionPrompt";
-import { AiAnswerView } from "./AiAnswerView";
+import { AiResponseArea } from "./AiResponseArea";
 import { AiPanelHeader } from "./AiPanelHeader";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
@@ -174,7 +174,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
       ) : null}
 
       {panelError ? <p className="region-question__error" role="alert">{panelError}</p> : null}
-      <AiAnswerView answer={answer} />
+      <AiResponseArea answer={answer} />
     </section>
   );
 });

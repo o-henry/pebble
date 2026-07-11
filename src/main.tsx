@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import "./styles/app.css";
 import "./styles/smart-watch.css";
+import "./styles/update-feed.css";
 import "./styles/live-tile.css";
 import "./styles/region-selector.css";
 import "./styles/window-shell.css";

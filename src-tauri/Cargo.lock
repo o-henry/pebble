@@ -2428,6 +2428,7 @@ name = "pebble"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "libc",
  "png 0.18.1",
  "serde",
  "serde_json",
@@ -2436,6 +2437,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-shell",
+ "time",
  "tokio",
  "url",
 ]
