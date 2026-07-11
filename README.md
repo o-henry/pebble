@@ -66,8 +66,8 @@ Implemented:
 - API-key-free OpenAI account connection through the bundled Codex app-server.
 - Optional Claude Pro/Max account connection through an installed official
   Claude CLI, without bundling another large runtime.
-- Explicit selected-region image questions using compact image models at low
-  reasoning effort, with model and generation-time metadata.
+- Explicit selected-region image questions using balanced image models at
+  medium reasoning effort, with model and generation-time metadata.
 
 Not shipped yet:
 
@@ -125,8 +125,9 @@ After selecting a region:
 No API key is requested. OpenAI uses Pebble's isolated bundled Codex app-server
 and the OS keychain. Claude uses the separately installed official
 [Claude CLI](https://code.claude.com/docs/en/quickstart) and its Pro/Max account
-sign-in. Pebble selects `gpt-5.4-mini` or Claude Haiku 4.5 at low effort; it
-fails closed instead of silently escalating to a larger, more expensive model.
+sign-in. Pebble prefers `gpt-5.6-terra` at medium effort, permits
+`gpt-5.6-luna` only as its OpenAI fallback, and uses Claude Sonnet 5 at medium
+effort. It never falls back to mini or Haiku automatically.
 
 Pebble does not read browser cookies, automate an AI website, reuse another
 app's tokens, use MCP, or stream screen images continuously.
@@ -207,7 +208,7 @@ Key Rust boundaries:
 - `DiffEngine`: local visual change scoring.
 - `PebbleStore`: config-only persistence.
 - `OcrEngine`: optional local OCR boundary.
-- `AiRuntime`: isolated AI auth, compact-model selection, one-shot image
+- `AiRuntime`: isolated AI auth, balanced-model selection, one-shot image
   questions, and response limits.
 
 ## Contributing

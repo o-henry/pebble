@@ -387,7 +387,7 @@ Build:
 - Optional installed official Claude CLI with Pro/Max account login.
 - One backend-authorized crop per visible **Ask** action.
 - Memory-only PNG data URL payload.
-- Compact provider-specific image model selection with low reasoning effort.
+- Balanced provider-specific image model selection with medium reasoning effort.
 - Ephemeral read-only thread and bounded answer.
 
 Do not build:

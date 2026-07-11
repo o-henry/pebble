@@ -34,10 +34,12 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const TURN_TIMEOUT: Duration = Duration::from_secs(120);
-const COMPACT_MODEL_PREFERENCES: [&str; 1] = ["gpt-5.4-mini"];
-const OPENAI_MODEL_LABEL: &str = "GPT-5.4-MINI";
-const CLAUDE_MODEL_ID: &str = "claude-haiku-4-5-20251001";
-const CLAUDE_MODEL_LABEL: &str = "CLAUDE HAIKU 4.5";
+const OPENAI_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-terra", "gpt-5.6-luna"];
+const OPENAI_MODEL_LABEL: &str = "GPT-5.6-TERRA";
+const OPENAI_REASONING_EFFORT: &str = "medium";
+const CLAUDE_MODEL_ID: &str = "claude-sonnet-5";
+const CLAUDE_MODEL_LABEL: &str = "CLAUDE SONNET 5";
+const CLAUDE_REASONING_EFFORT: &str = "medium";
 const CLAUDE_INSTALL_URL: &str = "https://code.claude.com/docs/en/quickstart";
 
 const BASE_INSTRUCTIONS: &str = "You answer a user's question about one explicitly supplied cropped screen-region image. Use only visible evidence in that image. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. If the image does not contain enough evidence, say so plainly. Reply in the language of the user's question, directly and concisely, in at most five short sentences.";
@@ -56,7 +58,7 @@ pub struct AiConnectionStatus {
     pub provider: AiProvider,
     pub available: bool,
     pub connected: bool,
-    pub model: &'static str,
+    pub model: String,
     pub install_url: Option<&'static str>,
 }
 
@@ -135,7 +137,7 @@ pub async fn get_connection_status(
     match provider {
         AiProvider::OpenAi => {
             let mut server = AppServerProcess::start(app).await?;
-            read_chatgpt_account(&mut server).await
+            read_openai_connection_status(&mut server).await
         }
         AiProvider::Claude => claude_connection_status(app).await,
     }
@@ -155,7 +157,7 @@ pub async fn connect_provider(
 
 async fn connect_openai(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
     let mut server = AppServerProcess::start(app).await?;
-    let status = read_chatgpt_account(&mut server).await?;
+    let status = read_openai_connection_status(&mut server).await?;
     if status.connected {
         return Ok(status);
     }
@@ -200,7 +202,7 @@ async fn connect_openai(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntime
             ));
         }
 
-        return read_chatgpt_account(&mut server).await;
+        return read_openai_connection_status(&mut server).await;
     }
 }
 
@@ -274,7 +276,7 @@ async fn ask_openai(
         ));
     }
 
-    let model = compact_image_model(&mut server).await?;
+    let model = balanced_image_model(&mut server).await?;
     let thread = server
         .request(
             "thread/start",
@@ -314,7 +316,7 @@ async fn ask_openai(
                 ],
                 "approvalPolicy": "never",
                 "model": model,
-                "effort": "low",
+                "effort": OPENAI_REASONING_EFFORT,
                 "summary": "none"
             }),
             REQUEST_TIMEOUT,
@@ -415,7 +417,7 @@ async fn ask_claude(
         "--model",
         CLAUDE_MODEL_ID,
         "--effort",
-        "low",
+        CLAUDE_REASONING_EFFORT,
         "--max-turns",
         "1",
         "--system-prompt",
@@ -514,12 +516,22 @@ async fn read_chatgpt_account(
     Ok(openai_status(true))
 }
 
+async fn read_openai_connection_status(
+    server: &mut AppServerProcess,
+) -> Result<AiConnectionStatus, AiRuntimeError> {
+    let mut status = read_chatgpt_account(server).await?;
+    if status.connected {
+        status.model = balanced_image_model(server).await?.to_ascii_uppercase();
+    }
+    Ok(status)
+}
+
 fn openai_status(connected: bool) -> AiConnectionStatus {
     AiConnectionStatus {
         provider: AiProvider::OpenAi,
         available: true,
         connected,
-        model: OPENAI_MODEL_LABEL,
+        model: OPENAI_MODEL_LABEL.to_string(),
         install_url: None,
     }
 }
@@ -529,12 +541,12 @@ fn claude_status(available: bool, connected: bool) -> AiConnectionStatus {
         provider: AiProvider::Claude,
         available,
         connected: available && connected,
-        model: CLAUDE_MODEL_LABEL,
+        model: CLAUDE_MODEL_LABEL.to_string(),
         install_url: (!available).then_some(CLAUDE_INSTALL_URL),
     }
 }
 
-async fn compact_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
+async fn balanced_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
     let response = server
         .request(
             "model/list",
@@ -542,7 +554,7 @@ async fn compact_image_model(server: &mut AppServerProcess) -> Result<String, Ai
             REQUEST_TIMEOUT,
         )
         .await?;
-    select_compact_model(
+    select_balanced_model(
         response
             .get("data")
             .and_then(Value::as_array)
@@ -551,13 +563,13 @@ async fn compact_image_model(server: &mut AppServerProcess) -> Result<String, Ai
     .ok_or_else(|| {
         runtime_error(
             AiRuntimeErrorCode::ModelUnavailable,
-            "This OpenAI account does not currently offer a compact image model.",
+            "This OpenAI account does not currently offer a supported balanced image model.",
             true,
         )
     })
 }
 
-fn select_compact_model(models: Option<&[Value]>) -> Option<String> {
+fn select_balanced_model(models: Option<&[Value]>) -> Option<String> {
     let candidates = models?.iter().filter(|model| {
         has_string(model, "inputModalities", "image")
             && model
@@ -565,13 +577,14 @@ fn select_compact_model(models: Option<&[Value]>) -> Option<String> {
                 .and_then(Value::as_array)
                 .is_some_and(|efforts| {
                     efforts.iter().any(|effort| {
-                        effort.get("reasoningEffort").and_then(Value::as_str) == Some("low")
+                        effort.get("reasoningEffort").and_then(Value::as_str)
+                            == Some(OPENAI_REASONING_EFFORT)
                     })
                 })
     });
     let candidates = candidates.collect::<Vec<_>>();
 
-    for preferred in COMPACT_MODEL_PREFERENCES {
+    for preferred in OPENAI_MODEL_PREFERENCES {
         if let Some(model) = candidates
             .iter()
             .find(|model| model.get("model").and_then(Value::as_str) == Some(preferred))
@@ -580,15 +593,7 @@ fn select_compact_model(models: Option<&[Value]>) -> Option<String> {
         }
     }
 
-    candidates
-        .iter()
-        .find_map(|model| {
-            model
-                .get("model")
-                .and_then(Value::as_str)
-                .filter(|id| id.contains("mini"))
-        })
-        .map(str::to_string)
+    None
 }
 
 async fn collect_answer(
@@ -1239,7 +1244,7 @@ mod tests {
 
     use super::{
         chatgpt_login_params, claude_image_input, encode_frame_data_url, login_failure_message,
-        normalize_question, normalized_locale, parse_claude_answer, select_compact_model,
+        normalize_question, normalized_locale, parse_claude_answer, select_balanced_model,
         validate_auth_url, AiRuntimeErrorCode,
     };
     use crate::{
@@ -1287,14 +1292,14 @@ mod tests {
 
     #[test]
     fn parses_claude_stream_metadata_without_accepting_tools() {
-        let output = br#"{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Visible change."}]}}
+        let output = br#"{"type":"assistant","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"Visible change."}]}}
 {"type":"result","duration_ms":1234}
 "#;
         assert_eq!(
             parse_claude_answer(output).expect("answer"),
             (
                 "Visible change.".to_string(),
-                "claude-haiku-4-5-20251001".to_string(),
+                "claude-sonnet-5".to_string(),
                 Some(1234)
             )
         );
@@ -1347,26 +1352,35 @@ mod tests {
     }
 
     #[test]
-    fn selects_only_a_compact_low_effort_image_model() {
+    fn prefers_terra_and_allows_luna_without_falling_back_to_mini() {
         let models = vec![
             json!({
-                "model": "gpt-5.5",
+                "model": "gpt-5.6-luna",
                 "inputModalities": ["text", "image"],
-                "supportedReasoningEfforts": [{ "reasoningEffort": "low" }]
+                "supportedReasoningEfforts": [{ "reasoningEffort": "medium" }]
             }),
             json!({
-                "model": "gpt-5.4-mini",
+                "model": "gpt-5.6-terra",
                 "inputModalities": ["text", "image"],
-                "supportedReasoningEfforts": [{ "reasoningEffort": "low" }]
+                "supportedReasoningEfforts": [{ "reasoningEffort": "medium" }]
             }),
         ];
         assert_eq!(
-            select_compact_model(Some(&models)).as_deref(),
-            Some("gpt-5.4-mini")
+            select_balanced_model(Some(&models)).as_deref(),
+            Some("gpt-5.6-terra")
         );
 
-        let expensive_only = vec![models[0].clone()];
-        assert_eq!(select_compact_model(Some(&expensive_only)), None);
+        assert_eq!(
+            select_balanced_model(Some(&models[..1])).as_deref(),
+            Some("gpt-5.6-luna")
+        );
+
+        let mini_only = vec![json!({
+            "model": "gpt-5.4-mini",
+            "inputModalities": ["text", "image"],
+            "supportedReasoningEfforts": [{ "reasoningEffort": "medium" }]
+        })];
+        assert_eq!(select_balanced_model(Some(&mini_only)), None);
     }
 
     #[test]

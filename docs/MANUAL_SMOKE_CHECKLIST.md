@@ -67,14 +67,14 @@ npm run tauri:build
   `persist_failed` or missing-default-keychain error.
 - Claude reports unavailable when its official CLI is absent and opens only the
   fixed official installation page.
-- An installed Claude CLI uses Pro/Max login, Haiku 4.5 low effort, no tools,
+- An installed Claude CLI uses Pro/Max login, Sonnet 5 medium effort, no tools,
   no MCP, one turn, and no image temp file.
 - One question sends one selected crop; no full-screen or temporary image file
   is created.
 - Privacy blank, reselection, or display reconfiguration before upload cancels
   the request.
-- A subscription without a compatible compact image model fails closed instead
-  of selecting a larger model.
+- OpenAI prefers Terra at medium effort, falls back only to Luna, and rejects
+  mini-class fallback.
 - OCR remains disabled by default.
 - Core monitoring adds no network requirement.
 

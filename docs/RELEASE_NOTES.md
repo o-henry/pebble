@@ -19,7 +19,7 @@ This is a contributor-facing pre-alpha demo build.
 - Optional local OCR boundary, disabled by default.
 - API-key-free OpenAI account connection through a bundled Codex app-server.
 - Optional Claude Pro/Max connection through an installed official Claude CLI.
-- Explicit one-shot selected-region questions using compact low-effort models,
+- Explicit one-shot selected-region questions using balanced medium-effort models,
   with provider, model, and generation-time metadata.
 - Local-only material-change alerts with a five-minute cooldown, orange menu-bar
   state, and native notifications.

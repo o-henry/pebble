@@ -206,7 +206,7 @@ Responsibilities:
 - Complete official provider login without browser cookie access.
 - Capture the backend-selected region once per visible **Ask** action.
 - Encode the crop to an in-memory PNG data URL.
-- Select an image-capable compact provider model at low reasoning effort.
+- Select an image-capable balanced provider model at medium reasoning effort.
 - Create an ephemeral read-only thread and reject all tool activity.
 - Return a bounded text answer without persistence.
 

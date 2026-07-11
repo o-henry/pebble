@@ -72,8 +72,9 @@ AI access is explicit, narrow in scope, and cheap by design:
   have web search, MCP servers, and analytics disabled.
 - Claude runs in print mode with safe mode, slash commands disabled, strict
   empty MCP configuration, all tools denied, and one turn maximum.
-- Pebble selects `gpt-5.4-mini` or Claude Haiku 4.5 at low reasoning effort. It
-  never silently escalates to a larger model.
+- Pebble prefers `gpt-5.6-terra`, permits only `gpt-5.6-luna` as an OpenAI
+  fallback, and uses Claude Sonnet 5. All run at medium effort; mini and Haiku
+  are rejected as automatic fallbacks.
 - Unexpected tool, shell, file, web, plugin, or MCP activity aborts the response.
 - Questions are limited to 1,000 characters and answers to 4,000 characters.
 

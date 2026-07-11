@@ -68,17 +68,17 @@ thread file.
 
 - Question: 1 to 1,000 Unicode characters.
 - Image: the user-selected display region, with no application-level size cap.
-- OpenAI model: `gpt-5.4-mini`, image-capable and low effort.
-- Claude model: Claude Haiku 4.5, image-capable and low effort.
-- Reasoning effort: `low`.
+- OpenAI model: prefer `gpt-5.6-terra`, allow `gpt-5.6-luna` only as fallback.
+- Claude model: Claude Sonnet 5.
+- Reasoning effort: `medium`.
 - Reasoning summary: disabled.
 - Answer: at most 4,000 Unicode characters.
 - Concurrency: one connection or question operation at a time.
 - Conversation: a new ephemeral thread for every question.
 
-If the compact OpenAI model is unavailable for the signed-in subscription or
-the official Claude CLI is unavailable, Pebble reports that condition. It does
-not silently fall back to a larger model.
+If neither supported OpenAI model is available for the signed-in subscription
+or the official Claude CLI is unavailable, Pebble reports that condition. It
+does not silently fall back to mini, Haiku, or a premium flagship model.
 
 ## Tool Denial
 
@@ -110,7 +110,7 @@ The operation fails closed when:
 - The display is disconnected, rearranged, resized, or rescaled.
 - The Pebble window is hidden or minimized before upload.
 - The sidecar exits, times out, or returns invalid protocol data.
-- No compatible compact image model exists.
+- No supported balanced image model exists.
 - The model attempts any action outside image reasoning.
 
 Errors are recoverable and do not include account email, auth URLs, tokens,
@@ -122,7 +122,7 @@ Automated tests cover:
 
 - Question normalization and limits.
 - Official OAuth host validation.
-- Compact image model selection without expensive fallback.
+- Terra-first model selection with Luna-only fallback and mini rejection.
 - Claude stream parsing, model/duration metadata, and tool-use rejection.
 - Locale validation and question-language fallback instructions.
 - Memory-only PNG data URL encoding.

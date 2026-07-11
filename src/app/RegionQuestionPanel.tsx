@@ -179,7 +179,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
           <div className="region-question__composer-footer">
-            <span className="region-question__model">{modelLabel} · LOW</span>
+            <span className="region-question__model">{modelLabel} · MEDIUM</span>
             <button
               type="submit"
               className="primary-action"
@@ -205,7 +205,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
 });
 
 function defaultModel(provider: AiProvider) {
-  return provider === "openAi" ? "GPT-5.4-MINI" : "CLAUDE HAIKU 4.5";
+  return provider === "openAi" ? "GPT-5.6-TERRA" : "CLAUDE SONNET 5";
 }
 
 function formatDuration(durationMs: number) {
