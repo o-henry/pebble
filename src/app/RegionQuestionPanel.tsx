@@ -161,7 +161,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
               : connecting
                 ? "FINISH SIGN-IN"
                 : connection === "unavailable"
-                  ? "INSTALL CLAUDE"
+                  ? "INSTALL"
                   : `CONNECT ${provider === "openAi" ? "OPENAI" : "CLAUDE"}`}
           </button>
           <span>NO API KEY</span>

@@ -238,7 +238,9 @@ input {
 .region-question__form {
   display: flex;
   min-height: 92px;
+  overflow: hidden;
   border: 1px solid var(--line-strong);
+  border-radius: 5px;
   background: var(--surface);
   flex-direction: column;
 }
@@ -269,8 +271,8 @@ input {
 
 .region-question__composer-footer button {
   min-width: 54px;
-  min-height: 25px;
-  border-radius: 3px;
+  min-height: 29px;
+  border-radius: 5px;
 }
 
 .provider-switch {
@@ -278,7 +280,7 @@ input {
 }
 
 .provider-switch button {
-  min-height: 24px;
+  min-height: 29px;
   padding: 0 8px;
   border-radius: 0;
   color: var(--ink-muted);
@@ -287,8 +289,24 @@ input {
   font-size: 0.58rem;
 }
 
+.region-question__connect button {
+  min-width: 54px;
+  min-height: 29px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 0.6rem;
+}
+
 .provider-switch button + button {
   margin-left: -1px;
+}
+
+.provider-switch button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.provider-switch button:last-child {
+  border-radius: 0 5px 5px 0;
 }
 
 .provider-switch button.is-active {
