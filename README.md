@@ -111,7 +111,8 @@ Never persisted:
 Generic Watch alert summaries are an explicit exception: after the versioned
 Watch notice is accepted, they are appended to
 `Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
-questions, and AI answers are never written to that journal.
+questions, and AI answers are never written to that journal. Public Source
+entries contain one title and link; Discover writes only a compact title digest.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -170,6 +171,25 @@ Pebble never derives a search query from captured screen content. Source Watch
 does not use cookies, browser sessions, credentials, proxies, redirects, custom
 ports, local hosts, private IP ranges, or responses larger than 512 KB. Article
 bodies are neither displayed nor saved.
+
+## Discover
+
+The expanded Updates area includes an optional **Discover** digest for things
+you may have missed. Start it once and Pebble remembers that choice, then checks
+public sources every 30 minutes while the app is running:
+
+- **News**: the latest BBC World RSS headlines.
+- **Community**: top-ranked stories from the official Hacker News API, with
+  points and comment counts.
+- **X**: shown as unavailable until an official X API connection exists.
+
+Discover ranks from source order, removes duplicate titles locally, displays at
+most five items per category, and records only a compact title digest when the
+top set changes. It does not call OpenAI or Claude, so it uses zero AI tokens.
+It does not scrape X or Reddit, read browser cookies or login sessions, follow
+redirects, inherit a system proxy, or download article bodies. Clicking an item
+can open only an ID already returned by the trusted backend; the webview cannot
+submit an arbitrary URL to the opener.
 
 ## Use
 

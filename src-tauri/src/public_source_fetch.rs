@@ -21,16 +21,50 @@ pub(crate) struct FetchedSource {
     pub(crate) title: String,
 }
 
+pub(crate) struct PublicClient {
+    inner: Client,
+    host: String,
+}
+
 pub(crate) async fn fetch_source(url: &Url) -> Result<FetchedSource, PublicSourceError> {
+    let client = public_client(url).await?;
+    let body = fetch_public_bytes(&client, url, "application/atom+xml, application/rss+xml, application/xml, text/xml, text/html, application/json").await?;
+    let text = std::str::from_utf8(&body).map_err(|_| PublicSourceError::unsupported_response())?;
+    let parsed = parse_document(text);
+    let title = parsed
+        .as_ref()
+        .map(|document| document.title.clone())
+        .unwrap_or_else(|| "PUBLIC SOURCE CHANGED".to_string());
+    let identity = parsed
+        .map(|document| document.identity)
+        .unwrap_or_else(|| text.to_string());
+    let mut hasher = DefaultHasher::new();
+    identity.hash(&mut hasher);
+    Ok(FetchedSource {
+        fingerprint: hasher.finish(),
+        title,
+    })
+}
+
+pub(crate) async fn public_client(url: &Url) -> Result<PublicClient, PublicSourceError> {
     let host = url.host_str().ok_or_else(PublicSourceError::invalid_url)?;
     let addresses = resolve_public_addresses(host).await?;
-    let client = source_client(host, &addresses)?;
+    Ok(PublicClient {
+        inner: source_client(host, &addresses)?,
+        host: host.to_ascii_lowercase(),
+    })
+}
+
+pub(crate) async fn fetch_public_bytes(
+    client: &PublicClient,
+    url: &Url,
+    accept: &str,
+) -> Result<Vec<u8>, PublicSourceError> {
+    validate_client_url(client, url)?;
     let mut response = client
+        .inner
         .get(url.clone())
-        .header(
-            header::ACCEPT,
-            "application/atom+xml, application/rss+xml, application/xml, text/xml, text/html, application/json",
-        )
+        .header(header::ACCEPT, accept)
         .header(header::USER_AGENT, "Pebble/0.1 public-source-watch")
         .send()
         .await
@@ -57,21 +91,25 @@ pub(crate) async fn fetch_source(url: &Url) -> Result<FetchedSource, PublicSourc
         }
         body.extend_from_slice(&chunk);
     }
-    let text = std::str::from_utf8(&body).map_err(|_| PublicSourceError::unsupported_response())?;
-    let parsed = parse_document(text);
-    let title = parsed
-        .as_ref()
-        .map(|document| document.title.clone())
-        .unwrap_or_else(|| "PUBLIC SOURCE CHANGED".to_string());
-    let identity = parsed
-        .map(|document| document.identity)
-        .unwrap_or_else(|| text.to_string());
-    let mut hasher = DefaultHasher::new();
-    identity.hash(&mut hasher);
-    Ok(FetchedSource {
-        fingerprint: hasher.finish(),
-        title,
-    })
+    Ok(body)
+}
+
+fn validate_client_url(client: &PublicClient, url: &Url) -> Result<(), PublicSourceError> {
+    client_url_is_allowed(&client.host, url)
+        .then_some(())
+        .ok_or_else(PublicSourceError::invalid_url)
+}
+
+pub(crate) fn client_url_is_allowed(expected_host: &str, url: &Url) -> bool {
+    let same_host = url
+        .host_str()
+        .is_some_and(|host| host.eq_ignore_ascii_case(expected_host));
+    url.scheme() == "https"
+        && same_host
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port_or_known_default() == Some(443)
+        && url.fragment().is_none()
 }
 
 fn source_client(host: &str, addresses: &[SocketAddr]) -> Result<Client, PublicSourceError> {

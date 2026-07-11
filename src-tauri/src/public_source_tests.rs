@@ -2,8 +2,11 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::{
     public_source::PublicSourceErrorCode,
-    public_source_fetch::{is_public_ip, parse_document, validate_source_url},
+    public_source_fetch::{
+        client_url_is_allowed, is_public_ip, parse_document, validate_source_url,
+    },
 };
+use url::Url;
 
 #[test]
 fn source_url_requires_public_https_without_credentials_or_fragments() {
@@ -39,6 +42,26 @@ fn network_guard_blocks_private_reserved_and_documentation_addresses() {
     }
     assert!(is_public_ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))));
     assert!(is_public_ip("2606:4700:4700::1111".parse().unwrap()));
+}
+
+#[test]
+fn pinned_client_rejects_cross_host_and_unsafe_urls() {
+    assert!(client_url_is_allowed(
+        "example.com",
+        &Url::parse("https://example.com/item.json").unwrap()
+    ));
+    for value in [
+        "https://other.example/item.json",
+        "http://example.com/item.json",
+        "https://user@example.com/item.json",
+        "https://example.com:444/item.json",
+        "https://example.com/item.json#fragment",
+    ] {
+        assert!(!client_url_is_allowed(
+            "example.com",
+            &Url::parse(value).unwrap()
+        ));
+    }
 }
 
 #[test]

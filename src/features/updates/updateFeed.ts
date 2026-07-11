@@ -1,4 +1,4 @@
-export type UpdateKind = "watch" | "source";
+export type UpdateKind = "watch" | "source" | "discovery";
 
 export interface UpdateEntry {
   id: number;

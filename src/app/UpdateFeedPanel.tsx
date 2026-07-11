@@ -9,6 +9,7 @@ import { listenToUpdateFeed } from "../lib/events";
 import { getUpdateFeed } from "../lib/invoke";
 import { isTauriRuntime } from "../lib/runtime";
 import { PublicSourceControl } from "./PublicSourceControl";
+import { DiscoveryControl } from "./DiscoveryControl";
 
 const EMPTY_FEED: UpdateFeedSnapshot = {
   entries: []
@@ -61,6 +62,7 @@ export function UpdateFeedPanel() {
           <span className="update-feed__path">
             DOWNLOADS/PEBBLE/PEBBLE-UPDATES.MD
           </span>
+          {isTauriRuntime() ? <DiscoveryControl /> : null}
           {isTauriRuntime() ? <PublicSourceControl /> : null}
           {feed.entries.length === 0 ? (
             <p className="update-feed__empty">NO SAVED UPDATES YET</p>

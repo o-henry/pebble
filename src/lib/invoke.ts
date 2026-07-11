@@ -29,6 +29,7 @@ import type {
 import type { RegionSelectorWindowShell } from "../features/region-selector/regionSelectorShell";
 import type { UpdateFeedSnapshot } from "../features/updates/updateFeed";
 import type { PublicSourceStatus } from "../features/updates/publicSource";
+import type { DiscoveryStatus } from "../features/updates/discovery";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -105,6 +106,22 @@ export interface BackendCommandMap {
   };
   get_update_feed: {
     result: UpdateFeedSnapshot;
+  };
+  get_discovery_status: {
+    result: DiscoveryStatus;
+  };
+  enable_discovery: {
+    result: DiscoveryStatus;
+  };
+  refresh_discovery: {
+    result: DiscoveryStatus;
+  };
+  disable_discovery: {
+    result: DiscoveryStatus;
+  };
+  open_discovery_item: {
+    args: { itemId: string };
+    result: void;
   };
   get_public_source_status: {
     result: PublicSourceStatus;
@@ -283,6 +300,26 @@ export function setSmartWatch(enabled: boolean): Promise<SmartWatchStatus> {
 
 export function getUpdateFeed(): Promise<UpdateFeedSnapshot> {
   return invokeBackend("get_update_feed");
+}
+
+export function getDiscoveryStatus(): Promise<DiscoveryStatus> {
+  return invokeBackend("get_discovery_status");
+}
+
+export function enableDiscovery(): Promise<DiscoveryStatus> {
+  return invokeBackend("enable_discovery");
+}
+
+export function refreshDiscovery(): Promise<DiscoveryStatus> {
+  return invokeBackend("refresh_discovery");
+}
+
+export function disableDiscovery(): Promise<DiscoveryStatus> {
+  return invokeBackend("disable_discovery");
+}
+
+export function openDiscoveryItem(itemId: string): Promise<void> {
+  return invokeBackend("open_discovery_item", { itemId });
 }
 
 export function getPublicSourceStatus(): Promise<PublicSourceStatus> {

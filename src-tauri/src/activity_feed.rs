@@ -23,6 +23,7 @@ pub const UPDATE_FEED_EVENT: &str = "pebble://update-feed";
 pub enum UpdateKind {
     Watch,
     Source,
+    Discovery,
 }
 
 impl UpdateKind {
@@ -30,6 +31,7 @@ impl UpdateKind {
         match self {
             Self::Watch => "WATCH",
             Self::Source => "SOURCE",
+            Self::Discovery => "DISCOVERY",
         }
     }
 }
@@ -116,6 +118,10 @@ pub fn record_source(
     source_url: &str,
 ) {
     record_and_emit(app, state, UpdateKind::Source, summary, Some(source_url));
+}
+
+pub fn record_discovery(app: &tauri::AppHandle, state: &ActivityFeedState, summary: &str) {
+    record_and_emit(app, state, UpdateKind::Discovery, summary, None);
 }
 
 fn record_and_emit(

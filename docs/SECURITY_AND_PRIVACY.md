@@ -106,7 +106,7 @@ the diff engine's five-minute material-change cooldown and a maximum of 24
 notifications per app session. It keeps only small in-memory statistics.
 
 After consent, Pebble appends only generalized Watch summaries and explicitly
-followed public-source titles to one local Markdown document at
+followed public-source titles or compact Discover title digests to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
 text, manual AI questions, AI answers, article bodies, credentials, or browser
 session data to that journal.
@@ -124,6 +124,19 @@ minutes. DNS is resolved and pinned to public addresses, redirects and system
 proxies are disabled, private and reserved ranges are rejected, responses are
 limited to 512 KB, and only a title fingerprint plus source URL is retained.
 Captured pixels and OCR text are never converted into search queries.
+
+Discover is a separate public-network opt-in. Once enabled, that preference is
+stored locally and Pebble checks the fixed BBC World RSS and official Hacker
+News API endpoints every 30 minutes while the app runs. It keeps at most five
+titles per category in session memory, retains only source metadata and public
+links, and never downloads or saves article bodies. The same DNS pinning,
+public-address, no-redirect, no-proxy, content-type, timeout, and 512 KB response
+limits used by Public Source Watch apply.
+
+Direct X trends are not fetched because the official endpoint requires bearer
+authentication. Reddit is not fetched because its Data API requires registered
+OAuth access. Pebble does not replace those official paths with browser-session
+reuse, cookie scraping, or an unofficial scraper.
 
 ## Permission Rules
 
