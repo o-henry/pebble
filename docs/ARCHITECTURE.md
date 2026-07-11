@@ -200,12 +200,13 @@ Optional explicit-request service. It is never part of the capture loop.
 
 Responsibilities:
 
-- Start the fixed bundled Codex app-server from Rust only.
-- Keep its environment and account home isolated.
-- Complete official ChatGPT OAuth without browser cookie access.
+- Start the fixed bundled Codex app-server or validated installed Claude CLI
+  from Rust only.
+- Keep provider environments and runtime directories isolated.
+- Complete official provider login without browser cookie access.
 - Capture the backend-selected region once per visible **Ask** action.
 - Encode the crop to an in-memory PNG data URL.
-- Select an image-capable compact model at low reasoning effort.
+- Select an image-capable compact provider model at low reasoning effort.
 - Create an ephemeral read-only thread and reject all tool activity.
 - Return a bounded text answer without persistence.
 
@@ -224,7 +225,7 @@ stop_capture
 set_privacy_blank
 capture_region_once
 get_ai_connection_status
-connect_chatgpt
+connect_ai_provider
 ask_selected_region
 ```
 
@@ -238,6 +239,7 @@ Initial events:
 ```text
 pebble://frame-updated
 pebble://changed
+pebble://monitor-insight
 pebble://capture-error
 pebble://privacy-mode-changed
 pebble://performance-backoff

@@ -13,12 +13,18 @@ This is a contributor-facing pre-alpha demo build.
 - Guarded macOS selected-region capture with a fake backend for tests.
 - Capture lifecycle and scheduler with privacy blank behavior.
 - Local visual diff engine with cooldown.
-- Always-on-top low-FPS live tile with pause, resume, privacy blank, and close.
+- Always-on-top low-FPS live tile with pause, resume, privacy blank, native
+  close, and direct menu-bar reopening.
 - Config-only persistence for safe region settings.
 - Optional local OCR boundary, disabled by default.
-- API-key-free ChatGPT account connection through a bundled official Codex
-  app-server.
-- Explicit one-shot selected-region questions using a compact image model.
+- API-key-free OpenAI account connection through a bundled Codex app-server.
+- Optional Claude Pro/Max connection through an installed official Claude CLI.
+- Explicit one-shot selected-region questions using compact low-effort models,
+  with provider, model, and generation-time metadata.
+- Local-only material-change alerts with a five-minute cooldown, orange menu-bar
+  state, and native notifications.
+- Desktop-wide product positioning that covers browsers and native apps rather
+  than browser content alone.
 - Manual smoke checklist and issue templates.
 
 ### Security And Privacy
@@ -27,7 +33,7 @@ This is a contributor-facing pre-alpha demo build.
 - No cloud sync.
 - No frame history.
 - No OCR history persistence.
-- No ChatGPT web automation.
+- No AI website automation.
 - No browser cookie, token, or API-key reuse.
 - No automatic AI requests; one crop is sent only after **Ask**.
 - No inherited API-key environment, browser cookie access, MCP, web search, or

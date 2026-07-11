@@ -18,7 +18,7 @@
   display: flex;
   min-height: 24px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -83,6 +83,29 @@
   line-height: 1.45;
 }
 
+.monitor-insight {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.monitor-insight.is-change {
+  color: var(--amber);
+  border-color: #dfbd82;
+  background: var(--amber-soft);
+}
+
+.monitor-insight.is-change .status-dot {
+  background: #f28c28;
+}
+
 .live-tile-controls {
   display: flex;
   min-width: 0;
@@ -98,12 +121,12 @@
 }
 
 .mode-controls {
-  min-height: 34px;
+  min-height: 29px;
 }
 
 .mode-controls button {
   min-width: 54px;
-  min-height: 34px;
+  min-height: 29px;
   padding-inline: 8px;
   border-radius: 0;
   font-size: 0.66rem;
@@ -124,7 +147,7 @@
 
 .text-action {
   min-width: 48px;
-  min-height: 34px;
+  min-height: 29px;
   padding: 0 8px;
   color: var(--ink-muted);
   border-color: var(--line-strong);
@@ -154,12 +177,6 @@
   color: #ffffff;
   border-color: var(--ink-strong);
   background: var(--ink-strong);
-}
-
-.text-action.is-danger:hover {
-  color: #ffffff;
-  border-color: var(--danger);
-  background: var(--danger);
 }
 
 @media (max-width: 380px) {

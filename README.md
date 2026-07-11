@@ -1,20 +1,25 @@
 # Pebble
 
-> Pin a tiny part of your screen. Let local watchers notice what changed.
+> Select anywhere on your desktop. Keep it visible. Ask AI when you choose.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
 [![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
-[![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-chatgpt)
+[![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-ai)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Pebble is a local-first desktop utility for the tiny parts of your screen
-you keep checking: build logs, queues, upload progress, render jobs, dashboards,
+Pebble is a local-first desktop utility for the tiny parts of your screen you
+keep checking: build logs, queues, upload progress, render jobs, dashboards,
 timers, status rows, and other small visual states.
+
+**Pebble is not a browser extension.** It works at the desktop layer, so the
+region can come from a browser, terminal, IDE, native app, game, simulator,
+remote desktop, or any other visible macOS surface. Browser AI helpers stop at
+web content; Pebble starts with whatever the user can actually see on screen.
 
 The product idea is intentionally small:
 
 ```text
-select a region -> keep it visible -> optionally ask ChatGPT about that crop
+select any visible desktop region -> keep it visible -> optionally ask AI
 ```
 
 ![Pebble demo](docs/assets/pebble-demo.gif)
@@ -27,6 +32,10 @@ Pebble is for the status surfaces that do not have good webhooks, APIs, or
 notifications. If you can see a small region, the app should help you keep an
 eye on it without becoming a screen recorder, remote desktop app, or hidden
 monitoring tool.
+
+That desktop-wide reach is the core distinction. Pebble does not depend on a
+page DOM, browser tab, website integration, or extension permission. It treats
+a user-selected visual region consistently across web and non-web software.
 
 ## Status
 
@@ -41,33 +50,36 @@ Implemented:
 - Any non-empty region inside the selected display can be captured.
 - Native macOS menu bar control with no persistent management window.
 - One-drag region selection that opens the floating tile automatically.
-- Always-on-top live tile with pause, resume, refresh, close, and privacy blank.
+- Always-on-top live tile with pause, resume, reselect, AI, and privacy blank.
 - Real macOS selected-region capture at runtime and a deterministic fake backend
   for tests.
 - Capture lifecycle and scheduler states: live, paused, hidden, blanked,
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
   tile.
+- Local-only material-change alerts through the menu bar and native
+  notifications; live monitoring does not upload frames.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
 - Optional local OCR service boundary, disabled by default.
-- API-key-free ChatGPT account connection through the bundled official Codex
-  app-server.
-- Explicit selected-region image questions using a compact image model at low
-  reasoning effort.
+- API-key-free OpenAI account connection through the bundled Codex app-server.
+- Optional Claude Pro/Max account connection through an installed official
+  Claude CLI, without bundling another large runtime.
+- Explicit selected-region image questions using compact image models at low
+  reasoning effort, with model and generation-time metadata.
 
 Not shipped yet:
 
 - Signed installer or Homebrew formula.
 - Production local OCR adapter.
-- Telemetry, cloud sync, browser automation, or ChatGPT session automation.
+- Telemetry, cloud sync, browser automation, or website session automation.
 
 ## Principles
 
 | Principle | Behavior |
 | --- | --- |
-| Selected regions only | Pebble works on user-pinned regions, not the whole screen. |
+| Desktop-wide, region-scoped | Pebble can select any visible app, but captures only the region the user pins. |
 | Visible by design | Active capture must have a visible tile or visible status. |
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
@@ -80,7 +92,7 @@ Not shipped yet:
 Pebble should be safe to explain in one sentence:
 
 > It watches only the small regions you pin, locally, with no frame history and
-> no upload unless you explicitly ask ChatGPT about the selected crop.
+> no upload unless you explicitly ask AI about the selected crop.
 
 Never persisted:
 
@@ -94,45 +106,45 @@ Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
 [Security And Privacy](docs/SECURITY_AND_PRIVACY.md).
 
-## Ask ChatGPT
+## Ask AI
 
-ChatGPT is outside the monitoring loop. Pebble makes no automatic AI
-requests.
+OpenAI and Claude are outside the monitoring loop. Pebble makes no automatic
+AI requests.
 
 After selecting a region:
 
-1. Toggle the ChatGPT button in the Pebble toolbar.
-2. Press **Connect ChatGPT** and complete the official OpenAI sign-in once.
-3. Enter a question and press **Ask**.
-4. Pebble captures the backend-authorized crop once, encodes it in memory,
+1. Toggle the **AI** button in the Pebble toolbar.
+2. Choose **OpenAI** or **Claude**.
+3. Connect the provider and complete its official account sign-in once.
+4. Enter a question and press **Ask**.
+5. Pebble captures the backend-authorized crop once, encodes it in memory,
    and sends that single image with the question.
-5. The ephemeral answer is shown inside the same Pebble and is not persisted.
+6. The ephemeral answer, model, and generation time are shown inside the same
+   Pebble and are not persisted.
 
-No OpenAI API key is requested. The app bundles the official
-[Codex app-server](https://learn.chatgpt.com/docs/app-server), keeps its account
-storage isolated from other apps, and stores credentials in the OS keychain.
-It selects an image-capable `mini` model with low reasoning effort; if the
-signed-in subscription does not offer a compatible compact model, the request
-fails instead of silently selecting a larger model.
+No API key is requested. OpenAI uses Pebble's isolated bundled Codex app-server
+and the OS keychain. Claude uses the separately installed official
+[Claude CLI](https://code.claude.com/docs/en/quickstart) and its Pro/Max account
+sign-in. Pebble selects `gpt-5.4-mini` or Claude Haiku 4.5 at low effort; it
+fails closed instead of silently escalating to a larger, more expensive model.
 
-Pebble does not read browser cookies, automate the ChatGPT website, reuse
-another app's tokens, use MCP, or stream screen images continuously.
+Pebble does not read browser cookies, automate an AI website, reuse another
+app's tokens, use MCP, or stream screen images continuously.
 
 ## Use
 
-1. Launch Pebble, open its macOS menu bar item, and select **Select Region**.
-2. Approve the macOS Screen Recording prompt. Pebble cannot capture before
+1. Launch Pebble and click its macOS menu bar item to open the compact window.
+2. Press **Select Region**.
+3. Approve the macOS Screen Recording prompt. Pebble cannot capture before
    macOS grants this permission.
-3. Drag over the small status or output area you want to keep visible.
-4. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
-5. Use the stable toolbar controls for **Live**, **Pause**, reselect, preview
-   visibility, ChatGPT, or close. Closing keeps the region selected so the
-   Pebble can be reopened from the menu bar.
-6. Toggle ChatGPT, type a question, and press **Ask**. This sends one fresh crop
-   only for that request.
+4. Drag over a small region in any visible browser or native desktop app.
+5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
+6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
+7. Toggle **AI**, choose a provider, type a question, and press **Ask**. This
+   sends one fresh crop only for that request.
 
-Pebble captures only the selected crop. It does not save frame history or
-send captured pixels over the network.
+Pebble captures only the selected crop and does not save frame history. Live
+monitoring stays local; only a visible **Ask** action sends one fresh crop.
 
 ## Install From Source
 
@@ -195,7 +207,7 @@ Key Rust boundaries:
 - `DiffEngine`: local visual change scoring.
 - `PebbleStore`: config-only persistence.
 - `OcrEngine`: optional local OCR boundary.
-- `AiRuntime`: isolated ChatGPT auth, compact-model selection, one-shot image
+- `AiRuntime`: isolated AI auth, compact-model selection, one-shot image
   questions, and response limits.
 
 ## Contributing
@@ -211,7 +223,7 @@ contributions are narrow, tested, and privacy-preserving:
 - Better setup, packaging, and demo docs.
 
 Avoid broad feature proposals that add cloud sync, hidden monitoring, telemetry,
-browser automation, or always-on AI.
+browser automation, or always-on external AI.
 
 Read first:
 

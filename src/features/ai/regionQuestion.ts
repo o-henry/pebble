@@ -1,11 +1,20 @@
 export const MAX_REGION_QUESTION_LENGTH = 1_000;
 
+export type AiProvider = "openAi" | "claude";
+
 export interface AiConnectionStatus {
+  provider: AiProvider;
+  available: boolean;
   connected: boolean;
+  model: string;
+  installUrl: string | null;
 }
 
 export interface AiAnswer {
   answer: string;
+  provider: AiProvider;
+  model: string;
+  durationMs: number;
 }
 
 export function normalizedRegionQuestion(value: string): string | null {

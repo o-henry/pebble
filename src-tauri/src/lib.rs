@@ -19,6 +19,7 @@ pub mod live_tile;
 #[cfg(test)]
 mod live_tile_tests;
 mod menu_bar;
+mod monitoring;
 pub mod ocr_engine;
 #[cfg(test)]
 mod ocr_engine_tests;
@@ -43,7 +44,7 @@ mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
 
-use ai_runtime::{AiAnswer, AiConnectionStatus, AiRuntimeError, AiRuntimeState};
+use ai_runtime::{AiAnswer, AiConnectionStatus, AiProvider, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
 use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
@@ -54,6 +55,7 @@ use performance_limits::{PerformanceLimitRequest, PerformanceLimits, Performance
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
 use tauri::{Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 use window_shell::WindowShellError;
 
 #[tauri::command]
@@ -168,6 +170,18 @@ fn set_pebble_ai_panel_expanded(
 }
 
 #[tauri::command]
+fn start_pebble_window_drag(window: tauri::WebviewWindow) -> Result<(), WindowShellError> {
+    if !is_pebble_window(window.label()) {
+        return Err(WindowShellError::unavailable(
+            "Window dragging is available only from the Pebble window.",
+        ));
+    }
+    window
+        .start_dragging()
+        .map_err(|error| WindowShellError::unavailable(error.to_string()))
+}
+
+#[tauri::command]
 fn request_screen_capture_access(window: tauri::WebviewWindow) -> bool {
     is_pebble_window(window.label()) && platform_capture::request_screen_capture_access()
 }
@@ -177,31 +191,33 @@ async fn get_ai_connection_status(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AiRuntimeState>,
+    provider: AiProvider,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
     if !pebble_window_allows_ai(&window) {
         return Err(AiRuntimeError {
             code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
-            message: "ChatGPT is available only from the visible Pebble window.".to_string(),
+            message: "AI is available only from the visible Pebble window.".to_string(),
             recoverable: true,
         });
     }
-    ai_runtime::get_connection_status(&app, state.inner()).await
+    ai_runtime::get_connection_status(&app, state.inner(), provider).await
 }
 
 #[tauri::command]
-async fn connect_chatgpt(
+async fn connect_ai_provider(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AiRuntimeState>,
+    provider: AiProvider,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
     if !pebble_window_allows_ai(&window) {
         return Err(AiRuntimeError {
             code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
-            message: "ChatGPT is available only from the visible Pebble window.".to_string(),
+            message: "AI is available only from the visible Pebble window.".to_string(),
             recoverable: true,
         });
     }
-    ai_runtime::connect_chatgpt(&app, state.inner()).await
+    ai_runtime::connect_provider(&app, state.inner(), provider).await
 }
 
 #[tauri::command]
@@ -210,9 +226,20 @@ async fn ask_selected_region(
     window: tauri::WebviewWindow,
     runtime: tauri::State<'_, AiRuntimeState>,
     session: tauri::State<'_, PebbleSessionState>,
+    provider: AiProvider,
     question: String,
+    locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
-    ai_runtime::ask_selected_region(&app, &window, runtime.inner(), session.inner(), question).await
+    ai_runtime::ask_selected_region(
+        &app,
+        &window,
+        runtime.inner(),
+        session.inner(),
+        provider,
+        question,
+        locale,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -221,6 +248,7 @@ fn capture_live_tile_once(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, LiveTileState>,
     session: tauri::State<'_, PebbleSessionState>,
+    monitoring: tauri::State<'_, monitoring::MonitoringState>,
     request: LiveTileCaptureRequest,
 ) -> Result<LiveTileCaptureResponse, CaptureError> {
     if !is_live_tile_window(window.label()) {
@@ -274,9 +302,57 @@ fn capture_live_tile_once(
             live_tile::live_tile_frame_event_name(),
             event,
         );
+
+        if let Some(decision) = monitoring.observe(expected_revision, &event.frame, event.sequence)
+        {
+            emit_local_monitoring_insight(&app, decision);
+        }
     }
 
     Ok(outcome.response)
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+enum MonitorInsightKind {
+    Baseline,
+    Change,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MonitorInsight {
+    kind: MonitorInsightKind,
+    summary: &'static str,
+}
+
+const MONITOR_INSIGHT_EVENT: &str = "pebble://monitor-insight";
+
+fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::MonitoringDecision) {
+    let insight = match decision {
+        monitoring::MonitoringDecision::Baseline => MonitorInsight {
+            kind: MonitorInsightKind::Baseline,
+            summary: "LOCAL MONITORING ACTIVE",
+        },
+        monitoring::MonitoringDecision::Changed { .. } => {
+            menu_bar::set_attention(app, true);
+            let _ = app
+                .notification()
+                .builder()
+                .title("CHANGE DETECTED")
+                .body("THE SELECTED REGION CHANGED MATERIALLY.")
+                .show();
+            MonitorInsight {
+                kind: MonitorInsightKind::Change,
+                summary: "MATERIAL CHANGE DETECTED",
+            }
+        }
+    };
+    let _ = app.emit_to(
+        pebble_session::PEBBLE_TILE_LABEL,
+        MONITOR_INSIGHT_EVENT,
+        insight,
+    );
 }
 
 fn current_monitor_geometries(
@@ -342,8 +418,10 @@ pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AiRuntimeState::default())
         .manage(LiveTileState::default())
+        .manage(monitoring::MonitoringState::default())
         .manage(PebbleSessionState::default())
         .setup(|app| {
             menu_bar::setup(app)?;
@@ -364,9 +442,10 @@ pub fn run() -> tauri::Result<()> {
             remove_pebble,
             close_pebble_window,
             set_pebble_ai_panel_expanded,
+            start_pebble_window_drag,
             request_screen_capture_access,
             get_ai_connection_status,
-            connect_chatgpt,
+            connect_ai_provider,
             ask_selected_region,
             capture_live_tile_once,
             load_pebble_config,

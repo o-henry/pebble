@@ -4,11 +4,11 @@ import {
   regionKey
 } from "../features/pebble-session/pebbleSession";
 import {
-  closePebbleWindow,
   openRegionSelectorWindow,
   requestScreenCaptureAccess,
   setPebbleAiPanelExpanded,
-  setPebblePrivacyBlank
+  setPebblePrivacyBlank,
+  startPebbleWindowDrag
 } from "../lib/invoke";
 import { errorMessage, usePebbleSession } from "./usePebbleSession";
 
@@ -63,22 +63,16 @@ export function TileView() {
     }
   }
 
-  async function closeWindow() {
-    try {
-      if (browserPreview) {
-        updateSession(advanceBrowserSession(session, { windowOpen: false }));
-        return;
-      }
-      updateSession(await closePebbleWindow());
-    } catch (reason) {
-      setError(errorMessage(reason, "Pebble window could not be closed."));
+  function startWindowDrag(button: number) {
+    if (!browserPreview && button === 0) {
+      void startPebbleWindowDrag();
     }
   }
 
   if (loading) {
     return (
       <main className="tile-shell tile-loading" aria-live="polite">
-        Starting pebble
+        STARTING
       </main>
     );
   }
@@ -86,10 +80,14 @@ export function TileView() {
   if (!session.region) {
     return (
       <main className="tile-shell tile-empty">
-        <div className="tile-empty__brand">pebble</div>
+        <div
+          className="window-drag-region"
+          data-tauri-drag-region
+          onMouseDown={(event) => startWindowDrag(event.button)}
+        />
         <div className="tile-empty__content">
-          <p className="section-label">No selected region</p>
-          <h1>Choose what stays in view.</h1>
+          <p className="section-label">NO SELECTED REGION</p>
+          <h1>CHOOSE WHAT STAYS IN VIEW.</h1>
           <button
             type="button"
             className="primary-action tile-empty__select"
@@ -113,6 +111,11 @@ export function TileView() {
         "tile-shell " + (session.privacyBlankActive ? "is-privacy-blanked" : "")
       }
     >
+      <div
+        className="window-drag-region"
+        data-tauri-drag-region
+        onMouseDown={(event) => startWindowDrag(event.button)}
+      />
       <LiveTilePanel
         key={regionKey(session.region)}
         region={session.region}
@@ -120,7 +123,6 @@ export function TileView() {
         privacyBlankActive={session.privacyBlankActive}
         sessionError={error}
         onAiExpandedChange={setAiExpanded}
-        onClose={closeWindow}
         onPrivacyBlankChange={setPrivacyBlank}
         onReselect={selectRegion}
       />

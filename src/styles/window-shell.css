@@ -1,4 +1,5 @@
 .tile-shell {
+  position: relative;
   width: 100vw;
   height: 100vh;
   min-width: 0;
@@ -6,6 +7,16 @@
   overflow: hidden;
   padding-top: 28px;
   background: var(--surface);
+}
+
+.window-drag-region {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  left: 72px;
+  height: 28px;
+  -webkit-app-region: drag;
 }
 
 .tile-shell.is-privacy-blanked .live-frame-stage {
@@ -25,15 +36,8 @@
 
 .tile-empty {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr;
   padding: 28px 14px 14px;
-}
-
-.tile-empty__brand {
-  min-height: 26px;
-  color: var(--ink-strong);
-  font-size: 0.78rem;
-  font-weight: 500;
 }
 
 .tile-empty__content {

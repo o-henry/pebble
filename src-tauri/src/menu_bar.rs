@@ -1,6 +1,6 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Manager,
 };
 
@@ -10,13 +10,12 @@ use crate::{
 };
 
 const SELECT_REGION_ID: &str = "select-region";
-const SHOW_PEBBLE_ID: &str = "show-pebble";
 const QUIT_PEBBLE_ID: &str = "quit-pebble";
+const TRAY_ID: &str = "pebble-menu-bar";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuBarAction {
     SelectRegion,
-    ShowPebble,
     Quit,
 }
 
@@ -31,18 +30,22 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
-    let show_pebble = MenuItem::with_id(app, SHOW_PEBBLE_ID, "Show pebble", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, QUIT_PEBBLE_ID, "Quit pebble", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&select_region, &show_pebble, &separator, &quit])?;
+    let quit = MenuItem::with_id(app, QUIT_PEBBLE_ID, "QUIT", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&select_region, &separator, &quit])?;
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
 
-    TrayIconBuilder::with_id("pebble-menu-bar")
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(true)
-        .tooltip("pebble")
         .menu(&menu)
-        .show_menu_on_left_click(true)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if is_primary_click(&event) {
+                set_attention(tray.app_handle(), false);
+                show_pebble(tray.app_handle());
+            }
+        })
         .on_menu_event(|app, event| {
             if let Some(action) = menu_bar_action(event.id().as_ref()) {
                 handle_menu_bar_action(app, action);
@@ -56,7 +59,6 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
 fn menu_bar_action(id: &str) -> Option<MenuBarAction> {
     match id {
         SELECT_REGION_ID => Some(MenuBarAction::SelectRegion),
-        SHOW_PEBBLE_ID => Some(MenuBarAction::ShowPebble),
         QUIT_PEBBLE_ID => Some(MenuBarAction::Quit),
         _ => None,
     }
@@ -71,7 +73,6 @@ fn handle_menu_bar_action(app: &AppHandle, action: MenuBarAction) {
                 show_pebble(app);
             }
         }
-        MenuBarAction::ShowPebble => show_pebble(app),
         MenuBarAction::Quit => app.exit(0),
     }
 }
@@ -79,6 +80,31 @@ fn handle_menu_bar_action(app: &AppHandle, action: MenuBarAction) {
 fn show_pebble(app: &AppHandle) {
     let state = app.state::<PebbleSessionState>();
     let _ = pebble_session::show_pebble_shell(app, state.inner());
+}
+
+pub fn set_attention(app: &AppHandle, active: bool) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+    let bytes = if active {
+        include_bytes!("../icons/tray-icon-alert.png").as_slice()
+    } else {
+        include_bytes!("../icons/tray-icon.png").as_slice()
+    };
+    if let Ok(icon) = tauri::image::Image::from_bytes(bytes) {
+        let _ = tray.set_icon_with_as_template(Some(icon), !active);
+    }
+}
+
+fn is_primary_click(event: &TrayIconEvent) -> bool {
+    matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        }
+    )
 }
 
 #[cfg(test)]
@@ -91,11 +117,8 @@ mod tests {
             menu_bar_action("select-region"),
             Some(MenuBarAction::SelectRegion)
         );
-        assert_eq!(
-            menu_bar_action("show-pebble"),
-            Some(MenuBarAction::ShowPebble)
-        );
         assert_eq!(menu_bar_action("quit-pebble"), Some(MenuBarAction::Quit));
+        assert_eq!(menu_bar_action("show-pebble"), None);
         assert_eq!(menu_bar_action("open-url"), None);
     }
 }

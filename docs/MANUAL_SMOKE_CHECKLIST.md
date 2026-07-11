@@ -29,10 +29,13 @@ npm run tauri:build
 ## Manual App Checks
 
 - Launch shows one Pebble icon in the macOS menu bar and no Dock icon.
-- `Select Region...`, `Show Pebble`, and `Quit Pebble` work from the menu bar.
+- Left-clicking the menu-bar icon opens the Pebble directly.
+- Right-clicking the menu-bar icon offers `Select Region...` and `Quit`.
 - No persistent management window opens alongside the floating Pebble.
-- ChatGPT opens and closes inside the Pebble without creating another window.
-- Collapsing ChatGPT returns the Pebble to its compact height.
+- The empty and active Pebble have no visible product title.
+- Dragging the white titlebar area moves the window.
+- AI opens and closes inside the Pebble without creating another window.
+- Collapsing AI returns the Pebble to its compact height.
 
 - Idle CPU with no tile.
 - One 600x300 tile at 1 FPS for 60 seconds.
@@ -56,12 +59,16 @@ npm run tauri:build
 - Captured frame payloads remain cropped and memory-only.
 - Paused, hidden, blanked, closed, and deleted states do not capture.
 - No AI request occurs before a visible **Ask** action.
-- A fresh app data directory shows **Connect ChatGPT** and does not reuse another
+- A fresh app data directory shows **Connect OpenAI** and does not reuse another
   Codex installation's account.
-- ChatGPT sign-in opens only an exact `https://chatgpt.com` or
+- OpenAI sign-in opens only an exact `https://chatgpt.com` or
   `https://auth.openai.com` host and returns through the hosted success page.
-- ChatGPT sign-in persists successfully in the macOS login keychain without a
+- OpenAI sign-in persists successfully in the macOS login keychain without a
   `persist_failed` or missing-default-keychain error.
+- Claude reports unavailable when its official CLI is absent and opens only the
+  fixed official installation page.
+- An installed Claude CLI uses Pro/Max login, Haiku 4.5 low effort, no tools,
+  no MCP, one turn, and no image temp file.
 - One question sends one selected crop; no full-screen or temporary image file
   is created.
 - Privacy blank, reselection, or display reconfiguration before upload cancels

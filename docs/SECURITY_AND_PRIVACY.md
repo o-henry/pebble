@@ -43,33 +43,37 @@ Current desktop safeguards:
   display has room, preventing recursive self-capture.
 - Tile content is capture-protected so Pebble does not ingest its own
   preview if a user later moves the tile over the source.
-- Native close, in-app close, and stop all clear the scheduler task and latest
-  in-memory frame.
+- Native close and stop both clear the scheduler task and latest in-memory
+  frame.
 
 No captured content leaves the machine during monitoring. One selected crop
-leaves the machine only after the user explicitly asks ChatGPT about it.
+leaves the machine only after the user explicitly asks AI about it.
 
 ## AI Handoff Policy
 
 AI access is explicit, narrow in scope, and cheap by design:
 
 - No API key is requested or accepted by the UI.
-- The bundled official Codex app-server owns the ChatGPT OAuth flow.
+- The bundled Codex app-server owns the OpenAI account flow.
+- Claude is optional and uses only an installed official Claude CLI at a fixed,
+  validated executable path; Pebble does not bundle or download it.
 - Pebble uses a private `CODEX_HOME` under its 0700 app data directory;
   another Codex installation's login is not read.
 - Credentials use the OS keychain. Browser cookies are never read.
 - The legacy macOS bundle identifier remains unchanged so upgrades retain existing
   Screen Recording and keychain access; it is not user-facing branding.
-- The sidecar receives a cleared environment, so inherited API-key variables are
-  not available to it.
+- AI processes receive a cleared environment, so inherited API-key and proxy
+  variables are not available to them.
 - Each request uses one backend-authorized selected crop encoded as an in-memory
   PNG data URL. No image temp file is created.
 - The selected region, session revision, display bounds, and display scale are
   checked before capture and again immediately before upload.
-- Threads are ephemeral, sandboxed read-only, use approval policy `never`, and
+- OpenAI threads are ephemeral, sandboxed read-only, use approval policy `never`, and
   have web search, MCP servers, and analytics disabled.
-- Pebble accepts only an image-capable `mini` model that supports low
-  reasoning effort.
+- Claude runs in print mode with safe mode, slash commands disabled, strict
+  empty MCP configuration, all tools denied, and one turn maximum.
+- Pebble selects `gpt-5.4-mini` or Claude Haiku 4.5 at low reasoning effort. It
+  never silently escalates to a larger model.
 - Unexpected tool, shell, file, web, plugin, or MCP activity aborts the response.
 - Questions are limited to 1,000 characters and answers to 4,000 characters.
 
@@ -79,7 +83,7 @@ Disallowed behavior:
 - Continuous image streaming to AI.
 - Automatic or hidden background AI calls.
 - Browser cookie scraping.
-- ChatGPT web automation using a user's logged-in session.
+- AI website automation using a user's logged-in browser session.
 - API key theft, token reuse, or reading unrelated app credentials.
 
 ## Low-Usage Monitoring Design
@@ -106,13 +110,14 @@ Webviews do not have:
 - Browser history or URL permissions.
 - Clipboard monitoring.
 
-Rust alone starts the fixed bundled sidecar and opens a validated exact-host
-`https://chatgpt.com` or `https://auth.openai.com` sign-in URL. The webview cannot
-launch arbitrary commands or URLs. On macOS, the sidecar receives the real
-`HOME` path only so the system can locate the default login keychain;
-Pebble still clears all other inherited variables and isolates Codex
-state under its private `CODEX_HOME`. Any permission addition requires a
-decision note explaining why it is necessary and how it is bounded.
+Rust alone starts the fixed bundled OpenAI sidecar or a validated installed
+Claude executable. It opens only an exact-host OpenAI sign-in URL or the fixed
+official Claude installation page. The webview cannot launch arbitrary
+commands or URLs. On macOS, AI processes receive the real `HOME` path only so
+the system can locate the default login keychain; Pebble clears all other
+inherited variables and keeps provider runtime state in private 0700 app-data
+directories. Any permission addition requires a decision note explaining why
+it is necessary and how it is bounded.
 
 ## Continuous Security Review
 

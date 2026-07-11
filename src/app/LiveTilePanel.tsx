@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import type { PhysicalRegion } from "../features/region-selector/regionSelection";
 import {
   createLiveTileState,
@@ -9,6 +9,7 @@ import { LiveFrameCanvas } from "./LiveFrameCanvas";
 import { LiveTileControls } from "./LiveTileControls";
 import { RegionQuestionPanel } from "./RegionQuestionPanel";
 import { useLiveTileBackend } from "./useLiveTileBackend";
+import { listenToMonitorInsights, type MonitorInsight } from "../lib/events";
 
 export function LiveTilePanel({
   region,
@@ -16,7 +17,6 @@ export function LiveTilePanel({
   privacyBlankActive,
   sessionError,
   onAiExpandedChange,
-  onClose,
   onPrivacyBlankChange,
   onReselect
 }: {
@@ -25,7 +25,6 @@ export function LiveTilePanel({
   privacyBlankActive: boolean;
   sessionError: string | null;
   onAiExpandedChange: (expanded: boolean) => void | Promise<void>;
-  onClose: () => void | Promise<void>;
   onPrivacyBlankChange: (active: boolean) => void | Promise<void>;
   onReselect: () => void | Promise<void>;
 }) {
@@ -35,6 +34,10 @@ export function LiveTilePanel({
   const [aiExpanded, setAiExpanded] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
+  const [monitorInsight, setMonitorInsight] = useState<MonitorInsight | null>({
+    kind: "baseline",
+    summary: "LOCAL MONITORING ACTIVE"
+  });
   const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : tile.mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
   const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
@@ -45,6 +48,19 @@ export function LiveTilePanel({
       dispatch({ type: "pause" });
     }
   }, []);
+  useEffect(() => {
+    let unlisten: () => void = () => undefined;
+    let active = true;
+    void listenToMonitorInsights(setMonitorInsight).then((nextUnlisten) => {
+      if (active) unlisten = nextUnlisten;
+      else nextUnlisten();
+    });
+    return () => {
+      active = false;
+      unlisten();
+    };
+  }, []);
+
   const backend = useLiveTileBackend({
     tile,
     requestMode,
@@ -60,12 +76,6 @@ export function LiveTilePanel({
     dispatch({ type: "pause" });
   }
 
-  async function closeTile() {
-    backend.clearActiveRequest();
-    dispatch({ type: "close" });
-    await onClose();
-  }
-
   async function toggleAi() {
     const expanded = !aiExpanded;
     try {
@@ -74,7 +84,7 @@ export function LiveTilePanel({
       await onAiExpandedChange(expanded);
       setAiExpanded(expanded);
     } catch {
-      setControlError("ChatGPT panel could not be resized.");
+      setControlError("AI PANEL COULD NOT BE RESIZED.");
     } finally {
       setControlBusy(false);
     }
@@ -103,10 +113,9 @@ export function LiveTilePanel({
       className={
         "live-tile-section " + (aiExpanded ? "has-ai-panel" : "")
       }
-      aria-labelledby="live-tile-title"
+      aria-label="LIVE REGION"
     >
       <header className="live-tile-heading">
-        <h1 id="live-tile-title">pebble</h1>
         <span className={"tile-status is-" + visibleMode} role="status">
           <span className="status-dot" aria-hidden="true" />
           {frameState}
@@ -123,6 +132,16 @@ export function LiveTilePanel({
         </p>
       ) : null}
 
+      {monitorInsight ? (
+        <div
+          className={`monitor-insight is-${monitorInsight.kind}`}
+          role={monitorInsight.kind === "change" ? "alert" : "status"}
+        >
+          <span className="status-dot" aria-hidden="true" />
+          {monitorInsight.summary}
+        </div>
+      ) : null}
+
       <LiveTileControls
         mode={visibleMode}
         aiExpanded={aiExpanded}
@@ -133,7 +152,6 @@ export function LiveTilePanel({
         onReselect={() => void onReselect()}
         onToggleAi={() => void toggleAi()}
         onTogglePrivacy={() => void togglePrivacy()}
-        onClose={() => void closeTile()}
       />
 
       {aiExpanded ? (

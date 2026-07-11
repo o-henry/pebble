@@ -10,6 +10,13 @@ import {
 } from "../features/pebble-session/pebbleSession";
 import { isTauriRuntime } from "./runtime";
 
+export const MONITOR_INSIGHT_EVENT = "pebble://monitor-insight";
+
+export interface MonitorInsight {
+  kind: "baseline" | "change";
+  summary: string;
+}
+
 export function listenToLiveTileFrames(
   tileId: string,
   onFrame: (event: LiveTileFrameEvent) => void
@@ -36,6 +43,17 @@ export function listenToPebbleSession(
     if (isPebbleSessionSnapshot(event.payload)) {
       onSession(event.payload);
     }
+  });
+}
+
+export function listenToMonitorInsights(
+  onInsight: (insight: MonitorInsight) => void
+): Promise<UnlistenFn> {
+  if (!isTauriRuntime()) {
+    return Promise.resolve(noop);
+  }
+  return listen<MonitorInsight>(MONITOR_INSIGHT_EVENT, (event) => {
+    onInsight(event.payload);
   });
 }
 

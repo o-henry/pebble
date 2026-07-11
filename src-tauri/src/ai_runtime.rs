@@ -1,7 +1,8 @@
 use std::{
     collections::VecDeque,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,7 +11,7 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{async_runtime::Receiver, AppHandle, Manager, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
@@ -18,7 +19,7 @@ use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
 };
-use tokio::time::timeout;
+use tokio::{io::AsyncWriteExt, process::Command, time::timeout};
 use url::Url;
 
 use crate::{
@@ -34,20 +35,38 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const TURN_TIMEOUT: Duration = Duration::from_secs(120);
 const COMPACT_MODEL_PREFERENCES: [&str; 1] = ["gpt-5.4-mini"];
+const OPENAI_MODEL_LABEL: &str = "GPT-5.4-MINI";
+const CLAUDE_MODEL_ID: &str = "claude-haiku-4-5-20251001";
+const CLAUDE_MODEL_LABEL: &str = "CLAUDE HAIKU 4.5";
+const CLAUDE_INSTALL_URL: &str = "https://code.claude.com/docs/en/quickstart";
 
 const BASE_INSTRUCTIONS: &str = "You answer a user's question about one explicitly supplied cropped screen-region image. Use only visible evidence in that image. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. If the image does not contain enough evidence, say so plainly. Reply in the language of the user's question, directly and concisely, in at most five short sentences.";
 const DEVELOPER_INSTRUCTIONS: &str = "Pebble sends exactly one user-requested cropped image. Never invoke any tool or request more access.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AiProvider {
+    OpenAi,
+    Claude,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConnectionStatus {
+    pub provider: AiProvider,
+    pub available: bool,
     pub connected: bool,
+    pub model: &'static str,
+    pub install_url: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiAnswer {
     pub answer: String,
+    pub provider: AiProvider,
+    pub model: String,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -86,7 +105,7 @@ impl AiRuntimeState {
             .map_err(|_| {
                 runtime_error(
                     AiRuntimeErrorCode::Busy,
-                    "Finish the current ChatGPT action before starting another one.",
+                    "Finish the current AI action before starting another one.",
                     true,
                 )
             })?;
@@ -110,17 +129,31 @@ impl Drop for AiRequestGuard {
 pub async fn get_connection_status(
     app: &AppHandle,
     state: &AiRuntimeState,
+    provider: AiProvider,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
     let _guard = state.begin_request()?;
-    let mut server = AppServerProcess::start(app).await?;
-    read_chatgpt_account(&mut server).await
+    match provider {
+        AiProvider::OpenAi => {
+            let mut server = AppServerProcess::start(app).await?;
+            read_chatgpt_account(&mut server).await
+        }
+        AiProvider::Claude => claude_connection_status(app).await,
+    }
 }
 
-pub async fn connect_chatgpt(
+pub async fn connect_provider(
     app: &AppHandle,
     state: &AiRuntimeState,
+    provider: AiProvider,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
     let _guard = state.begin_request()?;
+    match provider {
+        AiProvider::OpenAi => connect_openai(app).await,
+        AiProvider::Claude => connect_claude(app).await,
+    }
+}
+
+async fn connect_openai(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
     let mut server = AppServerProcess::start(app).await?;
     let status = read_chatgpt_account(&mut server).await?;
     if status.connected {
@@ -134,14 +167,14 @@ pub async fn connect_chatgpt(
             REQUEST_TIMEOUT,
         )
         .await?;
-    let login_id = required_string(&login, &["loginId"], "ChatGPT login did not start.")?;
-    let auth_url = required_string(&login, &["authUrl"], "ChatGPT login URL is unavailable.")?;
+    let login_id = required_string(&login, &["loginId"], "OpenAI login did not start.")?;
+    let auth_url = required_string(&login, &["authUrl"], "OpenAI login URL is unavailable.")?;
     validate_auth_url(auth_url)?;
 
     app.opener().open_url(auth_url, None::<&str>).map_err(|_| {
         runtime_error(
             AiRuntimeErrorCode::AuthenticationFailed,
-            "The ChatGPT sign-in page could not be opened.",
+            "The OpenAI sign-in page could not be opened.",
             true,
         )
     })?;
@@ -176,7 +209,9 @@ pub async fn ask_selected_region(
     window: &WebviewWindow,
     runtime: &AiRuntimeState,
     session: &PebbleSessionState,
+    provider: AiProvider,
     question: String,
+    locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
     let _guard = runtime.begin_request()?;
     let question = normalize_question(&question)?;
@@ -192,12 +227,49 @@ pub async fn ask_selected_region(
     ensure_capture_is_current(app, window, session, &authorized)?;
     let image_data_url = encode_frame_data_url(&frame)?;
 
+    match provider {
+        AiProvider::OpenAi => {
+            ask_openai(
+                app,
+                window,
+                session,
+                &authorized,
+                image_data_url,
+                question,
+                locale,
+            )
+            .await
+        }
+        AiProvider::Claude => {
+            ask_claude(
+                app,
+                window,
+                session,
+                &authorized,
+                image_data_url,
+                question,
+                locale,
+            )
+            .await
+        }
+    }
+}
+
+async fn ask_openai(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    session: &PebbleSessionState,
+    authorized: &AuthorizedAiCapture,
+    image_data_url: String,
+    question: String,
+    locale: String,
+) -> Result<AiAnswer, AiRuntimeError> {
     let mut server = AppServerProcess::start(app).await?;
     let account = read_chatgpt_account(&mut server).await?;
     if !account.connected {
         return Err(runtime_error(
             AiRuntimeErrorCode::NotConnected,
-            "Connect a ChatGPT account before asking about the selected region.",
+            "Connect an OpenAI account before asking about the selected region.",
             true,
         ));
     }
@@ -221,11 +293,12 @@ pub async fn ask_selected_region(
     let thread_id = required_string(
         &thread,
         &["thread", "id"],
-        "The private ChatGPT session did not start.",
+        "The private AI session did not start.",
     )?
     .to_string();
 
-    ensure_capture_is_current(app, window, session, &authorized)?;
+    ensure_capture_is_current(app, window, session, authorized)?;
+    let generation_started = Instant::now();
     server
         .request(
             "turn/start",
@@ -234,7 +307,7 @@ pub async fn ask_selected_region(
                 "input": [
                     {
                         "type": "text",
-                        "text": question_prompt(&question),
+                        "text": question_prompt(&question, &locale),
                         "text_elements": []
                     },
                     { "type": "image", "url": image_data_url }
@@ -249,7 +322,142 @@ pub async fn ask_selected_region(
         .await?;
 
     let answer = collect_answer(&mut server, &thread_id).await?;
-    Ok(AiAnswer { answer })
+    Ok(AiAnswer {
+        answer,
+        provider: AiProvider::OpenAi,
+        model,
+        duration_ms: duration_millis(generation_started.elapsed()),
+    })
+}
+
+async fn claude_connection_status(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
+    let Some(binary) = claude_binary(app) else {
+        return Ok(claude_status(false, false));
+    };
+    let output = timeout(
+        REQUEST_TIMEOUT,
+        claude_command(app, &binary)?
+            .args(["auth", "status", "--json"])
+            .output(),
+    )
+    .await
+    .map_err(|_| timeout_error("CLAUDE AUTH STATUS TOOK TOO LONG."))?
+    .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    Ok(claude_status(true, claude_auth_is_connected(&output)))
+}
+
+async fn connect_claude(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
+    let Some(binary) = claude_binary(app) else {
+        app.opener()
+            .open_url(CLAUDE_INSTALL_URL, None::<&str>)
+            .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+        return Ok(claude_status(false, false));
+    };
+    let current = claude_connection_status(app).await?;
+    if current.connected {
+        return Ok(current);
+    }
+
+    let status = timeout(
+        LOGIN_TIMEOUT,
+        claude_command(app, &binary)?
+            .args(["auth", "login"])
+            .status(),
+    )
+    .await
+    .map_err(|_| timeout_error("CLAUDE SIGN-IN TOOK TOO LONG."))?
+    .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    if !status.success() {
+        return Err(runtime_error(
+            AiRuntimeErrorCode::AuthenticationFailed,
+            "CLAUDE SIGN-IN WAS NOT COMPLETED.",
+            true,
+        ));
+    }
+    claude_connection_status(app).await
+}
+
+async fn ask_claude(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    session: &PebbleSessionState,
+    authorized: &AuthorizedAiCapture,
+    image_data_url: String,
+    question: String,
+    locale: String,
+) -> Result<AiAnswer, AiRuntimeError> {
+    let binary = claude_binary(app).ok_or_else(|| sidecar_error_for(AiProvider::Claude))?;
+    let status = claude_connection_status(app).await?;
+    if !status.connected {
+        return Err(runtime_error(
+            AiRuntimeErrorCode::NotConnected,
+            "CONNECT CLAUDE BEFORE ASKING ABOUT THE SELECTED REGION.",
+            true,
+        ));
+    }
+    ensure_capture_is_current(app, window, session, authorized)?;
+
+    let mut command = claude_command(app, &binary)?;
+    command.args([
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--safe-mode",
+        "--disable-slash-commands",
+        "--strict-mcp-config",
+        "--tools",
+        "",
+        "--disallowedTools",
+        "*",
+        "--model",
+        CLAUDE_MODEL_ID,
+        "--effort",
+        "low",
+        "--max-turns",
+        "1",
+        "--system-prompt",
+        BASE_INSTRUCTIONS,
+    ]);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let generation_started = Instant::now();
+    let mut child = command
+        .spawn()
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    let input = claude_image_input(&question, &locale, &image_data_url)?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| sidecar_error_for(AiProvider::Claude))?;
+    stdin
+        .write_all(&input)
+        .await
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    drop(stdin);
+    let output = timeout(TURN_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| timeout_error("CLAUDE TOOK TOO LONG TO RESPOND."))?
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    if !output.status.success() {
+        return Err(runtime_error(
+            AiRuntimeErrorCode::ResponseFailed,
+            "CLAUDE COULD NOT COMPLETE THIS IMAGE QUESTION.",
+            true,
+        ));
+    }
+    let (answer, model, reported_duration) = parse_claude_answer(&output.stdout)?;
+    Ok(AiAnswer {
+        answer,
+        provider: AiProvider::Claude,
+        model,
+        duration_ms: reported_duration
+            .unwrap_or_else(|| duration_millis(generation_started.elapsed())),
+    })
 }
 
 fn ensure_capture_is_current(
@@ -292,18 +500,38 @@ async fn read_chatgpt_account(
         )
         .await?;
     let Some(account) = response.get("account").filter(|account| !account.is_null()) else {
-        return Ok(AiConnectionStatus { connected: false });
+        return Ok(openai_status(false));
     };
 
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Err(runtime_error(
             AiRuntimeErrorCode::AuthenticationFailed,
-            "Pebble accepts ChatGPT account sign-in only; API keys are not used.",
+            "Pebble accepts OpenAI account sign-in only; API keys are not used.",
             true,
         ));
     }
 
-    Ok(AiConnectionStatus { connected: true })
+    Ok(openai_status(true))
+}
+
+fn openai_status(connected: bool) -> AiConnectionStatus {
+    AiConnectionStatus {
+        provider: AiProvider::OpenAi,
+        available: true,
+        connected,
+        model: OPENAI_MODEL_LABEL,
+        install_url: None,
+    }
+}
+
+fn claude_status(available: bool, connected: bool) -> AiConnectionStatus {
+    AiConnectionStatus {
+        provider: AiProvider::Claude,
+        available,
+        connected: available && connected,
+        model: CLAUDE_MODEL_LABEL,
+        install_url: (!available).then_some(CLAUDE_INSTALL_URL),
+    }
 }
 
 async fn compact_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
@@ -323,7 +551,7 @@ async fn compact_image_model(server: &mut AppServerProcess) -> Result<String, Ai
     .ok_or_else(|| {
         runtime_error(
             AiRuntimeErrorCode::ModelUnavailable,
-            "This ChatGPT account does not currently offer a compact image model.",
+            "This OpenAI account does not currently offer a compact image model.",
             true,
         )
     })
@@ -420,7 +648,7 @@ async fn collect_answer(
                 {
                     return Err(runtime_error(
                         AiRuntimeErrorCode::ResponseFailed,
-                        "ChatGPT could not complete this image question.",
+                        "AI could not complete this image question.",
                         true,
                     ));
                 }
@@ -434,7 +662,7 @@ async fn collect_answer(
                 if answer.is_empty() {
                     return Err(runtime_error(
                         AiRuntimeErrorCode::ResponseFailed,
-                        "ChatGPT returned an empty answer.",
+                        "AI returned an empty answer.",
                         true,
                     ));
                 }
@@ -449,7 +677,7 @@ fn append_answer(answer: &mut String, delta: &str) -> Result<(), AiRuntimeError>
     if answer.chars().count().saturating_add(delta.chars().count()) > MAX_ANSWER_CHARS {
         return Err(runtime_error(
             AiRuntimeErrorCode::ResponseFailed,
-            "The ChatGPT answer exceeded Pebble's compact response limit.",
+            "The AI answer exceeded Pebble's compact response limit.",
             true,
         ));
     }
@@ -474,8 +702,180 @@ fn normalize_question(question: &str) -> Result<String, AiRuntimeError> {
     Ok(question.to_string())
 }
 
-fn question_prompt(question: &str) -> String {
-    format!("Question about this selected screen region:\n{question}")
+fn question_prompt(question: &str, locale: &str) -> String {
+    let locale = normalized_locale(locale);
+    format!(
+        "User locale: {locale}. Reply in the language used by the question; use the locale only as a fallback.\nQuestion about this selected screen region:\n{question}"
+    )
+}
+
+fn normalized_locale(locale: &str) -> &str {
+    let valid = !locale.is_empty()
+        && locale.len() <= 35
+        && locale
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    if valid {
+        locale
+    } else {
+        "und"
+    }
+}
+
+fn claude_binary(app: &AppHandle) -> Option<PathBuf> {
+    let home = app.path().home_dir().ok()?;
+    [
+        home.join(".local/bin/claude"),
+        PathBuf::from("/opt/homebrew/bin/claude"),
+        PathBuf::from("/usr/local/bin/claude"),
+    ]
+    .into_iter()
+    .find(|path| trusted_executable(path))
+}
+
+fn trusted_executable(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = metadata.permissions().mode();
+        mode & 0o111 != 0 && mode & 0o022 == 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn claude_command(app: &AppHandle, binary: &Path) -> Result<Command, AiRuntimeError> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    let runtime_dir = app_data.join("claude-runtime");
+    secure_directory(&runtime_dir)?;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    let mut command = Command::new(binary);
+    command
+        .env_clear()
+        .env("HOME", home)
+        .env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+        .env("LANG", "en_US.UTF-8")
+        .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+        .current_dir(runtime_dir);
+    Ok(command)
+}
+
+fn claude_auth_is_connected(output: &std::process::Output) -> bool {
+    if !output.status.success() {
+        return false;
+    }
+    serde_json::from_slice::<Value>(&output.stdout)
+        .ok()
+        .is_some_and(|value| {
+            value.get("loggedIn").and_then(Value::as_bool) == Some(true)
+                || value.get("authenticated").and_then(Value::as_bool) == Some(true)
+        })
+}
+
+fn claude_image_input(
+    question: &str,
+    locale: &str,
+    image_data_url: &str,
+) -> Result<Vec<u8>, AiRuntimeError> {
+    let image = image_data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(invalid_frame_error)?;
+    let mut input = serde_json::to_vec(&json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                { "type": "text", "text": question_prompt(question, locale) },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": image
+                    }
+                }
+            ]
+        },
+        "parent_tool_use_id": Value::Null
+    }))
+    .map_err(|_| invalid_frame_error())?;
+    input.push(b'\n');
+    Ok(input)
+}
+
+fn parse_claude_answer(bytes: &[u8]) -> Result<(String, String, Option<u64>), AiRuntimeError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| response_error("CLAUDE RETURNED AN INVALID RESPONSE."))?;
+    let mut answer = String::new();
+    let mut model = CLAUDE_MODEL_ID.to_string();
+    let mut duration_ms = None;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let value: Value = serde_json::from_str(line)
+            .map_err(|_| response_error("CLAUDE RETURNED AN INVALID RESPONSE."))?;
+        match value.get("type").and_then(Value::as_str) {
+            Some("assistant") => {
+                let message = value.get("message").unwrap_or(&Value::Null);
+                if let Some(next_model) = message.get("model").and_then(Value::as_str) {
+                    model = next_model.to_string();
+                }
+                for content in message
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    match content.get("type").and_then(Value::as_str) {
+                        Some("text") => append_answer(
+                            &mut answer,
+                            content
+                                .get("text")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default(),
+                        )?,
+                        Some("tool_use") => {
+                            return Err(response_error("CLAUDE ATTEMPTED A DISALLOWED ACTION."));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Some("result") => {
+                duration_ms = value.get("duration_ms").and_then(Value::as_u64);
+            }
+            _ => {}
+        }
+    }
+    let answer = answer.trim().to_string();
+    if answer.is_empty() {
+        return Err(response_error("CLAUDE RETURNED AN EMPTY ANSWER."));
+    }
+    Ok((answer, model, duration_ms))
+}
+
+fn duration_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+fn timeout_error(message: &'static str) -> AiRuntimeError {
+    runtime_error(AiRuntimeErrorCode::Timeout, message, true)
+}
+
+fn response_error(message: &'static str) -> AiRuntimeError {
+    runtime_error(AiRuntimeErrorCode::ResponseFailed, message, true)
 }
 
 fn encode_frame_data_url(frame: &CroppedFramePayload) -> Result<String, AiRuntimeError> {
@@ -567,15 +967,15 @@ fn login_failure_message(error: Option<&str>) -> &'static str {
         || error.contains("keyring")
         || error.contains("secure storage")
     {
-        "ChatGPT signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
+        "OpenAI signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
     } else if error.contains("organization") || error.contains("workspace") {
-        "This ChatGPT workspace could not complete sign-in. Try another workspace or account."
+        "This OpenAI workspace could not complete sign-in. Try another workspace or account."
     } else if error.contains("cancel") || error.contains("denied") {
-        "ChatGPT sign-in was cancelled. Try Connect ChatGPT again."
+        "OpenAI sign-in was cancelled. Try Connect OpenAI again."
     } else if error.contains("port") || error.contains("callback") || error.contains("localhost") {
-        "ChatGPT could not return to Pebble. Close other Codex login windows and try again."
+        "OpenAI could not return to Pebble. Close other Codex login windows and try again."
     } else {
-        "ChatGPT sign-in failed. Try Connect ChatGPT again."
+        "OpenAI sign-in failed. Try Connect OpenAI again."
     }
 }
 
@@ -722,7 +1122,7 @@ impl AppServerProcess {
                 if message.get("error").is_some_and(|error| !error.is_null()) {
                     return Err(runtime_error(
                         AiRuntimeErrorCode::ResponseFailed,
-                        "The local ChatGPT service rejected this request.",
+                        "The local AI service rejected this request.",
                         true,
                     ));
                 }
@@ -750,7 +1150,7 @@ impl AppServerProcess {
                 .ok_or_else(|| {
                     runtime_error(
                         AiRuntimeErrorCode::Timeout,
-                        "The local ChatGPT service took too long to respond.",
+                        "The local AI service took too long to respond.",
                         true,
                     )
                 })?;
@@ -759,7 +1159,7 @@ impl AppServerProcess {
                 .map_err(|_| {
                     runtime_error(
                         AiRuntimeErrorCode::Timeout,
-                        "The local ChatGPT service took too long to respond.",
+                        "The local AI service took too long to respond.",
                         true,
                     )
                 })?
@@ -770,7 +1170,7 @@ impl AppServerProcess {
                     return serde_json::from_slice(&line).map_err(|_| {
                         runtime_error(
                             AiRuntimeErrorCode::ResponseFailed,
-                            "The local ChatGPT service returned an invalid response.",
+                            "The local AI service returned an invalid response.",
                             true,
                         )
                     });
@@ -817,9 +1217,20 @@ fn secure_directory(path: &PathBuf) -> Result<(), AiRuntimeError> {
 fn sidecar_error() -> AiRuntimeError {
     runtime_error(
         AiRuntimeErrorCode::SidecarUnavailable,
-        "The bundled local ChatGPT service is unavailable.",
+        "The bundled local AI service is unavailable.",
         true,
     )
+}
+
+fn sidecar_error_for(provider: AiProvider) -> AiRuntimeError {
+    match provider {
+        AiProvider::OpenAi => sidecar_error(),
+        AiProvider::Claude => runtime_error(
+            AiRuntimeErrorCode::SidecarUnavailable,
+            "THE OFFICIAL CLAUDE CLI IS NOT AVAILABLE. INSTALL IT TO USE CLAUDE.",
+            true,
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -827,8 +1238,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        chatgpt_login_params, encode_frame_data_url, login_failure_message, normalize_question,
-        select_compact_model, validate_auth_url, AiRuntimeErrorCode,
+        chatgpt_login_params, claude_image_input, encode_frame_data_url, login_failure_message,
+        normalize_question, normalized_locale, parse_claude_answer, select_compact_model,
+        validate_auth_url, AiRuntimeErrorCode,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
@@ -856,6 +1268,46 @@ mod tests {
     }
 
     #[test]
+    fn accepts_only_bounded_language_tags() {
+        assert_eq!(normalized_locale("ko-KR"), "ko-KR");
+        assert_eq!(normalized_locale("../../secret"), "und");
+        assert_eq!(normalized_locale(&"x".repeat(36)), "und");
+    }
+
+    #[test]
+    fn claude_input_contains_one_text_and_one_memory_only_image() {
+        let input = claude_image_input("무엇이 바뀌었어?", "ko-KR", "data:image/png;base64,AAAA")
+            .expect("Claude input");
+        let value: serde_json::Value = serde_json::from_slice(&input).expect("JSON line");
+        let content = value["message"]["content"].as_array().expect("content");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[1]["source"]["data"], "AAAA");
+        assert!(content[0]["text"].as_str().unwrap().contains("ko-KR"));
+    }
+
+    #[test]
+    fn parses_claude_stream_metadata_without_accepting_tools() {
+        let output = br#"{"type":"assistant","message":{"model":"claude-haiku-4-5-20251001","content":[{"type":"text","text":"Visible change."}]}}
+{"type":"result","duration_ms":1234}
+"#;
+        assert_eq!(
+            parse_claude_answer(output).expect("answer"),
+            (
+                "Visible change.".to_string(),
+                "claude-haiku-4-5-20251001".to_string(),
+                Some(1234)
+            )
+        );
+
+        let tool =
+            br#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}"#;
+        assert_eq!(
+            parse_claude_answer(tool).unwrap_err().code,
+            AiRuntimeErrorCode::ResponseFailed
+        );
+    }
+
+    #[test]
     fn accepts_only_the_official_https_login_host() {
         assert!(validate_auth_url("https://chatgpt.com/auth/login?x=1").is_ok());
         assert!(validate_auth_url("https://auth.openai.com/oauth/authorize?x=1").is_ok());
@@ -870,15 +1322,15 @@ mod tests {
             login_failure_message(Some(
                 "persist_failed: failed to write OAuth tokens to keyring: token=secret"
             )),
-            "ChatGPT signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
+            "OpenAI signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
         );
         assert_eq!(
             login_failure_message(Some("callback port already in use: token=secret")),
-            "ChatGPT could not return to Pebble. Close other Codex login windows and try again."
+            "OpenAI could not return to Pebble. Close other Codex login windows and try again."
         );
         assert_eq!(
             login_failure_message(Some("organization_not_supported")),
-            "This ChatGPT workspace could not complete sign-in. Try another workspace or account."
+            "This OpenAI workspace could not complete sign-in. Try another workspace or account."
         );
     }
 

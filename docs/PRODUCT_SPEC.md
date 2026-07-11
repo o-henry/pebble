@@ -1,25 +1,30 @@
 # Product Spec
 
-Pebble is a local-first desktop app for pinning a small user-selected
-screen region as a low-FPS always-on-top tile. It helps users stop babysitting
-small visual states without turning the app into a screen recorder, hidden
-monitor, or AI surveillance tool.
+Pebble is a local-first desktop app for pinning a small user-selected screen
+region as a low-FPS always-on-top tile. Unlike browser extensions that can ask
+AI only about web content, Pebble works across every visible macOS surface:
+browsers, terminals, IDEs, native apps, simulators, games, and remote desktops.
+It helps users stop babysitting small visual states without turning the app
+into a screen recorder, hidden monitor, or AI surveillance tool.
 
 ## One-Line Promise
 
-Pin a tiny part of your screen. Let local watchers notice what changed.
+Select anywhere on your desktop. Keep it visible. Ask AI when you choose.
 
 ## Target Users
 
 - Developers watching build logs, test output, CI panels, local servers, or
   deployment status.
 - Operators watching dashboard cells, queues, timers, or long-running jobs.
-- Designers and QA users watching a focused area of a browser or desktop app.
+- Designers and QA users watching a focused area of any browser or native app.
 - Power users who want ambient monitoring without cloud integrations.
 
 ## Primary Job
 
 The user wants to keep track of a small visible region while doing other work.
+
+The region source is intentionally application-agnostic. Pebble must not
+depend on browser DOM access, tab context, website support, or extension APIs.
 
 Success looks like:
 
@@ -62,7 +67,7 @@ Do not implement:
 - AI watching the whole screen.
 - Continuous image streaming to AI.
 - Browser cookie scraping.
-- ChatGPT web automation.
+- AI website automation.
 - Stock, brokerage, or trading integration.
 - Hidden capture or workplace-policy bypass features.
 

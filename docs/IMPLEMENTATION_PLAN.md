@@ -378,20 +378,21 @@ feat: add optional local ocr
 
 ## Phase 13 - Explicit AI Region Questions
 
-Goal: let a user explicitly ask ChatGPT about one selected crop without an API
-key or automatic AI monitoring.
+Goal: let a user explicitly ask OpenAI or Claude about one selected crop without
+an API key or automatic AI monitoring.
 
 Build:
 
-- Official Codex app-server sidecar with isolated ChatGPT OAuth.
+- Codex app-server sidecar with isolated OpenAI account login.
+- Optional installed official Claude CLI with Pro/Max account login.
 - One backend-authorized crop per visible **Ask** action.
 - Memory-only PNG data URL payload.
-- Compact image model selection with low reasoning effort.
+- Compact provider-specific image model selection with low reasoning effort.
 - Ephemeral read-only thread and bounded answer.
 
 Do not build:
 
-- ChatGPT web automation.
+- AI website automation.
 - Browser cookie scraping.
 - Continuous image streaming.
 - Whole-screen AI access.

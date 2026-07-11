@@ -1,19 +1,26 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   MAX_REGION_QUESTION_LENGTH,
   normalizedRegionQuestion,
-  type AiConnectionStatus
+  type AiAnswer,
+  type AiConnectionStatus,
+  type AiProvider
 } from "../features/ai/regionQuestion";
 import {
   askSelectedRegion,
-  connectChatGPT,
+  connectAiProvider,
   getAiConnectionStatus
 } from "../lib/invoke";
 import { errorMessage } from "./usePebbleSession";
 
-type ConnectionState = "checking" | "connected" | "disconnected";
+type ConnectionState = "checking" | "connected" | "disconnected" | "unavailable";
 
-export function RegionQuestionPanel({
+const PROVIDERS: ReadonlyArray<{ id: AiProvider; label: string }> = [
+  { id: "openAi", label: "OPENAI" },
+  { id: "claude", label: "CLAUDE" }
+];
+
+export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
   disabled,
   privacyBlankActive,
@@ -24,61 +31,80 @@ export function RegionQuestionPanel({
   privacyBlankActive: boolean;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const [connection, setConnection] = useState<ConnectionState>(() =>
+  const [provider, setProvider] = useState<AiProvider>("openAi");
+  const [connection, setConnection] = useState<ConnectionState>(
     browserPreview ? "disconnected" : "checking"
   );
+  const [status, setStatus] = useState<AiConnectionStatus | null>(null);
   const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [asking, setAsking] = useState(false);
+  const normalizedQuestion = useMemo(
+    () => normalizedRegionQuestion(question),
+    [question]
+  );
 
   useEffect(() => {
     if (browserPreview) {
+      setConnection("disconnected");
+      setStatus(null);
       return;
     }
 
     let active = true;
-    getAiConnectionStatus()
-      .then((status) => {
-        if (active) {
-          setConnection(status.connected ? "connected" : "disconnected");
-        }
+    setConnection("checking");
+    setPanelError(null);
+    getAiConnectionStatus(provider)
+      .then((nextStatus) => {
+        if (!active) return;
+        setStatus(nextStatus);
+        setConnection(
+          !nextStatus.available
+            ? "unavailable"
+            : nextStatus.connected
+              ? "connected"
+              : "disconnected"
+        );
       })
       .catch((reason: unknown) => {
-        if (active) {
-          setConnection("disconnected");
-          setPanelError(
-            errorMessage(reason, "ChatGPT connection could not be checked.")
-          );
-        }
+        if (!active) return;
+        setConnection("disconnected");
+        setPanelError(errorMessage(reason, "AI CONNECTION COULD NOT BE CHECKED."));
       });
 
     return () => {
       active = false;
     };
-  }, [browserPreview]);
+  }, [browserPreview, provider]);
 
-  async function connect() {
+  const connect = useCallback(async () => {
     try {
       setConnecting(true);
       onBusyChange(true);
       setPanelError(null);
-      const status: AiConnectionStatus = await connectChatGPT();
-      setConnection(status.connected ? "connected" : "disconnected");
+      const nextStatus = await connectAiProvider(provider);
+      setStatus(nextStatus);
+      setConnection(
+        !nextStatus.available
+          ? "unavailable"
+          : nextStatus.connected
+            ? "connected"
+            : "disconnected"
+      );
     } catch (reason) {
-      setPanelError(errorMessage(reason, "ChatGPT sign-in was not completed."));
+      setPanelError(errorMessage(reason, "AI SIGN-IN WAS NOT COMPLETED."));
     } finally {
       setConnecting(false);
       onBusyChange(false);
     }
-  }
+  }, [onBusyChange, provider]);
 
-  async function ask(event: FormEvent<HTMLFormElement>) {
+  const ask = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const normalized = normalizedRegionQuestion(question);
-    if (!normalized) {
-      setPanelError("Enter a question between 1 and 1,000 characters.");
+    if (!normalizedQuestion) {
+      setPanelError("ENTER A QUESTION BETWEEN 1 AND 1,000 CHARACTERS.");
       return;
     }
 
@@ -87,32 +113,42 @@ export function RegionQuestionPanel({
       onBusyChange(true);
       setPanelError(null);
       setAnswer(null);
-      const response = await askSelectedRegion(normalized);
-      setAnswer(response.answer);
-    } catch (reason) {
-      setPanelError(
-        errorMessage(reason, "The selected region could not be analyzed.")
+      setAnswer(
+        await askSelectedRegion(provider, normalizedQuestion, navigator.language)
       );
+    } catch (reason) {
+      setPanelError(errorMessage(reason, "THE SELECTED REGION COULD NOT BE ANALYZED."));
     } finally {
       setAsking(false);
       onBusyChange(false);
     }
-  }
+  }, [normalizedQuestion, onBusyChange, provider]);
+
+  const modelLabel = status?.model ?? defaultModel(provider);
 
   return (
-    <section className="region-question" aria-label="ChatGPT">
+    <section className="region-question" aria-label="AI">
       <div className="region-question__header">
-        <h3>ChatGPT</h3>
-        {connection === "connected" ? (
-          <span className="region-question__status">Connected</span>
-        ) : null}
+        <h3>AI</h3>
+        <div className="provider-switch" role="group" aria-label="AI PROVIDER">
+          {PROVIDERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={provider === item.id ? "is-active" : ""}
+              aria-pressed={provider === item.id}
+              disabled={disabled || asking || connecting}
+              onClick={() => setProvider(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {connection === "checking" ? (
-        <p className="region-question__quiet" aria-live="polite">
-          Checking connection
-        </p>
-      ) : connection === "disconnected" ? (
+        <p className="region-question__quiet" aria-live="polite">CHECKING CONNECTION</p>
+      ) : connection !== "connected" ? (
         <div className="region-question__connect">
           <button
             type="button"
@@ -123,33 +159,32 @@ export function RegionQuestionPanel({
             {browserPreview
               ? "DESKTOP APP REQUIRED"
               : connecting
-                ? "FINISH SIGN-IN IN BROWSER"
-                : "CONNECT CHATGPT"}
+                ? "FINISH SIGN-IN"
+                : connection === "unavailable"
+                  ? "INSTALL CLAUDE"
+                  : `CONNECT ${provider === "openAi" ? "OPENAI" : "CLAUDE"}`}
           </button>
-          <span>No API key</span>
+          <span>NO API KEY</span>
         </div>
       ) : (
         <form className="region-question__form" onSubmit={(event) => void ask(event)}>
           <textarea
-            aria-label="Question about the selected region"
+            aria-label="QUESTION ABOUT THE SELECTED REGION"
             value={question}
             maxLength={MAX_REGION_QUESTION_LENGTH}
-            rows={2}
-            placeholder="Ask about this region"
+            rows={3}
+            placeholder="ASK ABOUT THIS REGION"
             autoFocus
             disabled={disabled || asking || privacyBlankActive}
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
-          <div className="region-question__submit">
-            <span>{privacyBlankActive ? "Preview hidden" : "Selected crop only"}</span>
+          <div className="region-question__composer-footer">
+            <span className="region-question__model">{modelLabel} · LOW</span>
             <button
               type="submit"
               className="primary-action"
               disabled={
-                disabled ||
-                asking ||
-                privacyBlankActive ||
-                normalizedRegionQuestion(question) === null
+                disabled || asking || privacyBlankActive || normalizedQuestion === null
               }
             >
               {asking ? "LOOKING" : "ASK"}
@@ -158,16 +193,21 @@ export function RegionQuestionPanel({
         </form>
       )}
 
-      {panelError ? (
-        <p className="region-question__error" role="alert">
-          {panelError}
-        </p>
-      ) : null}
+      {panelError ? <p className="region-question__error" role="alert">{panelError}</p> : null}
       {answer ? (
-        <p className="region-question__answer" aria-live="polite">
-          {answer}
-        </p>
+        <div className="region-question__answer" aria-live="polite">
+          <p>{answer.answer}</p>
+          <span>{answer.model.toUpperCase()} · {formatDuration(answer.durationMs)}</span>
+        </div>
       ) : null}
     </section>
   );
+});
+
+function defaultModel(provider: AiProvider) {
+  return provider === "openAi" ? "GPT-5.4-MINI" : "CLAUDE HAIKU 4.5";
+}
+
+function formatDuration(durationMs: number) {
+  return `${Math.max(0, durationMs / 1_000).toFixed(1)}S`;
 }

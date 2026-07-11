@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppStatus } from "../app/appContent";
 import type {
   AiAnswer,
-  AiConnectionStatus
+  AiConnectionStatus,
+  AiProvider
 } from "../features/ai/regionQuestion";
 import type { CaptureError } from "../features/capture/captureFrame";
 import type {
@@ -71,17 +72,22 @@ export interface BackendCommandMap {
     args: { expanded: boolean };
     result: void;
   };
+  start_pebble_window_drag: {
+    result: void;
+  };
   request_screen_capture_access: {
     result: boolean;
   };
   get_ai_connection_status: {
+    args: { provider: AiProvider };
     result: AiConnectionStatus;
   };
-  connect_chatgpt: {
+  connect_ai_provider: {
+    args: { provider: AiProvider };
     result: AiConnectionStatus;
   };
   ask_selected_region: {
-    args: { question: string };
+    args: { provider: AiProvider; question: string; locale: string };
     result: AiAnswer;
   };
   capture_live_tile_once: {
@@ -203,29 +209,39 @@ export function setPebbleAiPanelExpanded(expanded: boolean): Promise<void> {
   return invokeBackend("set_pebble_ai_panel_expanded", { expanded });
 }
 
+export function startPebbleWindowDrag(): Promise<void> {
+  return invokeBackend("start_pebble_window_drag");
+}
+
 export function requestScreenCaptureAccess(): Promise<boolean> {
   return invokeBackend("request_screen_capture_access");
 }
 
-let pendingAiConnectionStatus: Promise<AiConnectionStatus> | null = null;
+const pendingAiConnectionStatus = new Map<AiProvider, Promise<AiConnectionStatus>>();
 
-export function getAiConnectionStatus(): Promise<AiConnectionStatus> {
-  if (!pendingAiConnectionStatus) {
-    pendingAiConnectionStatus = invokeBackend("get_ai_connection_status").finally(
-      () => {
-        pendingAiConnectionStatus = null;
-      }
-    );
+export function getAiConnectionStatus(provider: AiProvider): Promise<AiConnectionStatus> {
+  const pending = pendingAiConnectionStatus.get(provider);
+  if (pending) {
+    return pending;
   }
-  return pendingAiConnectionStatus;
+
+  const request = invokeBackend("get_ai_connection_status", { provider }).finally(() => {
+    pendingAiConnectionStatus.delete(provider);
+  });
+  pendingAiConnectionStatus.set(provider, request);
+  return request;
 }
 
-export function connectChatGPT(): Promise<AiConnectionStatus> {
-  return invokeBackend("connect_chatgpt");
+export function connectAiProvider(provider: AiProvider): Promise<AiConnectionStatus> {
+  return invokeBackend("connect_ai_provider", { provider });
 }
 
-export function askSelectedRegion(question: string): Promise<AiAnswer> {
-  return invokeBackend("ask_selected_region", { question });
+export function askSelectedRegion(
+  provider: AiProvider,
+  question: string,
+  locale: string
+): Promise<AiAnswer> {
+  return invokeBackend("ask_selected_region", { provider, question, locale });
 }
 
 export function captureLiveTileOnce(

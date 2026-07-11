@@ -17,6 +17,8 @@ use crate::{
 };
 
 const FRAME_UPDATED_EVENT: &str = "pebble://frame-updated";
+const PREVIEW_MAX_WIDTH: usize = 960;
+const PREVIEW_MAX_HEIGHT: usize = 540;
 pub const MAIN_LIVE_TILE_ID: &str = "main-live-tile";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -271,6 +273,7 @@ impl<B: CaptureBackend> LiveTileService<B> {
         tile_id: String,
         frame: CroppedFramePayload,
     ) -> LiveTileFrameEvent {
+        let frame = preview_frame(frame);
         let event = LiveTileFrameEvent {
             event_name: FRAME_UPDATED_EVENT,
             request_id,
@@ -332,6 +335,35 @@ impl<B: CaptureBackend> LiveTileService<B> {
             .and_modify(|blocked| *blocked = (*blocked).max(session_revision))
             .or_insert(session_revision);
     }
+}
+
+fn preview_frame(mut frame: CroppedFramePayload) -> CroppedFramePayload {
+    let Ok(source_width) = usize::try_from(frame.width) else {
+        return frame;
+    };
+    let Ok(source_height) = usize::try_from(frame.height) else {
+        return frame;
+    };
+    if source_width <= PREVIEW_MAX_WIDTH && source_height <= PREVIEW_MAX_HEIGHT {
+        return frame;
+    }
+    let scale = (PREVIEW_MAX_WIDTH as f64 / source_width as f64)
+        .min(PREVIEW_MAX_HEIGHT as f64 / source_height as f64);
+    let target_width = ((source_width as f64 * scale).round() as usize).max(1);
+    let target_height = ((source_height as f64 * scale).round() as usize).max(1);
+    let mut bytes = Vec::with_capacity(target_width * target_height * 4);
+    for y in 0..target_height {
+        let source_y = y * source_height / target_height;
+        for x in 0..target_width {
+            let source_x = x * source_width / target_width;
+            let offset = (source_y * source_width + source_x) * 4;
+            bytes.extend_from_slice(&frame.bytes[offset..offset + 4]);
+        }
+    }
+    frame.width = i32::try_from(target_width).unwrap_or(i32::MAX);
+    frame.height = i32::try_from(target_height).unwrap_or(i32::MAX);
+    frame.bytes = bytes;
+    frame
 }
 
 pub fn live_tile_frame_event_name() -> &'static str {

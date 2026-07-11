@@ -9,8 +9,7 @@ export function LiveTileControls({
   onPause,
   onReselect,
   onToggleAi,
-  onTogglePrivacy,
-  onClose
+  onTogglePrivacy
 }: {
   mode: LiveTileMode;
   aiExpanded: boolean;
@@ -21,10 +20,9 @@ export function LiveTileControls({
   onReselect: () => void;
   onToggleAi: () => void;
   onTogglePrivacy: () => void;
-  onClose: () => void;
 }) {
   return (
-    <div className="live-tile-controls" aria-label="Pebble controls">
+    <div className="live-tile-controls" aria-label="CAPTURE CONTROLS">
       <div className="mode-controls" role="group" aria-label="Capture state">
         <button
           type="button"
@@ -44,7 +42,7 @@ export function LiveTileControls({
         </button>
       </div>
 
-      <div className="tile-tool-controls" role="group" aria-label="Pebble tools">
+      <div className="tile-tool-controls" role="group" aria-label="CAPTURE TOOLS">
         <TextAction
           label="SELECT REGION"
           ariaLabel="Select another region"
@@ -52,8 +50,8 @@ export function LiveTileControls({
           onClick={onReselect}
         />
         <TextAction
-          label="CHATGPT"
-          ariaLabel={aiExpanded ? "Hide ChatGPT" : "Ask ChatGPT"}
+          label="AI"
+          ariaLabel={aiExpanded ? "HIDE AI" : "ASK AI"}
           active={aiExpanded}
           disabled={disabled}
           onClick={onToggleAi}
@@ -65,13 +63,6 @@ export function LiveTileControls({
           disabled={disabled}
           onClick={onTogglePrivacy}
         />
-        <TextAction
-          label="CLOSE"
-          ariaLabel="Close pebble"
-          disabled={disabled}
-          danger
-          onClick={onClose}
-        />
       </div>
     </div>
   );
@@ -81,21 +72,18 @@ function TextAction({
   label,
   ariaLabel,
   active = false,
-  danger = false,
   disabled,
   onClick
 }: {
   label: string;
   ariaLabel: string;
   active?: boolean;
-  danger?: boolean;
   disabled: boolean;
   onClick: () => void;
 }) {
   const className = [
     "text-action",
     active ? "is-active" : "",
-    danger ? "is-danger" : ""
   ]
     .filter(Boolean)
     .join(" ");
