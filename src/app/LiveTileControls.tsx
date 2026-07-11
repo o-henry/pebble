@@ -22,48 +22,45 @@ export function LiveTileControls({
   onTogglePrivacy: () => void;
 }) {
   return (
-    <div className="live-tile-controls" aria-label="CAPTURE CONTROLS">
-      <div className="mode-controls" role="group" aria-label="Capture state">
-        <button
-          type="button"
-          className={mode === "live" ? "is-active" : "secondary-action"}
-          disabled={disabled || mode === "blanked"}
-          onClick={onLive}
-        >
-          LIVE
-        </button>
-        <button
-          type="button"
-          className={mode === "paused" ? "is-active" : "secondary-action"}
-          disabled={disabled || mode === "blanked"}
-          onClick={onPause}
-        >
-          PAUSE
-        </button>
-      </div>
-
-      <div className="tile-tool-controls" role="group" aria-label="CAPTURE TOOLS">
-        <TextAction
-          label="SELECT REGION"
-          ariaLabel="Select another region"
-          disabled={disabled}
-          onClick={onReselect}
-        />
-        <TextAction
-          label="AI"
-          ariaLabel={aiExpanded ? "HIDE AI" : "ASK AI"}
-          active={aiExpanded}
-          disabled={disabled}
-          onClick={onToggleAi}
-        />
-        <TextAction
-          label={privacyBlankActive ? "SHOW" : "HIDE"}
-          ariaLabel={privacyBlankActive ? "Show preview" : "Hide preview"}
-          active={privacyBlankActive}
-          disabled={disabled}
-          onClick={onTogglePrivacy}
-        />
-      </div>
+    <div
+      className="live-tile-controls"
+      role="group"
+      aria-label="CAPTURE CONTROLS"
+    >
+      <TextAction
+        label="LIVE"
+        ariaLabel="RESUME LIVE CAPTURE"
+        active={mode === "live"}
+        disabled={disabled || mode === "blanked"}
+        onClick={onLive}
+      />
+      <TextAction
+        label="PAUSE"
+        ariaLabel="PAUSE LIVE CAPTURE"
+        active={mode === "paused"}
+        disabled={disabled || mode === "blanked"}
+        onClick={onPause}
+      />
+      <TextAction
+        label="SELECT REGION"
+        ariaLabel="SELECT ANOTHER REGION"
+        disabled={disabled}
+        onClick={onReselect}
+      />
+      <TextAction
+        label="AI"
+        ariaLabel={aiExpanded ? "HIDE AI" : "ASK AI"}
+        active={aiExpanded}
+        disabled={disabled}
+        onClick={onToggleAi}
+      />
+      <TextAction
+        label={privacyBlankActive ? "SHOW" : "HIDE"}
+        ariaLabel={privacyBlankActive ? "SHOW PREVIEW" : "HIDE PREVIEW"}
+        active={privacyBlankActive}
+        disabled={disabled}
+        onClick={onTogglePrivacy}
+      />
     </div>
   );
 }
@@ -81,10 +78,7 @@ function TextAction({
   disabled: boolean;
   onClick: () => void;
 }) {
-  const className = [
-    "text-action",
-    active ? "is-active" : "",
-  ]
+  const className = ["text-action", active ? "is-active" : ""]
     .filter(Boolean)
     .join(" ");
 

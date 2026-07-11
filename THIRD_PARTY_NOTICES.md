@@ -25,3 +25,16 @@ selected-region questions.
 
 The license text is included at
 `public/licenses/OpenAI-Codex-Apache-2.0.txt`.
+
+## Provider Marks
+
+The optional AI provider selector displays the official OpenAI app icon and the
+Claude mark so users can identify the account they are connecting.
+
+- OpenAI icon: [OpenAI Help Center](https://help.openai.com/en/articles/7905742-what-does-the-official-chatgpt-ios-app-icon-look-like)
+- OpenAI usage: [OpenAI Design Guidelines](https://openai.com/brand/)
+- Claude mark: [Simple Icons](https://simpleicons.org/?q=claude), CC0 1.0
+
+The Simple Icons license text is included at
+`public/licenses/Simple-Icons-CC0.txt`. OpenAI and Claude are trademarks of
+their respective owners; their appearance does not imply endorsement.

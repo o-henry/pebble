@@ -8,6 +8,7 @@
   min-height: 0;
   padding: 12px;
   background: var(--surface);
+  transition: background-color 260ms ease, color 260ms ease;
 }
 
 .live-tile-section.has-ai-panel {
@@ -18,8 +19,8 @@
   display: flex;
   min-height: 24px;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .live-tile-heading h1 {
@@ -36,6 +37,7 @@
   color: var(--ink-muted);
   font-size: 0.6rem;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .tile-status.is-paused .status-dot {
@@ -110,44 +112,18 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.mode-controls,
-.tile-tool-controls {
-  display: inline-flex;
-  align-items: center;
-}
-
-.mode-controls {
-  min-height: 29px;
-}
-
-.mode-controls button {
-  min-width: 54px;
-  min-height: 29px;
-  padding-inline: 8px;
-  border-radius: 0;
-  font-size: 0.66rem;
-}
-
-.mode-controls button:first-child {
-  border-radius: 5px 0 0 5px;
-}
-
-.mode-controls button + button,
-.tile-tool-controls button + button {
-  margin-left: -1px;
-}
-
-.mode-controls button:last-child {
-  border-radius: 0 5px 5px 0;
+.live-tile-controls::-webkit-scrollbar {
+  display: none;
 }
 
 .text-action {
-  min-width: 48px;
+  min-width: 44px;
   min-height: 29px;
+  flex: 0 0 auto;
   padding: 0 8px;
   color: var(--ink-muted);
   border-color: var(--line-strong);
@@ -157,11 +133,15 @@
   white-space: nowrap;
 }
 
-.text-action:first-child {
+.live-tile-controls .text-action:first-child {
   border-radius: 5px 0 0 5px;
 }
 
-.text-action:last-child {
+.live-tile-controls .text-action + .text-action {
+  margin-left: -1px;
+}
+
+.live-tile-controls .text-action:last-child {
   border-radius: 0 5px 5px 0;
 }
 
@@ -184,18 +164,12 @@
     padding: 10px;
   }
 
-  .live-tile-controls {
-    align-items: stretch;
-    flex-direction: column;
+  .tile-status {
+    font-size: 0;
   }
 
-  .mode-controls,
-  .tile-tool-controls {
-    width: 100%;
-  }
-
-  .mode-controls button,
-  .tile-tool-controls button {
-    flex: 1;
+  .tile-status .status-dot {
+    width: 8px;
+    height: 8px;
   }
 }

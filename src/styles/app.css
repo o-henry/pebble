@@ -277,16 +277,26 @@ input {
 
 .provider-switch {
   display: inline-flex;
+  gap: 5px;
 }
 
 .provider-switch button {
+  width: 29px;
+  min-width: 29px;
+  height: 29px;
   min-height: 29px;
-  padding: 0 8px;
-  border-radius: 0;
+  padding: 0;
+  border-radius: 50%;
   color: var(--ink-muted);
   border-color: var(--line-strong);
   background: var(--surface);
-  font-size: 0.58rem;
+}
+
+.provider-switch img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .region-question__connect button {
@@ -297,23 +307,15 @@ input {
   font-size: 0.6rem;
 }
 
-.provider-switch button + button {
-  margin-left: -1px;
-}
-
-.provider-switch button:first-child {
-  border-radius: 5px 0 0 5px;
-}
-
-.provider-switch button:last-child {
-  border-radius: 0 5px 5px 0;
-}
-
 .provider-switch button.is-active {
   z-index: 1;
-  color: var(--surface);
   border-color: var(--ink-strong);
-  background: var(--ink-strong);
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 1px var(--ink-strong);
+}
+
+html[data-adaptive-theme="dark"] .provider-switch img {
+  filter: invert(1);
 }
 
 .region-question__error,

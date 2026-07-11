@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_REGION_QUESTION_LENGTH,
+  defaultAiModelLabel,
   normalizedRegionQuestion
 } from "./regionQuestion";
 
@@ -19,5 +20,10 @@ describe("region questions", () => {
 
   it("counts Unicode code points rather than UTF-16 units", () => {
     expect(normalizedRegionQuestion("한".repeat(MAX_REGION_QUESTION_LENGTH))).not.toBeNull();
+  });
+
+  it("labels the configured balanced models", () => {
+    expect(defaultAiModelLabel("openAi")).toBe("GPT-5.6-TERRA");
+    expect(defaultAiModelLabel("claude")).toBe("CLAUDE SONNET 5");
   });
 });

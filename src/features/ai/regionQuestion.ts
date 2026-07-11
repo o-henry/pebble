@@ -2,6 +2,10 @@ export const MAX_REGION_QUESTION_LENGTH = 1_000;
 
 export type AiProvider = "openAi" | "claude";
 
+export function defaultAiModelLabel(provider: AiProvider) {
+  return provider === "openAi" ? "GPT-5.6-TERRA" : "CLAUDE SONNET 5";
+}
+
 export interface AiConnectionStatus {
   provider: AiProvider;
   available: boolean;

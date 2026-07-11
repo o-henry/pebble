@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   MAX_REGION_QUESTION_LENGTH,
+  defaultAiModelLabel,
   normalizedRegionQuestion,
   type AiAnswer,
   type AiConnectionStatus,
@@ -12,13 +13,12 @@ import {
   getAiConnectionStatus
 } from "../lib/invoke";
 import { errorMessage } from "./usePebbleSession";
-
-type ConnectionState = "checking" | "connected" | "disconnected" | "unavailable";
-
-const PROVIDERS: ReadonlyArray<{ id: AiProvider; label: string }> = [
-  { id: "openAi", label: "OPENAI" },
-  { id: "claude", label: "CLAUDE" }
-];
+import { AiProviderSwitch } from "./AiProviderSwitch";
+import {
+  AiConnectionPrompt,
+  type AiConnectionState
+} from "./AiConnectionPrompt";
+import { AiAnswerView } from "./AiAnswerView";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -32,7 +32,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   onBusyChange: (busy: boolean) => void;
 }) {
   const [provider, setProvider] = useState<AiProvider>("openAi");
-  const [connection, setConnection] = useState<ConnectionState>(
+  const [connection, setConnection] = useState<AiConnectionState>(
     browserPreview ? "disconnected" : "checking"
   );
   const [status, setStatus] = useState<AiConnectionStatus | null>(null);
@@ -124,49 +124,29 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
     }
   }, [normalizedQuestion, onBusyChange, provider]);
 
-  const modelLabel = status?.model ?? defaultModel(provider);
+  const modelLabel = status?.model ?? defaultAiModelLabel(provider);
 
   return (
     <section className="region-question" aria-label="AI">
       <div className="region-question__header">
         <h3>AI</h3>
-        <div className="provider-switch" role="group" aria-label="AI PROVIDER">
-          {PROVIDERS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={provider === item.id ? "is-active" : ""}
-              aria-pressed={provider === item.id}
-              disabled={disabled || asking || connecting}
-              onClick={() => setProvider(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <AiProviderSwitch
+          provider={provider}
+          disabled={disabled || asking || connecting}
+          onChange={setProvider}
+        />
       </div>
 
-      {connection === "checking" ? (
-        <p className="region-question__quiet" aria-live="polite">CHECKING CONNECTION</p>
-      ) : connection !== "connected" ? (
-        <div className="region-question__connect">
-          <button
-            type="button"
-            className="secondary-action"
-            disabled={disabled || connecting || browserPreview}
-            onClick={() => void connect()}
-          >
-            {browserPreview
-              ? "DESKTOP APP REQUIRED"
-              : connecting
-                ? "FINISH SIGN-IN"
-                : connection === "unavailable"
-                  ? "INSTALL"
-                  : `CONNECT ${provider === "openAi" ? "OPENAI" : "CLAUDE"}`}
-          </button>
-          <span>NO API KEY</span>
-        </div>
-      ) : (
+      <AiConnectionPrompt
+        connection={connection}
+        provider={provider}
+        browserPreview={browserPreview}
+        disabled={disabled}
+        connecting={connecting}
+        onConnect={() => void connect()}
+      />
+
+      {connection === "connected" ? (
         <form className="region-question__form" onSubmit={(event) => void ask(event)}>
           <textarea
             aria-label="QUESTION ABOUT THE SELECTED REGION"
@@ -191,23 +171,10 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             </button>
           </div>
         </form>
-      )}
+      ) : null}
 
       {panelError ? <p className="region-question__error" role="alert">{panelError}</p> : null}
-      {answer ? (
-        <div className="region-question__answer" aria-live="polite">
-          <p>{answer.answer}</p>
-          <span>{answer.model.toUpperCase()} · {formatDuration(answer.durationMs)}</span>
-        </div>
-      ) : null}
+      <AiAnswerView answer={answer} />
     </section>
   );
 });
-
-function defaultModel(provider: AiProvider) {
-  return provider === "openAi" ? "GPT-5.6-TERRA" : "CLAUDE SONNET 5";
-}
-
-function formatDuration(durationMs: number) {
-  return `${Math.max(0, durationMs / 1_000).toFixed(1)}S`;
-}

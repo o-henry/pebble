@@ -10,6 +10,8 @@ import { LiveTileControls } from "./LiveTileControls";
 import { RegionQuestionPanel } from "./RegionQuestionPanel";
 import { useLiveTileBackend } from "./useLiveTileBackend";
 import { listenToMonitorInsights, type MonitorInsight } from "../lib/events";
+import { useAdaptiveTheme } from "./useAdaptiveTheme";
+import { captureErrorMessage, liveFrameState } from "./liveTilePresentation";
 
 export function LiveTilePanel({
   region,
@@ -41,6 +43,7 @@ export function LiveTilePanel({
   const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : tile.mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
   const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
+  useAdaptiveTheme(visibleFrame);
   const handleBackendError = useCallback((message: string | null) => {
     setCaptureError(message);
     if (message) {
@@ -116,6 +119,17 @@ export function LiveTilePanel({
       aria-label="LIVE REGION"
     >
       <header className="live-tile-heading">
+        <LiveTileControls
+          mode={visibleMode}
+          aiExpanded={aiExpanded}
+          disabled={busy}
+          privacyBlankActive={privacyBlankActive}
+          onLive={() => dispatch({ type: "resume" })}
+          onPause={pauseTile}
+          onReselect={() => void onReselect()}
+          onToggleAi={() => void toggleAi()}
+          onTogglePrivacy={() => void togglePrivacy()}
+        />
         <span className={"tile-status is-" + visibleMode} role="status">
           <span className="status-dot" aria-hidden="true" />
           {frameState}
@@ -142,18 +156,6 @@ export function LiveTilePanel({
         </div>
       ) : null}
 
-      <LiveTileControls
-        mode={visibleMode}
-        aiExpanded={aiExpanded}
-        disabled={busy}
-        privacyBlankActive={privacyBlankActive}
-        onLive={() => dispatch({ type: "resume" })}
-        onPause={pauseTile}
-        onReselect={() => void onReselect()}
-        onToggleAi={() => void toggleAi()}
-        onTogglePrivacy={() => void togglePrivacy()}
-      />
-
       {aiExpanded ? (
         <RegionQuestionPanel
           browserPreview={browserPreview}
@@ -164,27 +166,4 @@ export function LiveTilePanel({
       ) : null}
     </section>
   );
-}
-
-function liveFrameState(
-  mode: LiveTileMode,
-  hasFrame: boolean,
-  error: string | null
-) {
-  if (error) {
-    return "NEEDS ATTENTION";
-  }
-  if (mode === "blanked") {
-    return "HIDDEN";
-  }
-  if (mode === "paused") {
-    return "PAUSED";
-  }
-  return hasFrame ? "LIVE" : "STARTING";
-}
-
-function captureErrorMessage(message: string) {
-  return /permission/i.test(message)
-    ? "Screen Recording permission is off. Enable pebble in macOS System Settings, then resume."
-    : message;
 }
