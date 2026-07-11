@@ -1,6 +1,7 @@
 # Pebble
 
-> Select anywhere on your desktop. Keep it visible. Ask AI when you choose.
+> Select anywhere on your desktop. Keep it visible. Get local change alerts.
+> Ask AI only when you choose.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
 [![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
@@ -19,7 +20,7 @@ web content; Pebble starts with whatever the user can actually see on screen.
 The product idea is intentionally small:
 
 ```text
-select any visible desktop region -> keep it visible -> optionally ask AI
+select any visible desktop region -> keep it visible -> local alerts -> optionally ask AI
 ```
 
 ![Pebble demo](docs/assets/pebble-demo.gif)
@@ -57,8 +58,10 @@ Implemented:
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
   tile.
+- Consent-gated **Watch** mode with local visual classification, a five-minute
+  change cooldown, and at most 24 native alerts per app session.
 - Local-only material-change alerts through the menu bar and native
-  notifications; live monitoring does not upload frames.
+  notifications; Watch never uploads frames.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
@@ -84,6 +87,7 @@ Not shipped yet:
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
 | Local first | Diff runs locally now; future OCR and AI handoff must stay behind local gates. |
+| Watch is opt-in | The first activation explains the scope; every new region starts with Watch off. |
 | AI is explicit | One selected crop is sent only after the user presses **Ask**. |
 | Instant privacy | Privacy blank stops capture loops, not just the UI. |
 
@@ -132,6 +136,23 @@ effort. It never falls back to mini or Haiku automatically.
 Pebble does not read browser cookies, automate an AI website, reuse another
 app's tokens, use MCP, or stream screen images continuously.
 
+## Smart Watch
+
+**Watch** is a local notification layer, not background cloud AI. The first
+activation shows a required notice explaining that:
+
+- Only the selected region is compared on the Mac.
+- No frame is automatically sent to OpenAI or Claude.
+- Notifications are capped at 24 per app session and material changes have a
+  five-minute cooldown.
+- Pause, Hide, privacy blank, close, and reselection stop monitoring; a newly
+  selected region requires Watch to be enabled again.
+
+Watch classifies broad visible changes such as marked brightness shifts or a
+large increase in red, amber, or green content. It does not claim to understand
+text or predict domain-specific outcomes. Production local OCR remains future
+work.
+
 ## Use
 
 1. Launch Pebble and click its macOS menu bar item to open the compact window.
@@ -141,8 +162,10 @@ app's tokens, use MCP, or stream screen images continuously.
 4. Drag over a small region in any visible browser or native desktop app.
 5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
 6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
-7. Toggle **AI**, choose a provider, type a question, and press **Ask**. This
-   sends one fresh crop only for that request.
+7. Toggle **AI**, then press **Watch** for local change alerts. Review and accept
+   the notice the first time. Watch never uploads the region.
+8. Choose a provider, type a question, and press **Ask** when cloud analysis is
+   wanted. This sends one fresh crop only for that request.
 
 Pebble captures only the selected crop and does not save frame history. Live
 monitoring stays local; only a visible **Ask** action sends one fresh crop.

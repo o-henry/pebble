@@ -17,6 +17,7 @@ use crate::{
     region_selector_window::{
         monitor_identifier, region_selector_monitor_geometry, REGION_SELECTOR_LABEL,
     },
+    smart_watch::{self, SmartWatchState},
     window_shell::show_existing_window,
 };
 
@@ -568,6 +569,7 @@ fn open_pebble_window(
     let close_app = app.clone();
     let close_state = state.clone();
     let close_capture = app.state::<LiveTileState>().inner().clone();
+    let close_watch = app.state::<SmartWatchState>().inner().clone();
     let close_window = window.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -575,13 +577,18 @@ fn open_pebble_window(
             match close_state.set_window_open(false) {
                 Ok(snapshot) => {
                     close_capture.close_tile(MAIN_LIVE_TILE_ID, snapshot.revision);
+                    smart_watch::emit_status(&close_app, close_watch.disable());
                     emit_session(&close_app, &snapshot);
                 }
-                Err(_) => close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX),
+                Err(_) => {
+                    close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX);
+                    smart_watch::emit_status(&close_app, close_watch.disable());
+                }
             }
             let _ = close_window.hide();
         } else if matches!(event, WindowEvent::Destroyed) {
             close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX);
+            smart_watch::emit_status(&close_app, close_watch.disable());
         }
     });
 

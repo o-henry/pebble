@@ -13,12 +13,12 @@ import {
   getAiConnectionStatus
 } from "../lib/invoke";
 import { errorMessage } from "./usePebbleSession";
-import { AiProviderSwitch } from "./AiProviderSwitch";
 import {
   AiConnectionPrompt,
   type AiConnectionState
 } from "./AiConnectionPrompt";
 import { AiAnswerView } from "./AiAnswerView";
+import { AiPanelHeader } from "./AiPanelHeader";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -45,7 +45,6 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
     () => normalizedRegionQuestion(question),
     [question]
   );
-
   useEffect(() => {
     if (browserPreview) {
       setConnection("disconnected");
@@ -125,17 +124,18 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   }, [normalizedQuestion, onBusyChange, provider]);
 
   const modelLabel = status?.model ?? defaultAiModelLabel(provider);
-
   return (
     <section className="region-question" aria-label="AI">
-      <div className="region-question__header">
-        <h3>AI</h3>
-        <AiProviderSwitch
-          provider={provider}
-          disabled={disabled || asking || connecting}
-          onChange={setProvider}
-        />
-      </div>
+      <AiPanelHeader
+        browserPreview={browserPreview}
+        connection={connection}
+        provider={provider}
+        disabled={disabled || asking || connecting}
+        privacyBlankActive={privacyBlankActive}
+        onProviderChange={setProvider}
+        onBusyChange={onBusyChange}
+        onError={setPanelError}
+      />
 
       <AiConnectionPrompt
         connection={connection}

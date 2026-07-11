@@ -1,0 +1,55 @@
+.smart-watch-control {
+  position: relative;
+}
+
+.smart-watch-control > button {
+  width: 68px;
+  min-width: 68px;
+  height: 29px;
+  min-height: 29px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 0.58rem;
+}
+
+.smart-watch-notice {
+  position: absolute;
+  z-index: 20;
+  top: 34px;
+  right: 0;
+  display: grid;
+  width: min(330px, calc(100vw - 32px));
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--ink-strong);
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgb(17 20 22 / 16%);
+}
+
+.smart-watch-notice strong {
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.smart-watch-notice p {
+  color: var(--ink-muted);
+  font-size: 0.56rem;
+  line-height: 1.45;
+}
+
+.smart-watch-notice > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.smart-watch-notice button {
+  min-width: 62px;
+  min-height: 29px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 0.58rem;
+}

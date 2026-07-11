@@ -13,6 +13,8 @@ The app must make capture visible:
 - Every active region has a visible tile or visible status.
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
+- The first **Watch** activation requires a visible scope notice and consent.
+- Watch starts off for every newly selected region and remains local-only.
 - AI runs only after a visible **Ask** action in the expanded Pebble drawer.
 
 ## Local-First Default
@@ -48,8 +50,8 @@ Current desktop safeguards:
 - Adaptive colors are sampled locally from the existing selected crop, are not
   persisted, and reset as soon as the window is hidden or privacy blank is on.
 
-No captured content leaves the machine during monitoring. One selected crop
-leaves the machine only after the user explicitly asks AI about it.
+No captured content leaves the machine during Watch monitoring. One selected
+crop leaves the machine only after the user explicitly asks AI about it.
 
 ## AI Handoff Policy
 
@@ -89,16 +91,24 @@ Disallowed behavior:
 - AI website automation using a user's logged-in browser session.
 - API key theft, token reuse, or reading unrelated app credentials.
 
-## Low-Usage Monitoring Design
+## Local Watch Design
 
 All monitoring happens without AI:
 
 ```text
-small crop -> local capture/diff -> local display
+small crop -> local capture/diff -> broad local visual signal -> local notification
 ```
 
-The only network image path is a fresh selected crop sent after the user presses
-**Ask**.
+Watch is off by default. Its first activation requires a versioned local
+consent receipt, and every new region requires a fresh opt-in. It is limited by
+the diff engine's five-minute material-change cooldown and a maximum of 24
+notifications per app session. It keeps only small in-memory statistics and never
+stores frames, OCR, or notification content.
+
+The current local classifier can report broad brightness and color-distribution
+changes. It does not claim semantic understanding, text recognition, or
+domain-specific prediction. The only network image path remains a fresh
+selected crop sent after the user presses **Ask**.
 
 ## Permission Rules
 
@@ -136,6 +146,7 @@ Check for:
 - Capture continuing in inactive states.
 - Full-monitor frames crossing process or UI boundaries.
 - AI calls becoming automatic or detached from the visible **Ask** action.
+- Watch bypassing its consent version, per-region opt-in, or local-only boundary.
 - Logs, errors, tests, fixtures, or examples containing private screen content,
   OCR output, secrets, tokens, cookies, or local account data.
 
@@ -150,6 +161,7 @@ Do not release if any of these are true:
 - Hidden, paused, or blanked regions keep capturing.
 - Full monitor frames are sent to the UI or AI connector.
 - AI sends data without a visible user request.
+- Watch can be enabled without its visible scope notice.
 - Telemetry or analytics exist.
 - Permission denied crashes the app.
 - The user cannot see or stop active capture.

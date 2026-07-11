@@ -40,6 +40,7 @@ mod region_selection;
 mod region_selection_tests;
 pub mod region_selection_types;
 mod region_selector_window;
+mod smart_watch;
 mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
@@ -54,6 +55,7 @@ use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
+use smart_watch::{SmartWatchError, SmartWatchState, SmartWatchStatus};
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use window_shell::WindowShellError;
@@ -119,9 +121,12 @@ fn confirm_pebble_region(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PebbleSessionState>,
+    smart_watch: tauri::State<'_, SmartWatchState>,
     request: RegionSelectionRequest,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    pebble_session::confirm_region_selection(&app, &window, state.inner(), request)
+    let snapshot = pebble_session::confirm_region_selection(&app, &window, state.inner(), request)?;
+    smart_watch::emit_status(&app, smart_watch.disable());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -138,9 +143,14 @@ fn set_pebble_privacy_blank(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PebbleSessionState>,
+    smart_watch: tauri::State<'_, SmartWatchState>,
     active: bool,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    pebble_session::set_privacy_blank(&app, &window, state.inner(), active)
+    let snapshot = pebble_session::set_privacy_blank(&app, &window, state.inner(), active)?;
+    if active {
+        smart_watch::emit_status(&app, smart_watch.disable());
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -148,8 +158,11 @@ fn remove_pebble(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PebbleSessionState>,
+    smart_watch: tauri::State<'_, SmartWatchState>,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    pebble_session::remove_active_pebble(&app, &window, state.inner())
+    let snapshot = pebble_session::remove_active_pebble(&app, &window, state.inner())?;
+    smart_watch::emit_status(&app, smart_watch.disable());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -157,8 +170,11 @@ fn close_pebble_window(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PebbleSessionState>,
+    smart_watch: tauri::State<'_, SmartWatchState>,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    pebble_session::close_pebble_window(&app, &window, state.inner())
+    let snapshot = pebble_session::close_pebble_window(&app, &window, state.inner())?;
+    smart_watch::emit_status(&app, smart_watch.disable());
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -243,12 +259,50 @@ async fn ask_selected_region(
 }
 
 #[tauri::command]
+fn get_smart_watch_status(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, SmartWatchState>,
+) -> Result<SmartWatchStatus, SmartWatchError> {
+    if !pebble_window_allows_ai(&window) {
+        return Err(SmartWatchError::unavailable());
+    }
+    Ok(state.status())
+}
+
+#[tauri::command]
+fn set_smart_watch(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    session: tauri::State<'_, PebbleSessionState>,
+    state: tauri::State<'_, SmartWatchState>,
+    enabled: bool,
+    consent_version: u16,
+) -> Result<SmartWatchStatus, SmartWatchError> {
+    if !pebble_window_allows_ai(&window) {
+        return Err(SmartWatchError::unavailable());
+    }
+    let snapshot = session
+        .snapshot()
+        .map_err(|_| SmartWatchError::invalid_session())?;
+    if enabled
+        && (snapshot.region.is_none() || !snapshot.window_open || snapshot.privacy_blank_active)
+    {
+        return Err(SmartWatchError::invalid_session());
+    }
+
+    let status = state.configure(enabled, snapshot.revision, consent_version)?;
+    smart_watch::emit_status(&app, status.clone());
+    Ok(status)
+}
+
+#[tauri::command]
 fn capture_live_tile_once(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, LiveTileState>,
     session: tauri::State<'_, PebbleSessionState>,
     monitoring: tauri::State<'_, monitoring::MonitoringState>,
+    smart_watch: tauri::State<'_, SmartWatchState>,
     request: LiveTileCaptureRequest,
 ) -> Result<LiveTileCaptureResponse, CaptureError> {
     if !is_live_tile_window(window.label()) {
@@ -305,7 +359,19 @@ fn capture_live_tile_once(
 
         if let Some(decision) = monitoring.observe(expected_revision, &event.frame, event.sequence)
         {
-            emit_local_monitoring_insight(&app, decision);
+            match decision {
+                monitoring::MonitoringDecision::Baseline => {
+                    emit_local_monitoring_insight(&app, decision);
+                }
+                monitoring::MonitoringDecision::Changed { .. } => {
+                    if let Some(status) = smart_watch.claim_notification(expected_revision) {
+                        smart_watch::emit_status(&app, status);
+                        emit_local_monitoring_insight(&app, decision);
+                    } else {
+                        smart_watch::emit_status(&app, smart_watch.status());
+                    }
+                }
+            }
         }
     }
 
@@ -323,7 +389,7 @@ enum MonitorInsightKind {
 #[serde(rename_all = "camelCase")]
 struct MonitorInsight {
     kind: MonitorInsightKind,
-    summary: &'static str,
+    summary: String,
 }
 
 const MONITOR_INSIGHT_EVENT: &str = "pebble://monitor-insight";
@@ -332,19 +398,20 @@ fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::M
     let insight = match decision {
         monitoring::MonitoringDecision::Baseline => MonitorInsight {
             kind: MonitorInsightKind::Baseline,
-            summary: "LOCAL MONITORING ACTIVE",
+            summary: "LOCAL MONITORING ACTIVE".to_string(),
         },
-        monitoring::MonitoringDecision::Changed { .. } => {
+        monitoring::MonitoringDecision::Changed { kind, .. } => {
+            let summary = kind.summary();
             menu_bar::set_attention(app, true);
             let _ = app
                 .notification()
                 .builder()
-                .title("CHANGE DETECTED")
-                .body("THE SELECTED REGION CHANGED MATERIALLY.")
+                .title("PEBBLE WATCH")
+                .body(summary)
                 .show();
             MonitorInsight {
                 kind: MonitorInsightKind::Change,
-                summary: "MATERIAL CHANGE DETECTED",
+                summary: summary.to_string(),
             }
         }
     };
@@ -422,6 +489,7 @@ pub fn run() -> tauri::Result<()> {
         .manage(AiRuntimeState::default())
         .manage(LiveTileState::default())
         .manage(monitoring::MonitoringState::default())
+        .manage(SmartWatchState::default())
         .manage(PebbleSessionState::default())
         .setup(|app| {
             menu_bar::setup(app)?;
@@ -447,6 +515,8 @@ pub fn run() -> tauri::Result<()> {
             get_ai_connection_status,
             connect_ai_provider,
             ask_selected_region,
+            get_smart_watch_status,
+            set_smart_watch,
             capture_live_tile_once,
             load_pebble_config,
             save_pebble_config,

@@ -217,6 +217,12 @@ input {
   gap: 10px;
 }
 
+.region-question__actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .region-question h3 {
   color: var(--ink-strong);
   font-size: 0.76rem;

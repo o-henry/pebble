@@ -5,6 +5,10 @@ import type {
   AiConnectionStatus,
   AiProvider
 } from "../features/ai/regionQuestion";
+import {
+  SMART_WATCH_CONSENT_VERSION,
+  type SmartWatchStatus
+} from "../features/ai/smartWatch";
 import type { CaptureError } from "../features/capture/captureFrame";
 import type {
   LiveTileCaptureRequest,
@@ -89,6 +93,13 @@ export interface BackendCommandMap {
   ask_selected_region: {
     args: { provider: AiProvider; question: string; locale: string };
     result: AiAnswer;
+  };
+  get_smart_watch_status: {
+    result: SmartWatchStatus;
+  };
+  set_smart_watch: {
+    args: { enabled: boolean; consentVersion: number };
+    result: SmartWatchStatus;
   };
   capture_live_tile_once: {
     args: { request: LiveTileCaptureRequest };
@@ -242,6 +253,17 @@ export function askSelectedRegion(
   locale: string
 ): Promise<AiAnswer> {
   return invokeBackend("ask_selected_region", { provider, question, locale });
+}
+
+export function getSmartWatchStatus(): Promise<SmartWatchStatus> {
+  return invokeBackend("get_smart_watch_status");
+}
+
+export function setSmartWatch(enabled: boolean): Promise<SmartWatchStatus> {
+  return invokeBackend("set_smart_watch", {
+    enabled,
+    consentVersion: SMART_WATCH_CONSENT_VERSION
+  });
 }
 
 export function captureLiveTileOnce(
