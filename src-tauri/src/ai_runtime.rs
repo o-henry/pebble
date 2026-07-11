@@ -23,11 +23,10 @@ use url::Url;
 
 use crate::{
     capture_backend::{CaptureBackend, CroppedFramePayload},
-    pebble_session::{AuthorizedAiCapture, PebbleSessionState},
+    pebble_session::{AuthorizedAiCapture, PebbleSessionState, PEBBLE_TILE_LABEL},
     platform_capture::PlatformCaptureBackend,
 };
 
-const MAIN_WINDOW_LABEL: &str = "main";
 const MAX_QUESTION_CHARS: usize = 1_000;
 const MAX_ANSWER_CHARS: usize = 4_000;
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
@@ -37,7 +36,7 @@ const TURN_TIMEOUT: Duration = Duration::from_secs(120);
 const COMPACT_MODEL_PREFERENCES: [&str; 1] = ["gpt-5.4-mini"];
 
 const BASE_INSTRUCTIONS: &str = "You answer a user's question about one explicitly supplied cropped screen-region image. Use only visible evidence in that image. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. If the image does not contain enough evidence, say so plainly. Reply in the language of the user's question, directly and concisely, in at most five short sentences.";
-const DEVELOPER_INSTRUCTIONS: &str = "ScreenPebble sends exactly one user-requested cropped image. Never invoke any tool or request more access.";
+const DEVELOPER_INSTRUCTIONS: &str = "Pebble sends exactly one user-requested cropped image. Never invoke any tool or request more access.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -299,7 +298,7 @@ async fn read_chatgpt_account(
     if account.get("type").and_then(Value::as_str) != Some("chatgpt") {
         return Err(runtime_error(
             AiRuntimeErrorCode::AuthenticationFailed,
-            "ScreenPebble accepts ChatGPT account sign-in only; API keys are not used.",
+            "Pebble accepts ChatGPT account sign-in only; API keys are not used.",
             true,
         ));
     }
@@ -377,7 +376,7 @@ async fn collect_answer(
         if message.get("id").is_some() && message.get("method").is_some() {
             return Err(runtime_error(
                 AiRuntimeErrorCode::ResponseFailed,
-                "The AI response requested an action outside the selected image, so ScreenPebble stopped it.",
+                "The AI response requested an action outside the selected image, so Pebble stopped it.",
                 true,
             ));
         }
@@ -404,7 +403,7 @@ async fn collect_answer(
                 if !matches!(item_type, "userMessage" | "agentMessage" | "reasoning") {
                     return Err(runtime_error(
                         AiRuntimeErrorCode::ResponseFailed,
-                        "The AI response attempted an action outside the selected image, so ScreenPebble stopped it.",
+                        "The AI response attempted an action outside the selected image, so Pebble stopped it.",
                         true,
                     ));
                 }
@@ -450,7 +449,7 @@ fn append_answer(answer: &mut String, delta: &str) -> Result<(), AiRuntimeError>
     if answer.chars().count().saturating_add(delta.chars().count()) > MAX_ANSWER_CHARS {
         return Err(runtime_error(
             AiRuntimeErrorCode::ResponseFailed,
-            "The ChatGPT answer exceeded ScreenPebble's compact response limit.",
+            "The ChatGPT answer exceeded Pebble's compact response limit.",
             true,
         ));
     }
@@ -521,7 +520,7 @@ fn invalid_frame_error() -> AiRuntimeError {
 }
 
 fn ensure_authorized_window(window: &WebviewWindow) -> Result<(), AiRuntimeError> {
-    let authorized = window.label() == MAIN_WINDOW_LABEL
+    let authorized = window.label() == PEBBLE_TILE_LABEL
         && window.is_visible().unwrap_or(false)
         && !window.is_minimized().unwrap_or(true);
     if authorized {
@@ -529,7 +528,7 @@ fn ensure_authorized_window(window: &WebviewWindow) -> Result<(), AiRuntimeError
     } else {
         Err(runtime_error(
             AiRuntimeErrorCode::UnauthorizedWindow,
-            "Image questions are available only from the visible ScreenPebble window.",
+            "Image questions are available only from the visible Pebble window.",
             true,
         ))
     }
@@ -568,13 +567,13 @@ fn login_failure_message(error: Option<&str>) -> &'static str {
         || error.contains("keyring")
         || error.contains("secure storage")
     {
-        "ChatGPT signed in, but ScreenPebble could not access the system credential store. Make sure your login keychain is available, then try again."
+        "ChatGPT signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
     } else if error.contains("organization") || error.contains("workspace") {
         "This ChatGPT workspace could not complete sign-in. Try another workspace or account."
     } else if error.contains("cancel") || error.contains("denied") {
         "ChatGPT sign-in was cancelled. Try Connect ChatGPT again."
     } else if error.contains("port") || error.contains("callback") || error.contains("localhost") {
-        "ChatGPT could not return to ScreenPebble. Close other Codex login windows and try again."
+        "ChatGPT could not return to Pebble. Close other Codex login windows and try again."
     } else {
         "ChatGPT sign-in failed. Try Connect ChatGPT again."
     }
@@ -583,7 +582,7 @@ fn login_failure_message(error: Option<&str>) -> &'static str {
 fn invalid_auth_url_error() -> AiRuntimeError {
     runtime_error(
         AiRuntimeErrorCode::AuthenticationFailed,
-        "ScreenPebble rejected an unexpected sign-in URL.",
+        "Pebble rejected an unexpected sign-in URL.",
         true,
     )
 }
@@ -686,8 +685,8 @@ impl AppServerProcess {
                 "initialize",
                 json!({
                     "clientInfo": {
-                        "name": "screenpebble",
-                        "title": "ScreenPebble",
+                        "name": "pebble",
+                        "title": "Pebble",
                         "version": env!("CARGO_PKG_VERSION")
                     },
                     "capabilities": {
@@ -871,11 +870,11 @@ mod tests {
             login_failure_message(Some(
                 "persist_failed: failed to write OAuth tokens to keyring: token=secret"
             )),
-            "ChatGPT signed in, but ScreenPebble could not access the system credential store. Make sure your login keychain is available, then try again."
+            "ChatGPT signed in, but Pebble could not access the system credential store. Make sure your login keychain is available, then try again."
         );
         assert_eq!(
             login_failure_message(Some("callback port already in use: token=secret")),
-            "ChatGPT could not return to ScreenPebble. Close other Codex login windows and try again."
+            "ChatGPT could not return to Pebble. Close other Codex login windows and try again."
         );
         assert_eq!(
             login_failure_message(Some("organization_not_supported")),

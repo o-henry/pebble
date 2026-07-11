@@ -3,7 +3,6 @@ use crate::{
         capture_error, validate_region_size, CaptureBackend, CaptureError, CaptureErrorCode,
         CaptureResult,
     },
-    performance_limits::{PerformanceLimitErrorCode, PerformanceLimits, RegionSize},
     region_selection_types::PhysicalRegion,
 };
 
@@ -66,28 +65,7 @@ fn validate_scale_factor(region: &PhysicalRegion, scale_factor: f64) -> Result<(
 }
 
 fn validate_platform_region(region: &PhysicalRegion) -> Result<(), CaptureError> {
-    validate_region_size(region)?;
-    PerformanceLimits::default()
-        .validate_region_size(RegionSize {
-            width: region.width,
-            height: region.height,
-        })
-        .map_err(|error| match error.code {
-            PerformanceLimitErrorCode::RegionWidthTooLarge
-            | PerformanceLimitErrorCode::RegionHeightTooLarge => capture_error(
-                CaptureErrorCode::RegionTooLarge,
-                &region.monitor_id,
-                format!(
-                    "Capture region is too large: actual {}, limit {}.",
-                    error.actual, error.limit
-                ),
-            ),
-            _ => capture_error(
-                CaptureErrorCode::InvalidRegion,
-                &region.monitor_id,
-                "Capture region dimensions must be positive.",
-            ),
-        })
+    validate_region_size(region)
 }
 
 #[cfg(test)]
@@ -107,16 +85,15 @@ pub(crate) mod platform_capture_test_support {
             .expect_err("invalid region should fail before platform capture")
     }
 
-    pub fn oversized_region_error() -> CaptureError {
-        PlatformCaptureBackend
-            .capture_region(&PhysicalRegion {
-                monitor_id: "main".to_string(),
-                x: 0,
-                y: 0,
-                width: 801,
-                height: 24,
-            })
-            .expect_err("oversized region should fail before platform capture")
+    pub fn large_region_is_valid() -> bool {
+        validate_platform_region(&PhysicalRegion {
+            monitor_id: "main".to_string(),
+            x: 0,
+            y: 0,
+            width: 7680,
+            height: 4320,
+        })
+        .is_ok()
     }
 
     #[cfg(target_os = "macos")]

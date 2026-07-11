@@ -4,7 +4,7 @@ use crate::{
     live_tile::{LiveTileCaptureRequest, MAIN_LIVE_TILE_ID},
     pebble_session::{
         frame_delivery_is_current, position_pebble_away_from_region, trusted_selection_request,
-        PebbleSessionErrorCode, PebbleSessionSnapshot, PebbleSessionState,
+        PebbleSessionSnapshot, PebbleSessionState,
     },
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
@@ -38,12 +38,14 @@ fn session_accepts_a_valid_region_and_tracks_window_state() {
 }
 
 #[test]
-fn session_rejects_regions_outside_hard_limits() {
-    let error = PebbleSessionState::default()
-        .select_region(selection_request(0.0, 0.0, 801.0, 200.0))
-        .expect_err("oversized region");
+fn session_accepts_a_full_display_region() {
+    let snapshot = PebbleSessionState::default()
+        .select_region(selection_request(0.0, 0.0, 1920.0, 1080.0))
+        .expect("full display region");
 
-    assert_eq!(error.code, PebbleSessionErrorCode::InvalidRegion);
+    let region = snapshot.region.expect("selected region");
+    assert_eq!(region.width, 1920);
+    assert_eq!(region.height, 1080);
 }
 
 #[test]

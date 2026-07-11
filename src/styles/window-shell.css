@@ -4,6 +4,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  padding-top: 28px;
   background: var(--surface);
 }
 
@@ -13,18 +14,49 @@
 
 .tile-loading,
 .tile-empty {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+}
+
+.tile-loading {
+  display: grid;
+  place-items: center;
+}
+
+.tile-empty {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: 28px 14px 14px;
+}
+
+.tile-empty__brand {
+  min-height: 26px;
+  color: var(--ink-strong);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.tile-empty__content {
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 8px;
-  padding: 24px;
-  color: var(--ink-muted);
-  font-size: 0.72rem;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
 }
 
 .tile-empty h1 {
-  max-width: 290px;
-  font-size: 1.05rem;
-  font-weight: 500;
-  line-height: 1.45;
+  max-width: 310px;
+  color: var(--ink-strong);
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tile-empty__select {
+  min-width: 148px;
+}
+
+.tile-empty .live-tile-error {
+  width: 100%;
 }

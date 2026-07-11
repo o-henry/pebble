@@ -4,7 +4,7 @@ Use this checklist on macOS before enabling real capture in a public build.
 
 ## Permission Denied
 
-- Remove ScreenPebble from System Settings > Privacy & Security > Screen
+- Remove Pebble from System Settings > Privacy & Security > Screen
   Recording, or disable its access.
 - Start the app and request one real capture for a small selected region.
 - Confirm the app reports a recoverable permission error.
@@ -12,7 +12,7 @@ Use this checklist on macOS before enabling real capture in a public build.
 
 ## Permission Allowed
 
-- Enable Screen Recording permission for ScreenPebble and restart if macOS asks.
+- Enable Screen Recording permission for Pebble and restart if macOS asks.
 - Select a small region such as 300x180.
 - Request one real capture.
 - Confirm the returned frame dimensions match the selected region.

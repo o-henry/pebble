@@ -4,8 +4,8 @@ use crate::region_selection_types::{
     RegionSelectionLimits, RegionSelectionRequest, RegionSelectionResult,
 };
 
-const MIN_REGION_WIDTH: i32 = 24;
-const MIN_REGION_HEIGHT: i32 = 24;
+const MIN_REGION_WIDTH: i32 = 1;
+const MIN_REGION_HEIGHT: i32 = 1;
 
 impl Default for RegionSelectionLimits {
     fn default() -> Self {
@@ -29,10 +29,8 @@ pub fn select_region(request: RegionSelectionRequest) -> RegionSelectionResult {
     let region = map_logical_selection_to_physical(&request)?;
 
     validate_minimum_region(&region, &limits)?;
-    validate_hard_limits(&region, &limits)?;
-
     Ok(RegionSelection {
-        warnings: recommended_warnings(&region, &limits),
+        warnings: Vec::new(),
         region,
         limits,
     })
@@ -183,54 +181,6 @@ fn validate_minimum_region(
     Ok(())
 }
 
-fn validate_hard_limits(
-    region: &PhysicalRegion,
-    limits: &RegionSelectionLimits,
-) -> Result<(), RegionSelectionIssue> {
-    if region.width > limits.max_region.width {
-        return Err(issue(
-            RegionSelectionIssueCode::RegionWidthTooLarge,
-            limits.max_region.width as f64,
-            region.width as f64,
-        ));
-    }
-
-    if region.height > limits.max_region.height {
-        return Err(issue(
-            RegionSelectionIssueCode::RegionHeightTooLarge,
-            limits.max_region.height as f64,
-            region.height as f64,
-        ));
-    }
-
-    Ok(())
-}
-
-fn recommended_warnings(
-    region: &PhysicalRegion,
-    limits: &RegionSelectionLimits,
-) -> Vec<RegionSelectionIssue> {
-    let mut warnings = Vec::with_capacity(2);
-
-    if region.width > limits.recommended_region.width {
-        warnings.push(issue(
-            RegionSelectionIssueCode::RegionWidthAboveRecommended,
-            limits.recommended_region.width as f64,
-            region.width as f64,
-        ));
-    }
-
-    if region.height > limits.recommended_region.height {
-        warnings.push(issue(
-            RegionSelectionIssueCode::RegionHeightAboveRecommended,
-            limits.recommended_region.height as f64,
-            region.height as f64,
-        ));
-    }
-
-    warnings
-}
-
 fn issue(code: RegionSelectionIssueCode, limit: f64, actual: f64) -> RegionSelectionIssue {
     RegionSelectionIssue {
         code,
@@ -262,13 +212,5 @@ fn message_for(code: RegionSelectionIssueCode) -> &'static str {
         RegionSelectionIssueCode::RegionCoordinateOutOfRange => {
             "Selected region is outside the supported coordinate range."
         }
-        RegionSelectionIssueCode::RegionWidthAboveRecommended => {
-            "Selected region is wider than recommended."
-        }
-        RegionSelectionIssueCode::RegionHeightAboveRecommended => {
-            "Selected region is taller than recommended."
-        }
-        RegionSelectionIssueCode::RegionWidthTooLarge => "Selected region is wider than allowed.",
-        RegionSelectionIssueCode::RegionHeightTooLarge => "Selected region is taller than allowed.",
     }
 }

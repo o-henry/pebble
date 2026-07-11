@@ -1,20 +1,20 @@
-# ScreenPebble Interface Contract
+# Pebble Interface Contract
 
 ## Purpose
 
-ScreenPebble is an operational desktop tool. Its interface exists to complete
+Pebble is an operational desktop tool. Its interface exists to complete
 one task: select a small screen region and keep that region visible in a compact
 always-on-top window.
 
 ## Product Flow
 
-1. The empty main window presents one primary action: `Select a region`.
-2. macOS owns the Screen Recording consent prompt.
+1. Pebble launches as a native macOS menu bar utility without a management window.
+2. `Select Region...` requests the macOS Screen Recording consent prompt.
 3. The selector explains one gesture: drag over the region and release.
-4. Releasing a valid selection starts observation and opens the Pebble window
+4. Releasing a valid selection starts observation and opens one Pebble window
    automatically.
-5. The main window becomes session control for show, reselect, privacy blank,
-   and stop.
+5. The Pebble toolbar owns live, pause, reselect, privacy, ChatGPT, and close.
+6. The ChatGPT drawer expands inside that same window only when requested.
 
 There is no test-tile control, performance inspector, or contributor status in
 the user workflow.
@@ -31,15 +31,13 @@ belong in documentation rather than the application surface.
 
 ## Layout
 
-- Main window: a restrained task workspace, not a dashboard.
-- Empty state: purpose, one primary action, and a short set of concrete use
-  cases.
-- Active state: selected dimensions, monitor, position, window state, and the
-  smallest useful command set.
+- Menu bar: select a region, reopen the Pebble, or quit.
+- Empty Pebble: product name, one primary action, and no setup dashboard.
+- Active Pebble: compact resizable always-on-top window with the frame as the
+  dominant area and a single stable toolbar.
+- ChatGPT drawer: an inline extension of the Pebble, hidden by default.
 - Selector: full-display overlay with a fixed instruction HUD and visible drag
   bounds.
-- Pebble: compact resizable always-on-top window with the frame as the dominant
-  area.
 - Narrow windows: one deliberate column with no overlapping controls or text.
 
 ## Typography
@@ -64,16 +62,16 @@ belong in documentation rather than the application surface.
 
 ## Interaction Rules
 
-- `Select a region` requests macOS consent before opening the selector.
+- `Select Region...` in the menu bar requests consent before opening the selector.
 - A valid pointer release starts the Pebble without an extra confirmation step.
 - Escape and the visible close control cancel selection without changing the
   active region.
-- `Hide preview` blanks the floating tile and stops its capture request.
+- The eye control blanks the preview and stops its capture request.
+- The ChatGPT control expands or collapses the inline question drawer.
 - Closing the Pebble stops capture but keeps the current region available to
-  reopen.
-- `Stop watching` closes the Pebble and clears the in-memory session region.
-- Live, pause, refresh, and close controls keep stable dimensions in the
-  floating window.
+  reopen from the menu bar.
+- Live, pause, reselect, privacy, ChatGPT, and close controls keep stable
+  dimensions in the floating window.
 
 ## Data Honesty
 

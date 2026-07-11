@@ -67,6 +67,10 @@ export interface BackendCommandMap {
   close_pebble_window: {
     result: PebbleSessionSnapshot;
   };
+  set_pebble_ai_panel_expanded: {
+    args: { expanded: boolean };
+    result: void;
+  };
   request_screen_capture_access: {
     result: boolean;
   };
@@ -193,6 +197,10 @@ export function removePebble(): Promise<PebbleSessionSnapshot> {
 
 export function closePebbleWindow(): Promise<PebbleSessionSnapshot> {
   return invokeBackend("close_pebble_window");
+}
+
+export function setPebbleAiPanelExpanded(expanded: boolean): Promise<void> {
+  return invokeBackend("set_pebble_ai_panel_expanded", { expanded });
 }
 
 export function requestScreenCaptureAccess(): Promise<boolean> {

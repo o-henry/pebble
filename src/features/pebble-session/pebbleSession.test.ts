@@ -32,11 +32,11 @@ describe("pebble session", () => {
     );
   });
 
-  it("rejects malformed and oversized event payloads", () => {
+  it("rejects malformed and empty event payloads", () => {
     expect(
       isPebbleSessionSnapshot({
         ...ACTIVE_SESSION,
-        region: { ...ACTIVE_SESSION.region, width: 801 }
+        region: { ...ACTIVE_SESSION.region, width: 0 }
       })
     ).toBe(false);
     expect(

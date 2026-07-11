@@ -1,6 +1,6 @@
 # Demo
 
-The README uses `docs/assets/screenpebble-demo.gif`.
+The README uses `docs/assets/pebble-demo.gif`.
 
 The committed GIF is a synthetic product-flow demo. It does not contain a real
 desktop screenshot, private screen data, OCR output, prompts, tokens, cookies, or
@@ -19,7 +19,7 @@ When replacing the synthetic GIF with a real recording:
 
 ## Suggested Storyboard
 
-1. Open ScreenPebble.
+1. Open Pebble.
 2. Show selected-region-only framing.
 3. Show a small live tile.
 4. Toggle privacy blank.

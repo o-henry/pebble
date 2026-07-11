@@ -180,7 +180,7 @@ fn unsupported_format(region: &PhysicalRegion) -> CaptureError {
     capture_error(
         CaptureErrorCode::UnsupportedPixelFormat,
         &region.monitor_id,
-        "macOS returned a capture pixel format ScreenPebble cannot safely convert.",
+        "macOS returned a capture pixel format Pebble cannot safely convert.",
     )
 }
 

@@ -100,12 +100,9 @@ export function RegionQuestionPanel({
   }
 
   return (
-    <section className="region-question" aria-labelledby="region-question-title">
+    <section className="region-question" aria-label="ChatGPT">
       <div className="region-question__header">
-        <div>
-          <p className="section-label">ChatGPT</p>
-          <h3 id="region-question-title">Ask about this region</h3>
-        </div>
+        <h3>ChatGPT</h3>
         {connection === "connected" ? (
           <span className="region-question__status">Connected</span>
         ) : null}
@@ -124,10 +121,10 @@ export function RegionQuestionPanel({
             onClick={() => void connect()}
           >
             {browserPreview
-              ? "Desktop app required"
+              ? "DESKTOP APP REQUIRED"
               : connecting
-                ? "Finish sign-in in browser"
-                : "Connect ChatGPT"}
+                ? "FINISH SIGN-IN IN BROWSER"
+                : "CONNECT CHATGPT"}
           </button>
           <span>No API key</span>
         </div>
@@ -137,8 +134,9 @@ export function RegionQuestionPanel({
             aria-label="Question about the selected region"
             value={question}
             maxLength={MAX_REGION_QUESTION_LENGTH}
-            rows={3}
-            placeholder="What should I notice here?"
+            rows={2}
+            placeholder="Ask about this region"
+            autoFocus
             disabled={disabled || asking || privacyBlankActive}
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
@@ -154,7 +152,7 @@ export function RegionQuestionPanel({
                 normalizedRegionQuestion(question) === null
               }
             >
-              {asking ? "Looking" : "Ask"}
+              {asking ? "LOOKING" : "ASK"}
             </button>
           </div>
         </form>

@@ -41,12 +41,12 @@ export const PERFORMANCE_LIMITS: PerformanceLimits = {
   maxFps: 5,
   maxActiveTiles: 3,
   recommendedRegion: {
-    width: 600,
-    height: 300
+    width: 2147483647,
+    height: 2147483647
   },
   maxRegion: {
-    width: 800,
-    height: 600
+    width: 2147483647,
+    height: 2147483647
   }
 };
 

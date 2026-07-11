@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { MainView } from "./MainView";
 import { RegionSelectorView } from "./RegionSelectorView";
 import { TileView } from "./TileView";
 
@@ -15,25 +14,17 @@ export function App() {
     return () => globalThis.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  if (view === "tile") {
-    return <TileView />;
-  }
-
   if (view === "selector") {
     return <RegionSelectorView />;
   }
 
-  return <MainView />;
+  return <TileView />;
 }
 
-function getAppView(): "main" | "selector" | "tile" {
-  if (globalThis.location?.hash === "#tile") {
-    return "tile";
-  }
-
+function getAppView(): "selector" | "tile" {
   if (globalThis.location?.hash === "#selector") {
     return "selector";
   }
 
-  return "main";
+  return "tile";
 }

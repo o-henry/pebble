@@ -1,6 +1,6 @@
 # Engineering Charter
 
-ScreenPebble should feel simple because the code is simple in the right places.
+Pebble should feel simple because the code is simple in the right places.
 This project favors explicit boundaries, narrow adapters, and testable behavior
 over clever shortcuts.
 
@@ -33,7 +33,7 @@ Core services should not know about React. UI should not own capture loops.
 
 Planned service boundaries:
 
-- `PerformanceLimits`: source of truth for FPS, tile, and region limits.
+- `PerformanceLimits`: source of truth for FPS, tile count, and non-empty regions.
 - `RegionMapper`: logical-to-physical coordinate conversion.
 - `CaptureBackend`: OS capture adapter trait.
 - `CaptureScheduler`: single owner of capture loops.

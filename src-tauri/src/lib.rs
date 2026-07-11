@@ -18,6 +18,7 @@ mod diff_engine_types;
 pub mod live_tile;
 #[cfg(test)]
 mod live_tile_tests;
+mod menu_bar;
 pub mod ocr_engine;
 #[cfg(test)]
 mod ocr_engine_tests;
@@ -84,6 +85,11 @@ async fn open_region_selector_window(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> Result<RegionSelectorWindowShell, WindowShellError> {
+    if !is_pebble_window(window.label()) {
+        return Err(WindowShellError::unavailable(
+            "Region selection is available only from the Pebble window.",
+        ));
+    }
     region_selector_window::open_region_selector_window(&app, Some(&window))
 }
 
@@ -154,8 +160,16 @@ fn close_pebble_window(
 }
 
 #[tauri::command]
+fn set_pebble_ai_panel_expanded(
+    window: tauri::WebviewWindow,
+    expanded: bool,
+) -> Result<(), PebbleSessionError> {
+    pebble_session::set_ai_panel_expanded(&window, expanded)
+}
+
+#[tauri::command]
 fn request_screen_capture_access(window: tauri::WebviewWindow) -> bool {
-    window.label() == "main" && platform_capture::request_screen_capture_access()
+    is_pebble_window(window.label()) && platform_capture::request_screen_capture_access()
 }
 
 #[tauri::command]
@@ -164,15 +178,10 @@ async fn get_ai_connection_status(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AiRuntimeState>,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
-    if window.label() != "main"
-        || !window.is_visible().unwrap_or(false)
-        || window.is_minimized().unwrap_or(true)
-    {
+    if !pebble_window_allows_ai(&window) {
         return Err(AiRuntimeError {
             code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
-            message:
-                "ChatGPT connection is available only from the visible main ScreenPebble window."
-                    .to_string(),
+            message: "ChatGPT is available only from the visible Pebble window.".to_string(),
             recoverable: true,
         });
     }
@@ -185,15 +194,10 @@ async fn connect_chatgpt(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AiRuntimeState>,
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
-    if window.label() != "main"
-        || !window.is_visible().unwrap_or(false)
-        || window.is_minimized().unwrap_or(true)
-    {
+    if !pebble_window_allows_ai(&window) {
         return Err(AiRuntimeError {
             code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
-            message:
-                "ChatGPT connection is available only from the visible main ScreenPebble window."
-                    .to_string(),
+            message: "ChatGPT is available only from the visible Pebble window.".to_string(),
             recoverable: true,
         });
     }
@@ -295,6 +299,16 @@ fn is_live_tile_window(label: &str) -> bool {
     label == pebble_session::PEBBLE_TILE_LABEL
 }
 
+fn is_pebble_window(label: &str) -> bool {
+    label == pebble_session::PEBBLE_TILE_LABEL
+}
+
+fn pebble_window_allows_ai(window: &tauri::WebviewWindow) -> bool {
+    is_pebble_window(window.label())
+        && window.is_visible().unwrap_or(false)
+        && !window.is_minimized().unwrap_or(true)
+}
+
 #[tauri::command]
 fn load_pebble_config(app: tauri::AppHandle) -> Result<PebbleStoreDocument, PebbleStoreError> {
     default_pebble_store(&app)?.load_or_default()
@@ -331,6 +345,10 @@ pub fn run() -> tauri::Result<()> {
         .manage(AiRuntimeState::default())
         .manage(LiveTileState::default())
         .manage(PebbleSessionState::default())
+        .setup(|app| {
+            menu_bar::setup(app)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_performance_limits,
@@ -345,6 +363,7 @@ pub fn run() -> tauri::Result<()> {
             set_pebble_privacy_blank,
             remove_pebble,
             close_pebble_window,
+            set_pebble_ai_panel_expanded,
             request_screen_capture_access,
             get_ai_connection_status,
             connect_chatgpt,
@@ -418,8 +437,8 @@ mod tests {
         assert_eq!(limits.default_fps, 1);
         assert_eq!(limits.max_fps, 5);
         assert_eq!(limits.max_active_tiles, 3);
-        assert_eq!(limits.max_region.width, 800);
-        assert_eq!(limits.max_region.height, 600);
+        assert_eq!(limits.max_region.width, i32::MAX);
+        assert_eq!(limits.max_region.height, i32::MAX);
     }
 
     #[test]

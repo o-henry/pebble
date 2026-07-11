@@ -1,4 +1,4 @@
-# ScreenPebble
+# Pebble
 
 > Pin a tiny part of your screen. Let local watchers notice what changed.
 
@@ -7,7 +7,7 @@
 [![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-chatgpt)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-ScreenPebble is a local-first desktop utility for the tiny parts of your screen
+Pebble is a local-first desktop utility for the tiny parts of your screen
 you keep checking: build logs, queues, upload progress, render jobs, dashboards,
 timers, status rows, and other small visual states.
 
@@ -17,28 +17,29 @@ The product idea is intentionally small:
 select a region -> keep it visible -> optionally ask ChatGPT about that crop
 ```
 
-![ScreenPebble demo](docs/assets/screenpebble-demo.gif)
+![Pebble demo](docs/assets/pebble-demo.gif)
 
 ## Why
 
 Some work is not blocked by complexity. It is blocked by waiting.
 
-ScreenPebble is for the status surfaces that do not have good webhooks, APIs, or
+Pebble is for the status surfaces that do not have good webhooks, APIs, or
 notifications. If you can see a small region, the app should help you keep an
 eye on it without becoming a screen recorder, remote desktop app, or hidden
 monitoring tool.
 
 ## Status
 
-ScreenPebble is pre-alpha and not packaged for end users yet. The current macOS
+Pebble is pre-alpha and not packaged for end users yet. The current macOS
 build has a complete local region-to-floating-tile workflow for contributors
 and early testers.
 
 Implemented:
 
 - Tauri 2 + React + TypeScript + Rust desktop scaffold.
-- Hard performance limits: 1 FPS default, 5 FPS max, 3 active tiles, 800x600
-  max region.
+- Hard performance limits: 1 FPS default, 5 FPS max, and 3 active tiles.
+- Any non-empty region inside the selected display can be captured.
+- Native macOS menu bar control with no persistent management window.
 - One-drag region selection that opens the floating tile automatically.
 - Always-on-top live tile with pause, resume, refresh, close, and privacy blank.
 - Real macOS selected-region capture at runtime and a deterministic fake backend
@@ -66,7 +67,7 @@ Not shipped yet:
 
 | Principle | Behavior |
 | --- | --- |
-| Selected regions only | ScreenPebble works on user-pinned regions, not the whole screen. |
+| Selected regions only | Pebble works on user-pinned regions, not the whole screen. |
 | Visible by design | Active capture must have a visible tile or visible status. |
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
@@ -76,7 +77,7 @@ Not shipped yet:
 
 ## Privacy
 
-ScreenPebble should be safe to explain in one sentence:
+Pebble should be safe to explain in one sentence:
 
 > It watches only the small regions you pin, locally, with no frame history and
 > no upload unless you explicitly ask ChatGPT about the selected crop.
@@ -95,16 +96,17 @@ coordinates, and refresh configuration. See
 
 ## Ask ChatGPT
 
-ChatGPT is outside the monitoring loop. ScreenPebble makes no automatic AI
+ChatGPT is outside the monitoring loop. Pebble makes no automatic AI
 requests.
 
 After selecting a region:
 
-1. Press **Connect ChatGPT** and complete the official OpenAI sign-in once.
-2. Enter a question and press **Ask**.
-3. ScreenPebble captures the backend-authorized crop once, encodes it in memory,
+1. Toggle the ChatGPT button in the Pebble toolbar.
+2. Press **Connect ChatGPT** and complete the official OpenAI sign-in once.
+3. Enter a question and press **Ask**.
+4. Pebble captures the backend-authorized crop once, encodes it in memory,
    and sends that single image with the question.
-4. The ephemeral answer is shown in the main window and is not persisted.
+5. The ephemeral answer is shown inside the same Pebble and is not persisted.
 
 No OpenAI API key is requested. The app bundles the official
 [Codex app-server](https://learn.chatgpt.com/docs/app-server), keeps its account
@@ -113,23 +115,23 @@ It selects an image-capable `mini` model with low reasoning effort; if the
 signed-in subscription does not offer a compatible compact model, the request
 fails instead of silently selecting a larger model.
 
-ScreenPebble does not read browser cookies, automate the ChatGPT website, reuse
+Pebble does not read browser cookies, automate the ChatGPT website, reuse
 another app's tokens, use MCP, or stream screen images continuously.
 
 ## Use
 
-1. Launch ScreenPebble and select **Select a region**.
-2. Approve the macOS Screen Recording prompt. ScreenPebble cannot capture before
+1. Launch Pebble, open its macOS menu bar item, and select **Select Region**.
+2. Approve the macOS Screen Recording prompt. Pebble cannot capture before
    macOS grants this permission.
 3. Drag over the small status or output area you want to keep visible.
 4. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
-5. Use **Pause**, **Live**, **Hide preview**, or **Close** as needed. Closing the
-   floating window keeps the region selected so it can be reopened from the main
-   window.
-6. To ask about the current crop, connect ChatGPT, type a question, and press
-   **Ask**. This sends one fresh crop only for that request.
+5. Use the stable toolbar controls for **Live**, **Pause**, reselect, preview
+   visibility, ChatGPT, or close. Closing keeps the region selected so the
+   Pebble can be reopened from the menu bar.
+6. Toggle ChatGPT, type a question, and press **Ask**. This sends one fresh crop
+   only for that request.
 
-ScreenPebble captures only the selected crop. It does not save frame history or
+Pebble captures only the selected crop. It does not save frame history or
 send captured pixels over the network.
 
 ## Install From Source
@@ -150,7 +152,7 @@ npm run tauri:build
 The unsigned development binary is built at:
 
 ```text
-src-tauri/target/release/screenpebble
+src-tauri/target/release/pebble
 ```
 
 For development:
@@ -186,8 +188,8 @@ docs/                    Product, architecture, security, demo, and release docs
 
 Key Rust boundaries:
 
-- `PerformanceLimits`: FPS, tile count, and region size contract.
-- `CaptureBackend`: bounded selected-region capture with a test-only fake.
+- `PerformanceLimits`: FPS, tile count, and non-empty region contract.
+- `CaptureBackend`: display-bounded selected-region capture with a test-only fake.
 - `CaptureLifecycle`: capture state policy.
 - `CaptureScheduler`: task/buffer ownership.
 - `DiffEngine`: local visual change scoring.
@@ -198,7 +200,7 @@ Key Rust boundaries:
 
 ## Contributing
 
-ScreenPebble is still earning trust before expanding features. Good
+Pebble is still earning trust before expanding features. Good
 contributions are narrow, tested, and privacy-preserving:
 
 - Safer capture lifecycle behavior.

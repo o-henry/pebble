@@ -1,6 +1,6 @@
 # AI Region Questions
 
-ScreenPebble can answer a question about the selected region without an API key.
+Pebble can answer a question about the selected region without an API key.
 This path is optional and never participates in continuous monitoring.
 
 ## User Flow
@@ -9,12 +9,12 @@ This path is optional and never participates in continuous monitoring.
 select region -> connect ChatGPT once -> type question -> Ask -> concise answer
 ```
 
-The **Ask** action is the consent boundary. ScreenPebble does not call AI on a
+The **Ask** action is the consent boundary. Pebble does not call AI on a
 timer, on visual change, at startup, or in the background.
 
 ## Runtime
 
-ScreenPebble bundles the official OpenAI Codex app-server as a Tauri sidecar.
+Pebble bundles the official OpenAI Codex app-server as a Tauri sidecar.
 The React webview can invoke three typed Rust commands:
 
 ```text
@@ -33,7 +33,7 @@ uses the hosted success page with the ChatGPT brand.
 - No API key is requested.
 - Browser cookies are never read.
 - Other Codex or ChatGPT app tokens are never imported.
-- The sidecar uses ScreenPebble's private app data directory as `CODEX_HOME`.
+- The sidecar uses Pebble's private app data directory as `CODEX_HOME`.
 - The directory mode is 0700 on Unix.
 - Credentials use the OS keychain.
 - On macOS, only the real `HOME` path is provided so the system can locate the
@@ -45,7 +45,7 @@ uses the hosted success page with the ChatGPT brand.
 
 For every question, Rust:
 
-1. Verifies that the caller is the visible, non-minimized main window.
+1. Verifies that the caller is the visible, non-minimized Pebble window.
 2. Reads the selected region from backend session state, never from request
    coordinates.
 3. Rejects privacy-blanked or missing regions.
@@ -61,7 +61,7 @@ thread file.
 ## Usage Limits
 
 - Question: 1 to 1,000 Unicode characters.
-- Image: existing ScreenPebble hard limit, at most 800x600 physical pixels.
+- Image: the user-selected display region, with no application-level size cap.
 - Model: an image-capable model whose id contains `mini` and supports low
   reasoning effort.
 - Reasoning effort: `low`.
@@ -71,7 +71,7 @@ thread file.
 - Conversation: a new ephemeral thread for every question.
 
 If a compact compatible model is unavailable for the signed-in subscription,
-ScreenPebble reports that condition. It does not silently fall back to a larger
+Pebble reports that condition. It does not silently fall back to a larger
 model.
 
 ## Tool Denial
@@ -86,7 +86,7 @@ The app-server starts with:
 - Instructions forbidding tools, files, shell, web, plugins, skills, memory,
   and outside context.
 
-ScreenPebble additionally inspects streamed items. Any command, file change,
+Pebble additionally inspects streamed items. Any command, file change,
 web search, plugin, MCP, dynamic tool, image generation, or server approval
 request aborts the response.
 
@@ -98,7 +98,7 @@ The operation fails closed when:
 - The question is empty, oversized, or contains unsafe control characters.
 - The selected region is hidden, removed, or reselected.
 - The display is disconnected, rearranged, resized, or rescaled.
-- The main window is hidden or minimized before upload.
+- The Pebble window is hidden or minimized before upload.
 - The sidecar exits, times out, or returns invalid protocol data.
 - No compatible compact image model exists.
 - The model attempts any action outside image reasoning.

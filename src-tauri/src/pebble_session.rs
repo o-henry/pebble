@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 
 use crate::{
@@ -19,13 +20,12 @@ use crate::{
     window_shell::show_existing_window,
 };
 
-pub const PEBBLE_TILE_LABEL: &str = "screenpebble-tile";
+pub const PEBBLE_TILE_LABEL: &str = "pebble-tile";
 pub const PEBBLE_SESSION_UPDATED_EVENT: &str = "pebble://session-updated";
 
-const MAIN_WINDOW_LABEL: &str = "main";
-const PEBBLE_WINDOW_TITLE: &str = "ScreenPebble";
 const PEBBLE_WINDOW_WIDTH: f64 = 440.0;
 const PEBBLE_WINDOW_HEIGHT: f64 = 340.0;
+const PEBBLE_WINDOW_AI_HEIGHT: f64 = 540.0;
 const PEBBLE_WINDOW_MIN_WIDTH: f64 = 300.0;
 const PEBBLE_WINDOW_MIN_HEIGHT: f64 = 240.0;
 const PEBBLE_WINDOW_OUTER_HEIGHT: f64 = 380.0;
@@ -421,8 +421,17 @@ pub fn show_active_pebble_window(
     source_window: &WebviewWindow,
     state: &PebbleSessionState,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    ensure_window(source_window, MAIN_WINDOW_LABEL)?;
+    ensure_window(source_window, PEBBLE_TILE_LABEL)?;
     let snapshot = open_active_pebble_window(app, state)?;
+    emit_session(app, &snapshot);
+    Ok(snapshot)
+}
+
+pub fn show_pebble_shell(
+    app: &AppHandle,
+    state: &PebbleSessionState,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    let snapshot = open_pebble_window(app, state, false)?;
     emit_session(app, &snapshot);
     Ok(snapshot)
 }
@@ -433,7 +442,7 @@ pub fn set_privacy_blank(
     state: &PebbleSessionState,
     active: bool,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    ensure_window(source_window, MAIN_WINDOW_LABEL)?;
+    ensure_window(source_window, PEBBLE_TILE_LABEL)?;
     let snapshot = state.set_privacy_blank(active)?;
     app.state::<LiveTileState>()
         .set_privacy_blank(active, snapshot.revision);
@@ -446,7 +455,7 @@ pub fn remove_active_pebble(
     source_window: &WebviewWindow,
     state: &PebbleSessionState,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    ensure_window(source_window, MAIN_WINDOW_LABEL)?;
+    ensure_window(source_window, PEBBLE_TILE_LABEL)?;
     let snapshot = state.clear()?;
     clear_live_tile(app, snapshot.revision);
     if let Some(window) = app.get_webview_window(PEBBLE_TILE_LABEL) {
@@ -473,17 +482,51 @@ pub fn close_pebble_window(
     Ok(snapshot)
 }
 
+pub fn set_ai_panel_expanded(
+    window: &WebviewWindow,
+    expanded: bool,
+) -> Result<(), PebbleSessionError> {
+    ensure_window(window, PEBBLE_TILE_LABEL)?;
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|error| PebbleSessionError::window_unavailable(error.to_string()))?;
+    let inner_size = window
+        .inner_size()
+        .map_err(|error| PebbleSessionError::window_unavailable(error.to_string()))?;
+    let logical_width = f64::from(inner_size.width) / scale_factor;
+    let logical_height = if expanded {
+        PEBBLE_WINDOW_AI_HEIGHT
+    } else {
+        PEBBLE_WINDOW_HEIGHT
+    };
+
+    window
+        .set_size(LogicalSize::new(
+            logical_width.max(PEBBLE_WINDOW_MIN_WIDTH),
+            logical_height,
+        ))
+        .map_err(|error| PebbleSessionError::window_unavailable(error.to_string()))
+}
+
 fn open_active_pebble_window(
     app: &AppHandle,
     state: &PebbleSessionState,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+    open_pebble_window(app, state, true)
+}
+
+fn open_pebble_window(
+    app: &AppHandle,
+    state: &PebbleSessionState,
+    require_region: bool,
+) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
     let snapshot = state.snapshot()?;
-    let Some(region) = snapshot.region.as_ref() else {
+    if require_region && snapshot.region.is_none() {
         return Err(PebbleSessionError::new(
             PebbleSessionErrorCode::NoActivePebble,
             "Select a region before opening a pebble.",
         ));
-    };
+    }
 
     if let Some(window) = app.get_webview_window(PEBBLE_TILE_LABEL) {
         show_existing_window(&window)
@@ -496,7 +539,7 @@ fn open_active_pebble_window(
         PEBBLE_TILE_LABEL,
         WebviewUrl::App("index.html#tile".into()),
     )
-    .title(PEBBLE_WINDOW_TITLE)
+    .title("")
     .inner_size(PEBBLE_WINDOW_WIDTH, PEBBLE_WINDOW_HEIGHT)
     .min_inner_size(PEBBLE_WINDOW_MIN_WIDTH, PEBBLE_WINDOW_MIN_HEIGHT)
     .resizable(true)
@@ -504,8 +547,20 @@ fn open_active_pebble_window(
     .always_on_top(true)
     .content_protected(true);
 
-    if let Some(position) = pebble_window_position(app, region) {
-        builder = builder.position(position.logical_x, position.logical_y);
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(12.0, 12.0));
+    }
+
+    if let Some(region) = snapshot.region.as_ref() {
+        if let Some(position) = pebble_window_position(app, region) {
+            builder = builder.position(position.logical_x, position.logical_y);
+        }
+    } else {
+        builder = builder.center();
     }
 
     let window = builder
@@ -651,7 +706,6 @@ fn overlap_area(
 }
 
 fn emit_session(app: &AppHandle, snapshot: &PebbleSessionSnapshot) {
-    let _ = app.emit_to(MAIN_WINDOW_LABEL, PEBBLE_SESSION_UPDATED_EVENT, snapshot);
     let _ = app.emit_to(PEBBLE_TILE_LABEL, PEBBLE_SESSION_UPDATED_EVENT, snapshot);
 }
 

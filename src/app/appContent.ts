@@ -49,7 +49,7 @@ export const docReferences: DocReference[] = [
 export const principles: Principle[] = [
   {
     title: "Selected regions only",
-    body: "ScreenPebble must never imply whole-screen monitoring."
+    body: "Pebble must never imply whole-screen monitoring."
   },
   {
     title: "Low FPS by design",

@@ -41,30 +41,21 @@ describe("region selection", () => {
     });
   });
 
-  it("rejects selections below the minimum region size", () => {
+  it("accepts any non-empty selection", () => {
     const result = selectRegion(request(point(10, 20), point(20, 42)));
 
-    expect(result).toEqual({
-      ok: false,
-      error: {
-        code: "regionTooNarrow",
-        limit: 24,
-        actual: 10,
-        message: "Selected region is too narrow."
-      }
+    expect(result).toMatchObject({
+      ok: true,
+      selection: { region: { width: 10, height: 22 } }
     });
   });
 
-  it("rejects regions beyond the hard maximum size", () => {
-    const result = selectRegion(request(point(0, 0), point(801, 600)));
+  it("accepts a full-display selection", () => {
+    const result = selectRegion(request(point(0, 0), point(1920, 1080)));
 
     expect(result).toMatchObject({
-      ok: false,
-      error: {
-        code: "regionWidthTooLarge",
-        limit: 800,
-        actual: 801
-      }
+      ok: true,
+      selection: { region: { width: 1920, height: 1080 } }
     });
   });
 
@@ -159,24 +150,13 @@ describe("region selection", () => {
     });
   });
 
-  it("returns recommended-limit warnings without rejecting the selection", () => {
+  it("does not warn about selection size", () => {
     const result = selectRegion(request(point(0, 0), point(650, 320)));
 
     expect(result).toMatchObject({
       ok: true,
       selection: {
-        warnings: [
-          {
-            code: "regionWidthAboveRecommended",
-            limit: 600,
-            actual: 650
-          },
-          {
-            code: "regionHeightAboveRecommended",
-            limit: 300,
-            actual: 320
-          }
-        ]
+        warnings: []
       }
     });
   });

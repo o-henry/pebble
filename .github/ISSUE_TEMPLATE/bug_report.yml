@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a reproducible ScreenPebble bug.
+description: Report a reproducible Pebble bug.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping harden ScreenPebble. Do not include screenshots, OCR output, tokens, cookies, or private screen content.
+        Thanks for helping harden Pebble. Do not include screenshots, OCR output, tokens, cookies, or private screen content.
   - type: textarea
     id: summary
     attributes:
@@ -56,7 +56,7 @@ body:
       label: Environment
       placeholder: |
         macOS:
-        ScreenPebble commit/version:
+        Pebble commit/version:
         npm:
         Rust:
     validations:

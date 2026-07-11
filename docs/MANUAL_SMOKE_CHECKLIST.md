@@ -28,6 +28,12 @@ npm run tauri:build
 
 ## Manual App Checks
 
+- Launch shows one Pebble icon in the macOS menu bar and no Dock icon.
+- `Select Region...`, `Show Pebble`, and `Quit Pebble` work from the menu bar.
+- No persistent management window opens alongside the floating Pebble.
+- ChatGPT opens and closes inside the Pebble without creating another window.
+- Collapsing ChatGPT returns the Pebble to its compact height.
+
 - Idle CPU with no tile.
 - One 600x300 tile at 1 FPS for 60 seconds.
 - Three 600x300 tiles at 1 FPS for 60 seconds.

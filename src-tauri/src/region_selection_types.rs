@@ -85,10 +85,6 @@ pub enum RegionSelectionIssueCode {
     RegionTooNarrow,
     RegionTooShort,
     RegionCoordinateOutOfRange,
-    RegionWidthAboveRecommended,
-    RegionHeightAboveRecommended,
-    RegionWidthTooLarge,
-    RegionHeightTooLarge,
 }
 
 pub type RegionSelectionResult = Result<RegionSelection, RegionSelectionIssue>;

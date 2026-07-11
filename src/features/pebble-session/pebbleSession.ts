@@ -1,9 +1,8 @@
-import { PERFORMANCE_LIMITS } from "../performance/performanceLimits";
 import type { PhysicalRegion } from "../region-selector/regionSelection";
 
 export const PEBBLE_SESSION_UPDATED_EVENT = "pebble://session-updated";
-export const PEBBLE_TILE_LABEL = "screenpebble-tile";
-export const BROWSER_SESSION_STORAGE_KEY = "screenpebble.browser-session";
+export const PEBBLE_TILE_LABEL = "pebble-tile";
+export const BROWSER_SESSION_STORAGE_KEY = "pebble.browser-session";
 
 export interface PebbleSessionSnapshot {
   region: PhysicalRegion | null;
@@ -100,10 +99,8 @@ function isPhysicalRegion(value: unknown): value is PhysicalRegion {
     isSafeInteger(value.y) &&
     isSafeInteger(value.width) &&
     isSafeInteger(value.height) &&
-    value.width >= 24 &&
-    value.height >= 24 &&
-    value.width <= PERFORMANCE_LIMITS.maxRegion.width &&
-    value.height <= PERFORMANCE_LIMITS.maxRegion.height
+    value.width >= 1 &&
+    value.height >= 1
   );
 }
 

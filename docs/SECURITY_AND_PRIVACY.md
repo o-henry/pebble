@@ -1,11 +1,11 @@
 # Security And Privacy
 
-ScreenPebble handles screen pixels. That makes trust the central product
+Pebble handles screen pixels. That makes trust the central product
 requirement.
 
 ## User Trust Model
 
-Users should never wonder whether ScreenPebble is secretly watching more than
+Users should never wonder whether Pebble is secretly watching more than
 they selected.
 
 The app must make capture visible:
@@ -13,7 +13,7 @@ The app must make capture visible:
 - Every active region has a visible tile or visible status.
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
-- AI runs only after a visible **Ask** action in the main window.
+- AI runs only after a visible **Ask** action in the expanded Pebble drawer.
 
 ## Local-First Default
 
@@ -31,7 +31,7 @@ Current desktop safeguards:
 - The backend validates logical-to-physical selection bounds again before
   opening a live tile.
 - Live capture commands and cropped-frame events are accepted only by the
-  visible Pebble window, not the main or selector windows.
+  visible Pebble window, never the selector window.
 - Webviews may listen for backend events but cannot emit authoritative session
   or frame events.
 - The selected display identity, bounds, and scale are checked again immediately
@@ -41,7 +41,7 @@ Current desktop safeguards:
 - Hidden or minimized Pebble windows cannot request or receive live frames.
 - The floating tile is positioned outside the selected source region when the
   display has room, preventing recursive self-capture.
-- Tile content is capture-protected so ScreenPebble does not ingest its own
+- Tile content is capture-protected so Pebble does not ingest its own
   preview if a user later moves the tile over the source.
 - Native close, in-app close, and stop all clear the scheduler task and latest
   in-memory frame.
@@ -55,9 +55,11 @@ AI access is explicit, narrow in scope, and cheap by design:
 
 - No API key is requested or accepted by the UI.
 - The bundled official Codex app-server owns the ChatGPT OAuth flow.
-- ScreenPebble uses a private `CODEX_HOME` under its 0700 app data directory;
+- Pebble uses a private `CODEX_HOME` under its 0700 app data directory;
   another Codex installation's login is not read.
 - Credentials use the OS keychain. Browser cookies are never read.
+- The legacy macOS bundle identifier remains unchanged so upgrades retain existing
+  Screen Recording and keychain access; it is not user-facing branding.
 - The sidecar receives a cleared environment, so inherited API-key variables are
   not available to it.
 - Each request uses one backend-authorized selected crop encoded as an in-memory
@@ -66,7 +68,7 @@ AI access is explicit, narrow in scope, and cheap by design:
   checked before capture and again immediately before upload.
 - Threads are ephemeral, sandboxed read-only, use approval policy `never`, and
   have web search, MCP servers, and analytics disabled.
-- ScreenPebble accepts only an image-capable `mini` model that supports low
+- Pebble accepts only an image-capable `mini` model that supports low
   reasoning effort.
 - Unexpected tool, shell, file, web, plugin, or MCP activity aborts the response.
 - Questions are limited to 1,000 characters and answers to 4,000 characters.
@@ -108,7 +110,7 @@ Rust alone starts the fixed bundled sidecar and opens a validated exact-host
 `https://chatgpt.com` or `https://auth.openai.com` sign-in URL. The webview cannot
 launch arbitrary commands or URLs. On macOS, the sidecar receives the real
 `HOME` path only so the system can locate the default login keychain;
-ScreenPebble still clears all other inherited variables and isolates Codex
+Pebble still clears all other inherited variables and isolates Codex
 state under its private `CODEX_HOME`. Any permission addition requires a
 decision note explaining why it is necessary and how it is bounded.
 

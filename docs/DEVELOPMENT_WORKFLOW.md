@@ -1,6 +1,6 @@
 # Development Workflow
 
-This document defines how ScreenPebble work is planned, reviewed, committed, and
+This document defines how Pebble work is planned, reviewed, committed, and
 pushed.
 
 ## Atomic Task Loop

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ScreenPebble",
+  "productName": "Pebble",
   "version": "0.1.0",
   "identifier": "com.ohenry.screenpebble",
   "build": {
@@ -11,17 +11,7 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "ScreenPebble",
-        "width": 980,
-        "height": 720,
-        "minWidth": 760,
-        "minHeight": 560,
-        "resizable": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
     }

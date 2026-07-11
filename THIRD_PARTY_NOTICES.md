@@ -2,7 +2,7 @@
 
 ## DM Mono Nerd Font
 
-ScreenPebble bundles the Light, Regular, and Medium faces of DM Mono Nerd Font
+Pebble bundles the Light, Regular, and Medium faces of DM Mono Nerd Font
 for its local interface.
 
 - Base font: [DM Mono](https://github.com/googlefonts/dm-mono)
@@ -15,7 +15,7 @@ The packaged frontend also includes the same notice at
 
 ## OpenAI Codex
 
-ScreenPebble bundles the native Codex CLI binary to run the official Codex
+Pebble bundles the native Codex CLI binary to run the official Codex
 app-server locally for optional ChatGPT account sign-in and explicit
 selected-region questions.
 

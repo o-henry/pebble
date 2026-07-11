@@ -10,10 +10,10 @@ fn default_limits_match_the_product_contract() {
     assert_eq!(limits.default_fps, 1);
     assert_eq!(limits.max_fps, 5);
     assert_eq!(limits.max_active_tiles, 3);
-    assert_eq!(limits.recommended_region.width, 600);
-    assert_eq!(limits.recommended_region.height, 300);
-    assert_eq!(limits.max_region.width, 800);
-    assert_eq!(limits.max_region.height, 600);
+    assert_eq!(limits.recommended_region.width, i32::MAX);
+    assert_eq!(limits.recommended_region.height, i32::MAX);
+    assert_eq!(limits.max_region.width, i32::MAX);
+    assert_eq!(limits.max_region.height, i32::MAX);
 }
 
 #[test]
@@ -88,31 +88,14 @@ fn active_tile_count_must_not_be_negative() {
 }
 
 #[test]
-fn region_width_must_not_exceed_maximum() {
-    let error = PerformanceLimits::default()
-        .validate_region_size(RegionSize {
-            width: 801,
-            height: 600,
-        })
-        .unwrap_err();
-
-    assert_eq!(error.code, PerformanceLimitErrorCode::RegionWidthTooLarge);
-    assert_eq!(error.limit, 800);
-    assert_eq!(error.actual, 801);
-}
-
-#[test]
-fn region_height_must_not_exceed_maximum() {
-    let error = PerformanceLimits::default()
-        .validate_region_size(RegionSize {
-            width: 800,
-            height: 601,
-        })
-        .unwrap_err();
-
-    assert_eq!(error.code, PerformanceLimitErrorCode::RegionHeightTooLarge);
-    assert_eq!(error.limit, 600);
-    assert_eq!(error.actual, 601);
+fn display_sized_regions_are_accepted() {
+    assert_eq!(
+        PerformanceLimits::default().validate_region_size(RegionSize {
+            width: 7680,
+            height: 4320,
+        }),
+        Ok(())
+    );
 }
 
 #[test]

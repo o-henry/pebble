@@ -12,10 +12,8 @@ fn platform_backend_rejects_invalid_region_before_capture() {
 }
 
 #[test]
-fn platform_backend_rejects_oversized_region_before_capture() {
-    let error = platform_capture_test_support::oversized_region_error();
-
-    assert_eq!(error.code, CaptureErrorCode::RegionTooLarge);
+fn platform_backend_accepts_large_positive_regions() {
+    assert!(platform_capture_test_support::large_region_is_valid());
 }
 
 #[test]

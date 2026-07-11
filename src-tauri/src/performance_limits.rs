@@ -3,10 +3,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_FPS: i32 = 1;
 const MAX_FPS: i32 = 5;
 const MAX_ACTIVE_TILES: i32 = 3;
-const RECOMMENDED_REGION_WIDTH: i32 = 600;
-const RECOMMENDED_REGION_HEIGHT: i32 = 300;
-const MAX_REGION_WIDTH: i32 = 800;
-const MAX_REGION_HEIGHT: i32 = 600;
+const UNBOUNDED_REGION_DIMENSION: i32 = i32::MAX;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,12 +66,12 @@ impl Default for PerformanceLimits {
             max_fps: MAX_FPS,
             max_active_tiles: MAX_ACTIVE_TILES,
             recommended_region: RegionSize {
-                width: RECOMMENDED_REGION_WIDTH,
-                height: RECOMMENDED_REGION_HEIGHT,
+                width: UNBOUNDED_REGION_DIMENSION,
+                height: UNBOUNDED_REGION_DIMENSION,
             },
             max_region: RegionSize {
-                width: MAX_REGION_WIDTH,
-                height: MAX_REGION_HEIGHT,
+                width: UNBOUNDED_REGION_DIMENSION,
+                height: UNBOUNDED_REGION_DIMENSION,
             },
         }
     }

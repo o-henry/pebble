@@ -1,6 +1,6 @@
 # Architecture
 
-ScreenPebble should be implemented as a small desktop system with explicit
+Pebble should be implemented as a small desktop system with explicit
 ownership boundaries. UI renders state and collects intent. Rust services own
 capture, lifecycle, limits, diffing, and persistence policy.
 
@@ -117,8 +117,7 @@ Single source of truth:
 - Default FPS: 1.
 - Max FPS: 5.
 - Max active tiles: 3.
-- Recommended region: 600x300.
-- Hard max region: 800x600.
+- Region size: any non-empty area inside the selected display.
 
 ### RegionMapper
 

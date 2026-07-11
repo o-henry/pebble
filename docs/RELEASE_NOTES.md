@@ -7,7 +7,8 @@ This is a contributor-facing pre-alpha demo build.
 ### Added
 
 - Tauri 2 desktop scaffold with React, TypeScript, and Rust.
-- Hard performance contract for FPS, active tiles, and region size.
+- Hard performance contract for FPS and active tiles; selected regions may use
+  any non-empty area inside the active display.
 - One-drag region selection that opens a floating Pebble automatically.
 - Guarded macOS selected-region capture with a fake backend for tests.
 - Capture lifecycle and scheduler with privacy blank behavior.

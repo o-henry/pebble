@@ -120,10 +120,10 @@ fn save_rejects_out_of_contract_fps() {
 }
 
 #[test]
-fn save_rejects_out_of_contract_region() {
+fn save_rejects_empty_region() {
     let store = PebbleStore::new(test_store_path("invalid-region"));
     let mut document = sample_document();
-    document.regions[0].region.width = 801;
+    document.regions[0].region.width = 0;
 
     let error = store.save(&document).expect_err("invalid region");
 
@@ -192,7 +192,7 @@ fn test_store_path(name: &str) -> PathBuf {
         .expect("time")
         .as_nanos();
     std::env::temp_dir()
-        .join("screenpebble-store-tests")
+        .join("pebble-store-tests")
         .join(format!("{name}-{nonce}"))
         .join("pebbles.json")
 }

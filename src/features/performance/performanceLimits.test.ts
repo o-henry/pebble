@@ -14,12 +14,12 @@ describe("performance limits", () => {
       maxFps: 5,
       maxActiveTiles: 3,
       recommendedRegion: {
-        width: 600,
-        height: 300
+        width: 2147483647,
+        height: 2147483647
       },
       maxRegion: {
-        width: 800,
-        height: 600
+        width: 2147483647,
+        height: 2147483647
       }
     });
   });
@@ -86,7 +86,7 @@ describe("performance limits", () => {
     });
   });
 
-  it("rejects empty and oversized regions with typed errors", () => {
+  it("rejects empty regions and accepts display-sized regions", () => {
     expect(validateRegionSize({ width: 0, height: 300 })).toEqual({
       valid: false,
       error: {
@@ -105,22 +105,8 @@ describe("performance limits", () => {
       }
     });
 
-    expect(validateRegionSize({ width: 801, height: 600 })).toEqual({
-      valid: false,
-      error: {
-        code: "regionWidthTooLarge",
-        limit: 800,
-        actual: 801
-      }
-    });
-
-    expect(validateRegionSize({ width: 800, height: 601 })).toEqual({
-      valid: false,
-      error: {
-        code: "regionHeightTooLarge",
-        limit: 600,
-        actual: 601
-      }
+    expect(validateRegionSize({ width: 7680, height: 4320 })).toEqual({
+      valid: true
     });
   });
 });

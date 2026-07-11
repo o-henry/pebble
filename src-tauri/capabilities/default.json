@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "ScreenPebble webviews may listen for backend events but cannot emit events or access shell, filesystem, network, OCR, or AI APIs.",
-  "windows": ["main", "screenpebble-region-selector", "screenpebble-tile"],
+  "description": "Pebble webviews may listen for backend events but cannot emit events or access shell, filesystem, network, OCR, or AI APIs.",
+  "windows": ["pebble-region-selector", "pebble-tile"],
   "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
 }

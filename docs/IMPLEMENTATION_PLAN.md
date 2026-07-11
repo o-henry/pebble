@@ -71,7 +71,7 @@ Goal: establish hard product limits before capture exists.
 Build:
 
 - Rust `PerformanceLimits` model.
-- Validation for FPS, active tile count, and region size.
+- Validation for FPS, active tile count, and non-empty region size.
 - Typed error codes for limit failures.
 - Frontend type mirrors generated or manually synchronized in one place.
 
@@ -80,7 +80,7 @@ Tests:
 - Default FPS is 1.
 - Max FPS is 5.
 - Max active tiles is 3.
-- Max region is 800x600.
+- Any non-empty region inside the selected display is accepted.
 - Invalid values produce typed recoverable errors.
 
 Commit message:
@@ -91,12 +91,12 @@ feat: add performance limit validation
 
 ## Phase 2 - Window Shell
 
-Goal: main window and test tile window without capture.
+Goal: menu bar control and one test Pebble window without capture.
 
 Build:
 
-- Main window.
-- Test tile window.
+- Native menu bar control.
+- Test Pebble window.
 - Always-on-top tile settings.
 - Tile close cleanup event.
 - Basic tile states with fake placeholder content.
@@ -125,14 +125,14 @@ Build:
 - Region selection model.
 - Logical-to-physical coordinate mapper.
 - Minimum region validation.
-- Recommended and hard-limit messaging.
+- Display-bound and non-empty selection messaging.
 
 Tests:
 
 - Normal selection.
 - Reversed drag direction.
-- Minimum region rejection.
-- Hard max region rejection.
+- Non-empty region validation.
+- Full-display selection acceptance.
 - Scale factor conversion.
 - Multi-monitor offset cases.
 

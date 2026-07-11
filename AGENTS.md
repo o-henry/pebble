@@ -1,6 +1,6 @@
-# ScreenPebble Agent Instructions
+# Pebble Agent Instructions
 
-ScreenPebble is a local-first desktop utility that lets a user pin a small,
+Pebble is a local-first desktop utility that lets a user pin a small,
 explicitly selected screen region as a low-FPS live tile. The project must stay
 privacy-preserving, understandable, testable, and easy for humans to maintain.
 
@@ -23,14 +23,14 @@ reviewed, tested, committed, and pushed, or until a concrete blocker is reported
 
 ## Product Contract
 
-ScreenPebble is:
+Pebble is:
 
 - A local screen-region utility.
 - A low-FPS ambient monitor for small user-selected regions.
 - A visible always-on-top tile app.
 - A privacy-first tool that can optionally help AI read a chosen region.
 
-ScreenPebble is not:
+Pebble is not:
 
 - A screen recorder.
 - A remote desktop app.
@@ -58,7 +58,7 @@ Security and privacy are product features, not afterthoughts.
 
 ## Performance Defaults
 
-ScreenPebble is a low-FPS tool.
+Pebble is a low-FPS tool.
 
 - Default refresh rate: 1 FPS.
 - Maximum refresh rate: 5 FPS.

@@ -28,7 +28,7 @@ const targetByPlatform = {
 const target = targetByPlatform[`${process.platform}:${process.arch}`];
 if (!target) {
   throw new Error(
-    `ScreenPebble currently supports macOS only; received ${process.platform}/${process.arch}.`
+    `Pebble currently supports macOS only; received ${process.platform}/${process.arch}.`
   );
 }
 

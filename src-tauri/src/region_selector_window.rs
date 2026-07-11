@@ -8,7 +8,7 @@ use crate::{
     window_shell::{show_existing_window, WindowShellError},
 };
 
-pub const REGION_SELECTOR_LABEL: &str = "screenpebble-region-selector";
+pub const REGION_SELECTOR_LABEL: &str = "pebble-region-selector";
 
 const REGION_SELECTOR_TITLE: &str = "Select Region";
 const REGION_SELECTOR_FALLBACK_WIDTH: f64 = 960.0;

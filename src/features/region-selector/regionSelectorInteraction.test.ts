@@ -56,7 +56,7 @@ describe("region selector interaction", () => {
     expect(canBeginRegionDrag(DEFAULT_SELECTOR_MONITOR)).toBe(true);
   });
 
-  it("returns a warning for large but valid selections", () => {
+  it("accepts large selections without a warning", () => {
     const dragging = regionSelectorReducer(INITIAL_REGION_SELECTOR_STATE, {
       type: "begin",
       point: { x: 0, y: 0 },
@@ -70,10 +70,7 @@ describe("region selector interaction", () => {
     expect(ready.result).toMatchObject({
       ok: true,
       selection: {
-        warnings: [
-          { code: "regionWidthAboveRecommended" },
-          { code: "regionHeightAboveRecommended" }
-        ]
+        warnings: []
       }
     });
   });

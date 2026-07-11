@@ -1,6 +1,6 @@
 # Product Spec
 
-ScreenPebble is a local-first desktop app for pinning a small user-selected
+Pebble is a local-first desktop app for pinning a small user-selected
 screen region as a low-FPS always-on-top tile. It helps users stop babysitting
 small visual states without turning the app into a screen recorder, hidden
 monitor, or AI surveillance tool.
@@ -37,7 +37,7 @@ The first implementation must focus on a trustworthy non-AI desktop utility:
 - Tauri 2 desktop scaffold.
 - React + TypeScript UI.
 - Rust backend services.
-- Main window with pre-alpha product framing.
+- Native macOS menu bar control and one floating Pebble window.
 - Region model and performance limits.
 - Fake capture backend for tests.
 - Capture lifecycle service using fake frames.
@@ -92,8 +92,8 @@ AI-related state is separate and must default to off:
 1. User chooses "New Pebble".
 2. Region selector opens.
 3. User drags a region.
-4. Selector shows dimensions and warns when over recommended limits.
-5. Backend validates hard limits.
+4. Selector accepts any non-empty area inside the selected display.
+5. Backend validates display bounds and positive dimensions.
 6. App creates config and opens a tile.
 7. Capture starts only after tile is visible.
 

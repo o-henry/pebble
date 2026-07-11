@@ -17,7 +17,7 @@ export function SelectorHud({
     >
       <div className="selector-hud__header">
         <div>
-          <p className="status-line">ScreenPebble</p>
+          <p className="status-line">pebble</p>
           <h1>Select a region</h1>
         </div>
         <button
@@ -99,7 +99,7 @@ export function SelectorResult({
       }
       aria-live="polite"
     >
-      <strong>{committing ? "Starting ScreenPebble" : "Region selected"}</strong>
+      <strong>{committing ? "Starting Pebble" : "Region selected"}</strong>
       {warnings.length > 0 ? <span>{warnings[0].message}</span> : null}
     </aside>
   );

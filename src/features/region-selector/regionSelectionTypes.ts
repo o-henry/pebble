@@ -4,8 +4,8 @@ import {
 } from "../performance/performanceLimits";
 
 const MIN_REGION_SIZE: RegionSize = {
-  width: 24,
-  height: 24
+  width: 1,
+  height: 1
 };
 
 export interface LogicalPoint {
@@ -63,11 +63,7 @@ export type RegionSelectionIssueCode =
   | "selectionOutsideMonitor"
   | "regionTooNarrow"
   | "regionTooShort"
-  | "regionCoordinateOutOfRange"
-  | "regionWidthAboveRecommended"
-  | "regionHeightAboveRecommended"
-  | "regionWidthTooLarge"
-  | "regionHeightTooLarge";
+  | "regionCoordinateOutOfRange";
 
 export interface RegionSelectionIssue {
   code: RegionSelectionIssueCode;
@@ -94,9 +90,5 @@ export const ISSUE_MESSAGES: Record<RegionSelectionIssueCode, string> = {
   regionTooNarrow: "Selected region is too narrow.",
   regionTooShort: "Selected region is too short.",
   regionCoordinateOutOfRange:
-    "Selected region is outside the supported coordinate range.",
-  regionWidthAboveRecommended: "Selected region is wider than recommended.",
-  regionHeightAboveRecommended: "Selected region is taller than recommended.",
-  regionWidthTooLarge: "Selected region is wider than allowed.",
-  regionHeightTooLarge: "Selected region is taller than allowed."
+    "Selected region is outside the supported coordinate range."
 };

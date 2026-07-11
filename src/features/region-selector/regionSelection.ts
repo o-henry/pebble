@@ -44,8 +44,7 @@ export function selectRegion(
   }
 
   const region = mappedRegion;
-  const validationError =
-    validateMinimumRegion(region, limits) ?? validateHardLimits(region, limits);
+  const validationError = validateMinimumRegion(region, limits);
 
   if (validationError) {
     return { ok: false, error: validationError };
@@ -55,7 +54,7 @@ export function selectRegion(
     ok: true,
     selection: {
       region,
-      warnings: recommendedWarnings(region, limits),
+      warnings: [],
       limits
     }
   };
@@ -121,50 +120,6 @@ function validateMinimumRegion(
   }
 
   return null;
-}
-
-function validateHardLimits(
-  region: PhysicalRegion,
-  limits: RegionSelectionLimits
-): RegionSelectionIssue | null {
-  if (region.width > limits.maxRegion.width) {
-    return issue("regionWidthTooLarge", limits.maxRegion.width, region.width);
-  }
-
-  if (region.height > limits.maxRegion.height) {
-    return issue("regionHeightTooLarge", limits.maxRegion.height, region.height);
-  }
-
-  return null;
-}
-
-function recommendedWarnings(
-  region: PhysicalRegion,
-  limits: RegionSelectionLimits
-): RegionSelectionIssue[] {
-  const warnings: RegionSelectionIssue[] = [];
-
-  if (region.width > limits.recommendedRegion.width) {
-    warnings.push(
-      issue(
-        "regionWidthAboveRecommended",
-        limits.recommendedRegion.width,
-        region.width
-      )
-    );
-  }
-
-  if (region.height > limits.recommendedRegion.height) {
-    warnings.push(
-      issue(
-        "regionHeightAboveRecommended",
-        limits.recommendedRegion.height,
-        region.height
-      )
-    );
-  }
-
-  return warnings;
 }
 
 function isFinitePoint(point: LogicalPoint | PhysicalPoint): boolean {

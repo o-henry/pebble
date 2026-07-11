@@ -29,23 +29,21 @@ fn reversed_drag_direction_is_normalized() {
 }
 
 #[test]
-fn minimum_region_rejects_tiny_selection() {
-    let error = select_region(request(point(10.0, 20.0), point(20.0, 42.0), monitor()))
-        .expect_err("minimum region error");
+fn any_non_empty_region_is_accepted() {
+    let selection = select_region(request(point(10.0, 20.0), point(20.0, 42.0), monitor()))
+        .expect("small region");
 
-    assert_eq!(error.code, RegionSelectionIssueCode::RegionTooNarrow);
-    assert_eq!(error.limit, 24.0);
-    assert_eq!(error.actual, 10.0);
+    assert_eq!(selection.region.width, 10);
+    assert_eq!(selection.region.height, 22);
 }
 
 #[test]
-fn hard_max_region_rejects_oversized_selection() {
-    let error = select_region(request(point(0.0, 0.0), point(801.0, 600.0), monitor()))
-        .expect_err("hard max region error");
+fn full_display_region_is_accepted() {
+    let selection = select_region(request(point(0.0, 0.0), point(1920.0, 1080.0), monitor()))
+        .expect("full display region");
 
-    assert_eq!(error.code, RegionSelectionIssueCode::RegionWidthTooLarge);
-    assert_eq!(error.limit, 800.0);
-    assert_eq!(error.actual, 801.0);
+    assert_eq!(selection.region.width, 1920);
+    assert_eq!(selection.region.height, 1080);
 }
 
 #[test]
@@ -113,21 +111,13 @@ fn multi_monitor_offsets_are_preserved_in_physical_space() {
 }
 
 #[test]
-fn recommended_region_returns_warning_without_rejecting() {
+fn selection_size_does_not_return_warnings() {
     let selection = select_region(request(point(0.0, 0.0), point(650.0, 320.0), monitor()))
         .expect("recommended warning selection");
 
     assert_eq!(selection.region.width, 650);
     assert_eq!(selection.region.height, 320);
-    assert_eq!(selection.warnings.len(), 2);
-    assert_eq!(
-        selection.warnings[0].code,
-        RegionSelectionIssueCode::RegionWidthAboveRecommended
-    );
-    assert_eq!(
-        selection.warnings[1].code,
-        RegionSelectionIssueCode::RegionHeightAboveRecommended
-    );
+    assert!(selection.warnings.is_empty());
 }
 
 #[test]

@@ -38,12 +38,19 @@ Thumbs.db
 /.cache/
 /.vite/
 
-# ScreenPebble must not persist captured content.
+# Pebble must not persist captured content.
 /captures/
 /screenshots/private/
+/pebble-captures/
+/pebble-debug-frames/
+/tmp/captures/
+/tmp/pebble-captures/
+/tmp/pebble-debug-frames/
+*.pebble-frame
+
+# Legacy pre-rename capture paths remain ignored for safety.
 /screenpebble-captures/
 /screenpebble-debug-frames/
-/tmp/captures/
 /tmp/screenpebble-captures/
 /tmp/screenpebble-debug-frames/
 *.screenpebble-frame

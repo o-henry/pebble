@@ -1,7 +1,7 @@
 # Real Capture Premortem
 
 Phase 9 introduces one real platform capture adapter. The adapter is deliberately
-small because screen pixels are the most sensitive surface in ScreenPebble.
+small because screen pixels are the most sensitive surface in Pebble.
 
 ## Failure Modes
 
@@ -13,7 +13,7 @@ Permission denied:
 
 Full-frame temporary memory:
 
-- ScreenPebble requests a `CGRect` matching the selected physical region.
+- Pebble requests a `CGRect` matching the selected physical region.
 - The app does not request, retain, serialize, or emit a full-monitor frame.
 - macOS may perform internal compositing, but the app boundary receives only the
   selected crop image.

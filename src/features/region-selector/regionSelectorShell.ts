@@ -8,7 +8,7 @@ export interface RegionSelectorWindowShell {
 }
 
 export const REGION_SELECTOR_DEFAULT_SHELL: RegionSelectorWindowShell = {
-  label: "screenpebble-region-selector",
+  label: "pebble-region-selector",
   title: "Select Region",
   visualOverlay: true,
   nativeTransparent: true,
