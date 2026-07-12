@@ -71,8 +71,14 @@ export function TileView() {
 
   if (loading) {
     return (
-      <main className="tile-shell tile-loading" aria-live="polite">
-        STARTING
+      <main
+        className="boot-loader"
+        aria-label="PEBBLE IS STARTING"
+        aria-live="polite"
+      >
+        <span className="boot-loader__brand">pebble</span>
+        <span>STARTING</span>
+        <span className="boot-loader__track" aria-hidden="true" />
       </main>
     );
   }

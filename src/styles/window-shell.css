@@ -24,15 +24,9 @@
   border-color: #806f48;
 }
 
-.tile-loading,
 .tile-empty {
   color: var(--ink-muted);
   font-size: 0.7rem;
-}
-
-.tile-loading {
-  display: grid;
-  place-items: center;
 }
 
 .tile-empty {

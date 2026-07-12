@@ -9,9 +9,77 @@
       content="Pebble is a local-first low-FPS screen-region utility."
     />
     <title>Pebble</title>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #ffffff;
+      }
+
+      .boot-loader {
+        display: grid;
+        width: 100%;
+        height: 100%;
+        place-content: center;
+        justify-items: center;
+        gap: 12px;
+        color: #697177;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          monospace;
+        font-size: 11px;
+        letter-spacing: 0;
+      }
+
+      .boot-loader__brand {
+        color: #111416;
+      }
+
+      .boot-loader__track {
+        position: relative;
+        width: 72px;
+        height: 2px;
+        overflow: hidden;
+        background: #d9dee1;
+      }
+
+      .boot-loader__track::after {
+        position: absolute;
+        inset: 0;
+        width: 28px;
+        background: #2457d6;
+        content: "";
+        animation: pebble-boot-progress 900ms ease-in-out infinite;
+      }
+
+      @keyframes pebble-boot-progress {
+        from {
+          transform: translateX(-28px);
+        }
+
+        to {
+          transform: translateX(72px);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-loader__track::after {
+          width: 100%;
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="boot-loader" aria-label="PEBBLE IS STARTING" aria-live="polite">
+        <span class="boot-loader__brand">pebble</span>
+        <span>STARTING</span>
+        <span class="boot-loader__track" aria-hidden="true"></span>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
