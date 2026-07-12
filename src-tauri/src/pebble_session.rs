@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    WindowEvent,
+    webview::PageLoadEvent, AppHandle, Emitter, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
 
 use crate::{
@@ -544,7 +544,14 @@ fn open_pebble_window(
     .resizable(true)
     .minimizable(false)
     .always_on_top(true)
-    .content_protected(true);
+    .content_protected(true)
+    .visible(false)
+    .on_page_load(|window, payload| {
+        if should_reveal_window(payload.event()) {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    });
 
     #[cfg(target_os = "macos")]
     {
@@ -593,6 +600,10 @@ fn open_pebble_window(
     });
 
     state.set_window_open(true)
+}
+
+pub(crate) fn should_reveal_window(event: PageLoadEvent) -> bool {
+    matches!(event, PageLoadEvent::Finished)
 }
 
 fn clear_live_tile(app: &AppHandle, session_revision: u64) {

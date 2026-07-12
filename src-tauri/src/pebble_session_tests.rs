@@ -3,13 +3,20 @@ use crate::{
     capture_lifecycle::CaptureTileMode,
     live_tile::{LiveTileCaptureRequest, MAIN_LIVE_TILE_ID},
     pebble_session::{
-        frame_delivery_is_current, position_pebble_away_from_region, trusted_selection_request,
-        PebbleSessionSnapshot, PebbleSessionState,
+        frame_delivery_is_current, position_pebble_away_from_region, should_reveal_window,
+        trusted_selection_request, PebbleSessionSnapshot, PebbleSessionState,
     },
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
     },
 };
+use tauri::webview::PageLoadEvent;
+
+#[test]
+fn pebble_window_stays_hidden_until_the_page_finishes_loading() {
+    assert!(!should_reveal_window(PageLoadEvent::Started));
+    assert!(should_reveal_window(PageLoadEvent::Finished));
+}
 
 #[test]
 fn session_starts_without_selected_or_persisted_capture_data() {
