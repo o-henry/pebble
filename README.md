@@ -154,8 +154,8 @@ launch, a native notification discloses that:
 - Pause, Hide, privacy blank, close, and reselection stop monitoring; a newly
   selected region requires Watch to be enabled again.
 
-OpenAI Watch prefers gpt-5.6-luna at medium effort and uses Terra only when
-Luna is unavailable. Claude Watch uses Sonnet 5. Tools, MCP, shell, files, and
+OpenAI Watch requires gpt-5.6-terra at medium effort and never falls back to a
+lower model. Claude Watch uses Sonnet 5. Tools, MCP, shell, files, and
 web search remain disabled. The AI compares before/after crops, describes the
 visible change and uncertainty, and writes the model and generation time.
 

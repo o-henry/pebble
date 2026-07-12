@@ -35,7 +35,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const TURN_TIMEOUT: Duration = Duration::from_secs(120);
 const OPENAI_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-terra", "gpt-5.6-luna"];
-const OPENAI_WATCH_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-luna", "gpt-5.6-terra"];
+const OPENAI_WATCH_MODEL_PREFERENCES: [&str; 1] = ["gpt-5.6-terra"];
 const OPENAI_MODEL_LABEL: &str = "GPT-5.6-TERRA";
 const OPENAI_REASONING_EFFORT: &str = "medium";
 const CLAUDE_MODEL_ID: &str = "claude-sonnet-5";
@@ -1692,7 +1692,11 @@ mod tests {
         assert_eq!(select_balanced_model(Some(&mini_only)), None);
         assert_eq!(
             select_image_model(Some(&models), &super::OPENAI_WATCH_MODEL_PREFERENCES).as_deref(),
-            Some("gpt-5.6-luna")
+            Some("gpt-5.6-terra")
+        );
+        assert_eq!(
+            select_image_model(Some(&models[..1]), &super::OPENAI_WATCH_MODEL_PREFERENCES),
+            None
         );
     }
 
