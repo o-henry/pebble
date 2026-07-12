@@ -57,6 +57,9 @@ Implemented:
 - Always-on-top live tile with pause, resume, reselect, AI, and privacy blank.
 - Real macOS selected-region capture at runtime and a deterministic fake backend
   for tests.
+- Window-backed regions stay attached to their source window when another app
+  covers it or the source moves behind other windows; desktop-only selections
+  remain display-coordinate captures.
 - Capture lifecycle and scheduler states: live, paused, hidden, blanked,
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
@@ -191,7 +194,7 @@ monitoring stays local; only a visible **Send** action sends one fresh crop.
 
 Requirements:
 
-- macOS for the current desktop target.
+- macOS 14 or later for source-window capture.
 - Node.js compatible with the repository lockfile.
 - Rust stable.
 

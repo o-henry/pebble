@@ -217,6 +217,7 @@ fn region() -> PhysicalRegion {
         y: 20,
         width: 24,
         height: 24,
+        source_window: None,
     }
 }
 

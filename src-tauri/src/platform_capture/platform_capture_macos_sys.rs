@@ -5,11 +5,16 @@ pub(super) type CGImageRef = *const c_void;
 pub(super) type CGDataProviderRef = *const c_void;
 pub(super) type CFDataRef = *const c_void;
 pub(super) type CFTypeRef = *const c_void;
+pub(super) type CFArrayRef = *const c_void;
+pub(super) type CFDictionaryRef = *const c_void;
+pub(super) type CFStringRef = *const c_void;
 
 pub(super) const K_CG_NULL_WINDOW_ID: u32 = 0;
 pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1;
 pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW: u32 = 1 << 1;
+pub(super) const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: u32 = 1 << 4;
 pub(super) const K_CG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING: u32 = 1 << 0;
+pub(super) const K_CF_NUMBER_SINT32_TYPE: isize = 3;
 pub(super) const K_CG_BITMAP_ALPHA_INFO_MASK: u32 = 0x1f;
 pub(super) const K_CG_IMAGE_ALPHA_PREMULTIPLIED_FIRST: u32 = 2;
 pub(super) const K_CG_IMAGE_ALPHA_FIRST: u32 = 4;
@@ -40,8 +45,21 @@ pub(super) struct CGRect {
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
+    #[link_name = "kCGWindowNumber"]
+    pub(super) static K_CG_WINDOW_NUMBER: CFStringRef;
+    #[link_name = "kCGWindowOwnerPID"]
+    pub(super) static K_CG_WINDOW_OWNER_PID: CFStringRef;
+    #[link_name = "kCGWindowLayer"]
+    pub(super) static K_CG_WINDOW_LAYER: CFStringRef;
+    #[link_name = "kCGWindowBounds"]
+    pub(super) static K_CG_WINDOW_BOUNDS: CFStringRef;
     pub(super) fn CGPreflightScreenCaptureAccess() -> bool;
     pub(super) fn CGRequestScreenCaptureAccess() -> bool;
+    pub(super) fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> CFArrayRef;
+    pub(super) fn CGRectMakeWithDictionaryRepresentation(
+        dictionary: CFDictionaryRef,
+        rect: *mut CGRect,
+    ) -> bool;
     pub(super) fn CGWindowListCreateImage(
         screen_bounds: CGRect,
         list_option: u32,
@@ -69,6 +87,17 @@ extern "C" {
 
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
+    pub(super) fn CFArrayGetCount(array: CFArrayRef) -> isize;
+    pub(super) fn CFArrayGetValueAtIndex(array: CFArrayRef, index: isize) -> *const c_void;
+    pub(super) fn CFDictionaryGetValue(
+        dictionary: CFDictionaryRef,
+        key: *const c_void,
+    ) -> *const c_void;
+    pub(super) fn CFNumberGetValue(
+        number: *const c_void,
+        number_type: isize,
+        value: *mut c_void,
+    ) -> bool;
     pub(super) fn CFDataGetBytePtr(the_data: CFDataRef) -> *const u8;
     pub(super) fn CFDataGetLength(the_data: CFDataRef) -> isize;
     pub(super) fn CFRelease(cf: CFTypeRef);

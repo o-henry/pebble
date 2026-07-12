@@ -41,6 +41,13 @@ Current desktop safeguards:
   before capture and before a frame is delivered.
 - Every captured frame is matched to the current session revision; frames that
   finish after privacy blank, close, or reselection are discarded.
+- On macOS 14 or later, a region selected inside an app window is bound to that
+  source window and captured with a desktop-independent ScreenCaptureKit filter.
+  Covering the source with another window never changes the capture target.
+- The ephemeral source window ID and window-relative crop are kept in memory
+  only and are excluded from serialized region data, logs, and journals.
+- If a bound source window closes or becomes unavailable, capture fails closed
+  instead of falling back to whatever pixels occupy the old screen coordinates.
 - Hidden or minimized Pebble windows cannot request or receive live frames.
 - The floating tile is positioned outside the selected source region when the
   display has room, preventing recursive self-capture.

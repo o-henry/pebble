@@ -180,6 +180,7 @@ fn sample_document() -> PebbleStoreDocument {
                 y: 20,
                 width: 600,
                 height: 300,
+                source_window: None,
             },
             capture: StoredCaptureConfig { fps: 1 },
         }],

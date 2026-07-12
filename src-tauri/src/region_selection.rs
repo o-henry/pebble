@@ -121,6 +121,7 @@ fn map_logical_selection_to_physical(
         y,
         width,
         height,
+        source_window: None,
     })
 }
 

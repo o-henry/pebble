@@ -3,9 +3,15 @@ use crate::{
         byte_len, capture_error, cropped_frame, CaptureError, CaptureErrorCode, CaptureResult,
         RGBA_BYTES_PER_PIXEL,
     },
-    region_selection_types::PhysicalRegion,
+    region_selection_types::{PhysicalRegion, WindowCaptureTarget},
 };
 use platform_capture_macos_sys::*;
+use screencapturekit::{
+    cg::CGRect as ScreenCaptureRect,
+    screenshot_manager::{CGImageExt, SCScreenshotManager},
+    shareable_content::SCShareableContent,
+    stream::{configuration::SCStreamConfiguration, content_filter::SCContentFilter},
+};
 
 use super::BackdropColor;
 
@@ -18,6 +24,10 @@ mod platform_capture_macos_sys;
 pub(super) fn capture_region(region: &PhysicalRegion, scale_factor: f64) -> CaptureResult {
     if !preflight_screen_capture_access() {
         return Err(permission_denied(region));
+    }
+
+    if let Some(target) = region.source_window.as_ref() {
+        return capture_source_window_region(region, target);
     }
 
     let image = unsafe {
@@ -34,6 +44,195 @@ pub(super) fn capture_region(region: &PhysicalRegion, scale_factor: f64) -> Capt
 
     let bytes = unsafe { rgba_bytes_from_image(region, image.as_cg_image()) }?;
     Ok(cropped_frame(region, bytes))
+}
+
+pub(super) fn source_window_for_region(
+    region: &PhysicalRegion,
+    scale_factor: f64,
+) -> Option<WindowCaptureTarget> {
+    if !preflight_screen_capture_access() {
+        return None;
+    }
+
+    let selection = capture_rect(region, scale_factor);
+    let center = CGPoint {
+        x: selection.origin.x + selection.size.width / 2.0,
+        y: selection.origin.y + selection.size.height / 2.0,
+    };
+    let source = topmost_source_window(center)?;
+    let relative_x = selection.origin.x - source.bounds.origin.x;
+    let relative_y = selection.origin.y - source.bounds.origin.y;
+
+    if relative_x < 0.0
+        || relative_y < 0.0
+        || relative_x + selection.size.width > source.bounds.size.width
+        || relative_y + selection.size.height > source.bounds.size.height
+    {
+        return None;
+    }
+
+    Some(WindowCaptureTarget {
+        window_id: source.window_id,
+        relative_x_millipoints: to_millipoints(relative_x)?,
+        relative_y_millipoints: to_millipoints(relative_y)?,
+        width_millipoints: to_unsigned_millipoints(selection.size.width)?,
+        height_millipoints: to_unsigned_millipoints(selection.size.height)?,
+    })
+}
+
+fn capture_source_window_region(
+    region: &PhysicalRegion,
+    target: &WindowCaptureTarget,
+) -> CaptureResult {
+    let content = SCShareableContent::create()
+        .with_exclude_desktop_windows(true)
+        .with_on_screen_windows_only(false)
+        .get()
+        .map_err(|_| {
+            capture_unavailable(region, "macOS could not list the selected source window.")
+        })?;
+    let windows = content.windows();
+    let source = windows
+        .iter()
+        .find(|window| window.window_id() == target.window_id)
+        .ok_or_else(|| {
+            capture_unavailable(region, "The selected source window is no longer available.")
+        })?;
+    let filter = SCContentFilter::create().with_window(source).build();
+    let width = u32::try_from(region.width)
+        .map_err(|_| capture_unavailable(region, "The selected region width is invalid."))?;
+    let height = u32::try_from(region.height)
+        .map_err(|_| capture_unavailable(region, "The selected region height is invalid."))?;
+    let source_rect = ScreenCaptureRect::new(
+        target.relative_x_millipoints as f64 / 1_000.0,
+        target.relative_y_millipoints as f64 / 1_000.0,
+        target.width_millipoints as f64 / 1_000.0,
+        target.height_millipoints as f64 / 1_000.0,
+    );
+    let configuration = SCStreamConfiguration::new()
+        .with_width(width)
+        .with_height(height)
+        .with_source_rect(source_rect)
+        .with_scales_to_fit(false)
+        .with_shows_cursor(false);
+    let image = SCScreenshotManager::capture_image(&filter, &configuration).map_err(|_| {
+        capture_unavailable(
+            region,
+            "macOS could not capture the selected source window.",
+        )
+    })?;
+    if image.width() != region.width as usize || image.height() != region.height as usize {
+        return Err(capture_unavailable(
+            region,
+            "The selected source window changed display scale or size.",
+        ));
+    }
+    let bytes = image.rgba_data().map_err(|_| {
+        capture_unavailable(region, "macOS source window pixel data was not usable.")
+    })?;
+    if bytes.len() != byte_len(region)? {
+        return Err(capture_unavailable(
+            region,
+            "macOS source window returned an unexpected frame size.",
+        ));
+    }
+    Ok(cropped_frame(region, bytes))
+}
+
+#[derive(Clone, Copy)]
+struct WindowInfo {
+    window_id: u32,
+    bounds: CGRect,
+}
+
+fn topmost_source_window(point: CGPoint) -> Option<WindowInfo> {
+    let list = unsafe {
+        CGWindowListCopyWindowInfo(
+            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
+            K_CG_NULL_WINDOW_ID,
+        )
+    };
+    let list = ScopedCfRef::new(list.cast())?;
+    let count = unsafe { CFArrayGetCount(list.as_cf_array()) };
+
+    for index in 0..count {
+        let dictionary = unsafe { CFArrayGetValueAtIndex(list.as_cf_array(), index) };
+        let Some(info) = (unsafe { window_info_from_dictionary(dictionary.cast()) }) else {
+            continue;
+        };
+        if info.owner_pid != std::process::id() as i32
+            && info.layer == 0
+            && rect_contains_point(info.bounds, point)
+        {
+            return Some(WindowInfo {
+                window_id: info.window_id,
+                bounds: info.bounds,
+            });
+        }
+    }
+
+    None
+}
+
+struct RawWindowInfo {
+    window_id: u32,
+    owner_pid: i32,
+    layer: i32,
+    bounds: CGRect,
+}
+
+unsafe fn window_info_from_dictionary(dictionary: CFDictionaryRef) -> Option<RawWindowInfo> {
+    if dictionary.is_null() {
+        return None;
+    }
+    let mut bounds = CGRect {
+        origin: CGPoint { x: 0.0, y: 0.0 },
+        size: CGSize {
+            width: 0.0,
+            height: 0.0,
+        },
+    };
+    let bounds_dictionary = CFDictionaryGetValue(dictionary, K_CG_WINDOW_BOUNDS.cast());
+    if bounds_dictionary.is_null()
+        || !CGRectMakeWithDictionaryRepresentation(bounds_dictionary.cast(), &mut bounds)
+    {
+        return None;
+    }
+    Some(RawWindowInfo {
+        window_id: u32::try_from(dictionary_i32(dictionary, K_CG_WINDOW_NUMBER)?).ok()?,
+        owner_pid: dictionary_i32(dictionary, K_CG_WINDOW_OWNER_PID)?,
+        layer: dictionary_i32(dictionary, K_CG_WINDOW_LAYER)?,
+        bounds,
+    })
+}
+
+unsafe fn dictionary_i32(dictionary: CFDictionaryRef, key: CFStringRef) -> Option<i32> {
+    let number = CFDictionaryGetValue(dictionary, key.cast());
+    let mut value = 0_i32;
+    (!number.is_null()
+        && CFNumberGetValue(
+            number,
+            K_CF_NUMBER_SINT32_TYPE,
+            (&mut value as *mut i32).cast(),
+        ))
+    .then_some(value)
+}
+
+fn to_millipoints(value: f64) -> Option<i64> {
+    let scaled = (value * 1_000.0).round();
+    (scaled.is_finite() && scaled >= 0.0 && scaled <= i64::MAX as f64).then_some(scaled as i64)
+}
+
+fn to_unsigned_millipoints(value: f64) -> Option<u64> {
+    let scaled = (value * 1_000.0).round();
+    (scaled.is_finite() && scaled > 0.0 && scaled <= u64::MAX as f64).then_some(scaled as u64)
+}
+
+fn rect_contains_point(rect: CGRect, point: CGPoint) -> bool {
+    point.x >= rect.origin.x
+        && point.y >= rect.origin.y
+        && point.x < rect.origin.x + rect.size.width
+        && point.y < rect.origin.y + rect.size.height
 }
 
 pub(super) fn capture_window_backdrop_color(
@@ -339,6 +538,10 @@ impl ScopedCfRef {
     }
 
     fn as_cf_data(&self) -> CFDataRef {
+        self.ptr.cast()
+    }
+
+    fn as_cf_array(&self) -> CFArrayRef {
         self.ptr.cast()
     }
 }

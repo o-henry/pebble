@@ -120,6 +120,7 @@ fn region(x: i32, y: i32, width: i32, height: i32) -> PhysicalRegion {
         y,
         width,
         height,
+        source_window: None,
     }
 }
 
@@ -137,6 +138,7 @@ fn solid_frame(width: i32, height: i32, value: u8) -> CroppedFramePayload {
             y: 0,
             width,
             height,
+            source_window: None,
         },
         width,
         height,

@@ -283,5 +283,6 @@ fn physical_region(
         y,
         width,
         height,
+        source_window: None,
     }
 }

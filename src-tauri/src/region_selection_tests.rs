@@ -1,7 +1,7 @@
 use crate::region_selection::select_region;
 use crate::region_selection_types::{
     LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionIssueCode,
-    RegionSelectionRequest,
+    RegionSelectionRequest, WindowCaptureTarget,
 };
 
 #[test]
@@ -15,6 +15,24 @@ fn normal_selection_maps_logical_bounds_to_physical_region() {
     assert_eq!(selection.region.width, 200);
     assert_eq!(selection.region.height, 150);
     assert!(selection.warnings.is_empty());
+}
+
+#[test]
+fn source_window_identity_is_never_serialized_with_region_geometry() {
+    let mut selection = select_region(request(point(10.0, 20.0), point(210.0, 170.0), monitor()))
+        .expect("region selection");
+    selection.region.source_window = Some(WindowCaptureTarget {
+        window_id: 42,
+        relative_x_millipoints: 10_000,
+        relative_y_millipoints: 20_000,
+        width_millipoints: 200_000,
+        height_millipoints: 150_000,
+    });
+
+    let serialized = serde_json::to_string(&selection.region).expect("serialized region");
+
+    assert!(!serialized.contains("window"));
+    assert!(!serialized.contains("42"));
 }
 
 #[test]

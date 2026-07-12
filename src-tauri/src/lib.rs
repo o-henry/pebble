@@ -332,7 +332,7 @@ fn set_smart_watch(
 }
 
 #[tauri::command]
-fn capture_live_tile_once(
+async fn capture_live_tile_once(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, LiveTileState>,
@@ -364,7 +364,17 @@ fn capture_live_tile_once(
     let monitors = current_monitor_geometries(&app)?;
     let authorized = session.authorize_capture(request, &monitors)?;
     let expected_revision = authorized.session_revision();
-    let outcome = state.capture_once(authorized)?;
+    let capture_state = state.inner().clone();
+    let outcome =
+        tauri::async_runtime::spawn_blocking(move || capture_state.capture_once(authorized))
+            .await
+            .map_err(|_| {
+                capture_error(
+                    CaptureErrorCode::CaptureUnavailable,
+                    live_tile::MAIN_LIVE_TILE_ID,
+                    "The native capture worker stopped unexpectedly.",
+                )
+            })??;
 
     if let Some(event) = &outcome.frame_event {
         let current = current_monitor_geometries(&app)

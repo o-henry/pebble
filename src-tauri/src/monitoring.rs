@@ -251,6 +251,7 @@ mod tests {
                 y: 0,
                 width: 64,
                 height: 64,
+                source_window: None,
             },
             width: 64,
             height: 64,

@@ -153,6 +153,7 @@ fn frame() -> CroppedFramePayload {
         y: 0,
         width: 2,
         height: 1,
+        source_window: None,
     };
 
     cropped_frame(&region, vec![255, 255, 255, 255, 0, 0, 0, 255])

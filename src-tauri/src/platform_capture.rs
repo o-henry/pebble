@@ -3,7 +3,7 @@ use crate::{
         capture_error, validate_region_size, CaptureBackend, CaptureError, CaptureErrorCode,
         CaptureResult,
     },
-    region_selection_types::PhysicalRegion,
+    region_selection_types::{PhysicalRegion, WindowCaptureTarget},
 };
 use serde::Serialize;
 use tauri::WebviewWindow;
@@ -36,6 +36,22 @@ impl CaptureBackend for PlatformCaptureBackend {
 
 pub fn capture_real_region_once(region: PhysicalRegion) -> CaptureResult {
     PlatformCaptureBackend.capture_region(&region)
+}
+
+#[cfg(target_os = "macos")]
+pub fn bind_region_to_source_window(
+    region: &PhysicalRegion,
+    scale_factor: f64,
+) -> Option<WindowCaptureTarget> {
+    platform_capture_macos::source_window_for_region(region, scale_factor)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn bind_region_to_source_window(
+    _region: &PhysicalRegion,
+    _scale_factor: f64,
+) -> Option<WindowCaptureTarget> {
+    None
 }
 
 #[cfg(target_os = "macos")]
@@ -101,6 +117,7 @@ pub(crate) mod platform_capture_test_support {
                 y: 0,
                 width: 0,
                 height: 24,
+                source_window: None,
             })
             .expect_err("invalid region should fail before platform capture")
     }
@@ -112,6 +129,7 @@ pub(crate) mod platform_capture_test_support {
             y: 0,
             width: 7680,
             height: 4320,
+            source_window: None,
         })
         .is_ok()
     }

@@ -23,7 +23,7 @@ use tokio::{io::AsyncWriteExt, process::Command, time::timeout};
 use url::Url;
 
 use crate::{
-    capture_backend::{CaptureBackend, CroppedFramePayload},
+    capture_backend::{capture_error, CaptureBackend, CaptureErrorCode, CroppedFramePayload},
     pebble_session::{AuthorizedAiCapture, PebbleSessionState, PEBBLE_TILE_LABEL},
     platform_capture::PlatformCaptureBackend,
 };
@@ -243,9 +243,20 @@ pub async fn ask_selected_region(
     let authorized = session
         .authorize_ai_capture(&monitors)
         .map_err(capture_runtime_error)?;
-    let frame = PlatformCaptureBackend
-        .capture_region_at_scale(authorized.region(), authorized.scale_factor())
-        .map_err(capture_runtime_error)?;
+    let capture_region = authorized.region().clone();
+    let capture_scale = authorized.scale_factor();
+    let frame = tauri::async_runtime::spawn_blocking(move || {
+        PlatformCaptureBackend.capture_region_at_scale(&capture_region, capture_scale)
+    })
+    .await
+    .map_err(|_| {
+        capture_runtime_error(capture_error(
+            CaptureErrorCode::CaptureUnavailable,
+            "ai-capture",
+            "The native capture worker stopped unexpectedly.",
+        ))
+    })?
+    .map_err(capture_runtime_error)?;
     ensure_capture_is_current(app, window, session, &authorized)?;
     let image_data_url = encode_frame_data_url(&frame)?;
 
@@ -1709,6 +1720,7 @@ mod tests {
                 y: 0,
                 width: 1,
                 height: 1,
+                source_window: None,
             },
             vec![12, 34, 56, 255],
         );

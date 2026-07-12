@@ -29,3 +29,6 @@ tauri-plugin-shell = "2"
 tokio = { version = "1", features = ["io-util", "net", "process", "time"] }
 time = { version = "0.3", features = ["formatting"] }
 url = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { version = "8.0.0", features = ["macos_14_0"] }

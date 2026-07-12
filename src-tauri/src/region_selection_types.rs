@@ -41,6 +41,15 @@ pub struct RegionSelectionRequest {
     pub end: LogicalPoint,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowCaptureTarget {
+    pub window_id: u32,
+    pub relative_x_millipoints: i64,
+    pub relative_y_millipoints: i64,
+    pub width_millipoints: u64,
+    pub height_millipoints: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhysicalRegion {
@@ -49,6 +58,8 @@ pub struct PhysicalRegion {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    #[serde(skip)]
+    pub source_window: Option<WindowCaptureTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

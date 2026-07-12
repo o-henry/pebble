@@ -35,6 +35,7 @@ fn missing_monitor_returns_typed_error() {
         y: 0,
         width: 24,
         height: 24,
+        source_window: None,
     })
     .expect_err("missing monitor error");
 
@@ -79,5 +80,6 @@ fn region(x: i32, y: i32, width: i32, height: i32) -> PhysicalRegion {
         y,
         width,
         height,
+        source_window: None,
     }
 }

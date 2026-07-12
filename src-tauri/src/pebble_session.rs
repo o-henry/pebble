@@ -12,7 +12,7 @@ use crate::{
     live_tile::{
         AuthorizedLiveTileCapture, LiveTileCaptureRequest, LiveTileState, MAIN_LIVE_TILE_ID,
     },
-    region_selection,
+    platform_capture, region_selection,
     region_selection_types::{MonitorGeometry, PhysicalRegion, RegionSelectionRequest},
     region_selector_window::{
         monitor_identifier, region_selector_monitor_geometry, REGION_SELECTOR_LABEL,
@@ -109,9 +109,11 @@ impl PebbleSessionState {
         request: RegionSelectionRequest,
     ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
         let scale_factor = request.monitor.scale_factor;
-        let selection = region_selection::select_region(request).map_err(|issue| {
+        let mut selection = region_selection::select_region(request).map_err(|issue| {
             PebbleSessionError::new(PebbleSessionErrorCode::InvalidRegion, issue.message)
         })?;
+        selection.region.source_window =
+            platform_capture::bind_region_to_source_window(&selection.region, scale_factor);
         let mut data = self
             .data
             .lock()
@@ -193,7 +195,7 @@ impl PebbleSessionState {
 
         if !data.snapshot.window_open
             || request.tile_id != MAIN_LIVE_TILE_ID
-            || request.region != *region
+            || !same_visible_region(&request.region, region)
             || request.request_id.len() > 256
             || matches!(
                 request.mode,
@@ -327,6 +329,14 @@ impl PebbleSessionState {
 
 fn increment_revision(snapshot: &mut PebbleSessionSnapshot) {
     snapshot.revision = snapshot.revision.saturating_add(1);
+}
+
+fn same_visible_region(left: &PhysicalRegion, right: &PhysicalRegion) -> bool {
+    left.monitor_id == right.monitor_id
+        && left.x == right.x
+        && left.y == right.y
+        && left.width == right.width
+        && left.height == right.height
 }
 
 pub(crate) fn validate_current_monitor(

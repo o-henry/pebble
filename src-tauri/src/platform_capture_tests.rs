@@ -118,7 +118,7 @@ fn platform_capture_source_does_not_use_file_backed_capture() {
         "File::create",
         "write_all",
         "tempfile",
-        "screencapture",
+        "Command::new(\"screencapture\")",
     ] {
         assert!(
             !shared_source.contains(forbidden)
@@ -136,5 +136,6 @@ fn region(x: i32, y: i32, width: i32, height: i32) -> PhysicalRegion {
         y,
         width,
         height,
+        source_window: None,
     }
 }
