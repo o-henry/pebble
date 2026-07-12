@@ -9,7 +9,7 @@ This path is optional and never participates in continuous monitoring.
 select region -> choose provider -> connect once -> type question -> Ask -> concise answer
 ```
 
-The **Ask** action is the consent boundary. Pebble does not call AI on a
+The **Send** action is the consent boundary. Pebble does not call AI on a
 timer, on visual change, at startup, or in the background.
 
 ## Runtime

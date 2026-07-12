@@ -2,10 +2,23 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::Emitter;
+use tauri_plugin_notification::NotificationExt;
 
 pub const SMART_WATCH_CONSENT_VERSION: u16 = 2;
 pub const SMART_WATCH_SESSION_LIMIT: u16 = 24;
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
+pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
+pub const STARTUP_NOTICE_BODY: &str =
+    "SELECT A REGION, THEN PRESS WATCH TO RECEIVE LOCAL CHANGE ALERTS. NO AUTOMATIC AI UPLOAD.";
+
+pub fn show_startup_notice(app: &tauri::AppHandle) {
+    let _ = app
+        .notification()
+        .builder()
+        .title(STARTUP_NOTICE_TITLE)
+        .body(STARTUP_NOTICE_BODY)
+        .show();
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,8 +153,15 @@ impl SmartWatchError {
 mod tests {
     use super::{
         SmartWatchErrorCode, SmartWatchState, SMART_WATCH_CONSENT_VERSION,
-        SMART_WATCH_SESSION_LIMIT,
+        SMART_WATCH_SESSION_LIMIT, STARTUP_NOTICE_BODY,
     };
+
+    #[test]
+    fn startup_notice_explains_activation_and_local_privacy() {
+        assert!(STARTUP_NOTICE_BODY.contains("SELECT A REGION"));
+        assert!(STARTUP_NOTICE_BODY.contains("PRESS WATCH"));
+        assert!(STARTUP_NOTICE_BODY.contains("NO AUTOMATIC AI UPLOAD"));
+    }
 
     #[test]
     fn watch_is_off_until_current_consent_is_supplied() {

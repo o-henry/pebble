@@ -85,29 +85,6 @@
   line-height: 1.45;
 }
 
-.monitor-insight {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 7px;
-  color: var(--ink-muted);
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  font-size: 0.58rem;
-  text-transform: uppercase;
-}
-
-.monitor-insight.is-change {
-  color: var(--amber);
-  border-color: #dfbd82;
-  background: var(--amber-soft);
-}
-
-.monitor-insight.is-change .status-dot {
-  background: #f28c28;
-}
-
 .live-tile-controls {
   display: flex;
   min-width: 0;

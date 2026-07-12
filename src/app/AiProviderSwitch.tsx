@@ -1,14 +1,11 @@
 import type { AiProvider } from "../features/ai/regionQuestion";
-import openAiIcon from "../assets/brands/openai.svg";
-import claudeIcon from "../assets/brands/claude.svg";
 
 const PROVIDERS: ReadonlyArray<{
   id: AiProvider;
   label: string;
-  icon: string;
 }> = [
-  { id: "openAi", label: "OPENAI", icon: openAiIcon },
-  { id: "claude", label: "CLAUDE", icon: claudeIcon }
+  { id: "openAi", label: "OPENAI" },
+  { id: "claude", label: "CLAUDE" }
 ];
 
 export function AiProviderSwitch({
@@ -33,14 +30,7 @@ export function AiProviderSwitch({
           disabled={disabled}
           onClick={() => onChange(item.id)}
         >
-          <span
-            className="provider-switch__icon"
-            aria-hidden="true"
-            style={{
-              maskImage: `url("${item.icon}")`,
-              WebkitMaskImage: `url("${item.icon}")`
-            }}
-          />
+          {item.label}
         </button>
       ))}
     </div>

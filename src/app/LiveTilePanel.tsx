@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useReducer, useState } from "react";
 import type { PhysicalRegion } from "../features/region-selector/regionSelection";
 import {
   createLiveTileState,
@@ -9,7 +9,6 @@ import { LiveFrameCanvas } from "./LiveFrameCanvas";
 import { LiveTileControls } from "./LiveTileControls";
 import { RegionQuestionPanel } from "./RegionQuestionPanel";
 import { useLiveTileBackend } from "./useLiveTileBackend";
-import { listenToMonitorInsights, type MonitorInsight } from "../lib/events";
 import { useAdaptiveTheme } from "./useAdaptiveTheme";
 import { captureErrorMessage, liveFrameState } from "./liveTilePresentation";
 
@@ -36,10 +35,6 @@ export function LiveTilePanel({
   const [aiExpanded, setAiExpanded] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [controlBusy, setControlBusy] = useState(false);
-  const [monitorInsight, setMonitorInsight] = useState<MonitorInsight | null>({
-    kind: "baseline",
-    summary: "LOCAL MONITORING ACTIVE"
-  });
   const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : tile.mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
   const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
@@ -50,18 +45,6 @@ export function LiveTilePanel({
       dispatch({ type: "privacyBlank" });
       dispatch({ type: "pause" });
     }
-  }, []);
-  useEffect(() => {
-    let unlisten: () => void = () => undefined;
-    let active = true;
-    void listenToMonitorInsights(setMonitorInsight).then((nextUnlisten) => {
-      if (active) unlisten = nextUnlisten;
-      else nextUnlisten();
-    });
-    return () => {
-      active = false;
-      unlisten();
-    };
   }, []);
 
   const backend = useLiveTileBackend({
@@ -144,16 +127,6 @@ export function LiveTilePanel({
         <p className="live-tile-error" role="alert">
           {captureErrorMessage(error)}
         </p>
-      ) : null}
-
-      {monitorInsight ? (
-        <div
-          className={`monitor-insight is-${monitorInsight.kind}`}
-          role={monitorInsight.kind === "change" ? "alert" : "status"}
-        >
-          <span className="status-dot" aria-hidden="true" />
-          {monitorInsight.summary}
-        </div>
       ) : null}
 
       {aiExpanded ? (

@@ -13,10 +13,10 @@ The app must make capture visible:
 - Every active region has a visible tile or visible status.
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
-- The first **Watch** activation requires a visible scope notice and consent.
+- App startup shows a native Watch scope notice before region selection.
 - Watch starts off for every newly selected region and remains local-only.
-- The Watch notice discloses the Downloads journal before any summary is saved.
-- AI runs only after a visible **Ask** action in the expanded Pebble drawer.
+- The startup notice discloses local monitoring before Watch can be enabled.
+- AI runs only after a visible **Send** action in the expanded Pebble drawer.
 
 ## Local-First Default
 
@@ -100,13 +100,14 @@ All monitoring happens without AI:
 small crop -> local capture/diff -> broad local visual signal -> local notification
 ```
 
-Watch is off by default. Its first activation requires a versioned local
-consent receipt, and every new region requires a fresh opt-in. It is limited by
+Watch is off by default. App startup displays its scope before region
+selection, pressing Watch records explicit activation, and every new region
+requires a fresh opt-in. It is limited by
 the diff engine's five-minute material-change cooldown and a maximum of 24
 notifications per app session. It keeps only small in-memory statistics.
 
-After consent, Pebble appends only generalized Watch summaries and explicitly
-followed public-source titles or compact Discover title digests to one local Markdown document at
+After activation, Pebble appends only generalized Watch summaries and explicitly
+followed public-source titles to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
 text, manual AI questions, AI answers, article bodies, credentials, or browser
 session data to that journal.
@@ -116,7 +117,7 @@ targets are rejected, and the document stops accepting entries at 25 MB.
 The current local classifier can report broad brightness and color-distribution
 changes. It does not claim semantic understanding, text recognition, or
 domain-specific prediction. The only network image path remains a fresh
-selected crop sent after the user presses **Ask**.
+selected crop sent after the user presses **Send**.
 
 Adaptive window color is a separate local-only capture path. On macOS, Pebble
 uses the system's below-window capture option to sample a 96-physical-pixel
@@ -132,19 +133,6 @@ minutes. DNS is resolved and pinned to public addresses, redirects and system
 proxies are disabled, private and reserved ranges are rejected, responses are
 limited to 512 KB, and only a title fingerprint plus source URL is retained.
 Captured pixels and OCR text are never converted into search queries.
-
-Discover is a separate public-network opt-in. Once enabled, that preference is
-stored locally and Pebble checks the fixed BBC World RSS and official Hacker
-News API endpoints every 30 minutes while the app runs. It keeps at most five
-titles per category in session memory, retains only source metadata and public
-links, and never downloads or saves article bodies. The same DNS pinning,
-public-address, no-redirect, no-proxy, content-type, timeout, and 512 KB response
-limits used by Public Source Watch apply.
-
-Direct X trends are not fetched because the official endpoint requires bearer
-authentication. Reddit is not fetched because its Data API requires registered
-OAuth access. Pebble does not replace those official paths with browser-session
-reuse, cookie scraping, or an unofficial scraper.
 
 ## Permission Rules
 
@@ -181,7 +169,7 @@ Check for:
 - New shell or filesystem access.
 - Capture continuing in inactive states.
 - Full-monitor frames crossing process or UI boundaries.
-- AI calls becoming automatic or detached from the visible **Ask** action.
+- AI calls becoming automatic or detached from the visible **Send** action.
 - Watch bypassing its consent version, per-region opt-in, or local-only boundary.
 - Logs, errors, tests, fixtures, or examples containing private screen content,
   OCR output, secrets, tokens, cookies, or local account data.
@@ -197,7 +185,7 @@ Do not release if any of these are true:
 - Hidden, paused, or blanked regions keep capturing.
 - Full monitor frames are sent to the UI or AI connector.
 - AI sends data without a visible user request.
-- Watch can be enabled without its visible scope notice.
+- Watch scope is not disclosed at app startup.
 - Telemetry or analytics exist.
 - Permission denied crashes the app.
 - The user cannot see or stop active capture.

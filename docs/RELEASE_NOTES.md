@@ -35,7 +35,7 @@ This is a contributor-facing pre-alpha demo build.
 - No OCR history persistence.
 - No AI website automation.
 - No browser cookie, token, or API-key reuse.
-- No automatic AI requests; one crop is sent only after **Ask**.
+- No automatic AI requests; one crop is sent only after **Send**.
 - No inherited API-key environment, browser cookie access, MCP, web search, or
   webview shell permission.
 

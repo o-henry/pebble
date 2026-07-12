@@ -385,7 +385,7 @@ Build:
 
 - Codex app-server sidecar with isolated OpenAI account login.
 - Optional installed official Claude CLI with Pro/Max account login.
-- One backend-authorized crop per visible **Ask** action.
+- One backend-authorized crop per visible **Send** action.
 - Memory-only PNG data URL payload.
 - Balanced provider-specific image model selection with medium reasoning effort.
 - Ephemeral read-only thread and bounded answer.
@@ -401,7 +401,7 @@ Do not build:
 
 Tests:
 
-- No AI request occurs without **Ask**.
+- No AI request occurs without **Send**.
 - Unauthorized, blanked, stale, or reconfigured regions cannot upload data.
 - The image payload is a selected crop encoded without a temp file.
 - Expensive non-mini model fallback is rejected.

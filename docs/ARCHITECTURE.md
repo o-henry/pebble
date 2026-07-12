@@ -204,7 +204,7 @@ Responsibilities:
   from Rust only.
 - Keep provider environments and runtime directories isolated.
 - Complete official provider login without browser cookie access.
-- Capture the backend-selected region once per visible **Ask** action.
+- Capture the backend-selected region once per visible **Send** action.
 - Encode the crop to an in-memory PNG data URL.
 - Select an image-capable balanced provider model at medium reasoning effort.
 - Create an ephemeral read-only thread and reject all tool activity.
@@ -239,7 +239,6 @@ Initial events:
 ```text
 pebble://frame-updated
 pebble://changed
-pebble://monitor-insight
 pebble://capture-error
 pebble://privacy-mode-changed
 pebble://performance-backoff

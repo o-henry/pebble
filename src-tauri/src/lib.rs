@@ -18,10 +18,6 @@ pub mod diff_engine;
 #[cfg(test)]
 mod diff_engine_tests;
 mod diff_engine_types;
-mod discovery;
-mod discovery_fetch;
-#[cfg(test)]
-mod discovery_tests;
 pub mod live_tile;
 #[cfg(test)]
 mod live_tile_tests;
@@ -60,7 +56,6 @@ use activity_feed::{ActivityFeedState, UpdateFeedSnapshot};
 use ai_runtime::{AiAnswer, AiConnectionStatus, AiProvider, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
 use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
-use discovery::{DiscoveryState, DiscoveryStatus};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
 use ocr_engine::OcrStatus;
 use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
@@ -73,7 +68,6 @@ use region_selector_window::RegionSelectorWindowShell;
 use smart_watch::{SmartWatchError, SmartWatchState, SmartWatchStatus};
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
-use tauri_plugin_opener::OpenerExt;
 use window_shell::WindowShellError;
 
 #[tauri::command]
@@ -301,89 +295,6 @@ fn get_update_feed(
 }
 
 #[tauri::command]
-fn get_discovery_status(
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, DiscoveryState>,
-) -> Result<DiscoveryStatus, WindowShellError> {
-    if !is_pebble_window(window.label()) {
-        return Err(WindowShellError::unavailable(
-            "Discovery is available only from the Pebble window.",
-        ));
-    }
-    Ok(state.status())
-}
-
-#[tauri::command]
-async fn enable_discovery(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, DiscoveryState>,
-) -> Result<DiscoveryStatus, PublicSourceError> {
-    if !pebble_window_allows_ai(&window) {
-        return Err(PublicSourceError {
-            code: public_source::PublicSourceErrorCode::Unavailable,
-            message: "DISCOVERY NEEDS THE VISIBLE PEBBLE WINDOW.",
-        });
-    }
-    discovery::enable(app, state.inner().clone()).await
-}
-
-#[tauri::command]
-async fn refresh_discovery(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, DiscoveryState>,
-) -> Result<DiscoveryStatus, PublicSourceError> {
-    if !pebble_window_allows_ai(&window) {
-        return Err(PublicSourceError {
-            code: public_source::PublicSourceErrorCode::Unavailable,
-            message: "DISCOVERY NEEDS THE VISIBLE PEBBLE WINDOW.",
-        });
-    }
-    discovery::refresh(&app, state.inner()).await
-}
-
-#[tauri::command]
-fn disable_discovery(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, DiscoveryState>,
-) -> Result<DiscoveryStatus, WindowShellError> {
-    if !is_pebble_window(window.label()) {
-        return Err(WindowShellError::unavailable(
-            "Discovery is available only from the Pebble window.",
-        ));
-    }
-    let status = state.disable();
-    discovery::emit_status(&app, status.clone());
-    Ok(status)
-}
-
-#[tauri::command]
-fn open_discovery_item(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, DiscoveryState>,
-    item_id: String,
-) -> Result<(), WindowShellError> {
-    if !pebble_window_allows_ai(&window) {
-        return Err(WindowShellError::unavailable(
-            "Discovery items are available only from the visible Pebble window.",
-        ));
-    }
-    let url = state
-        .status()
-        .items
-        .into_iter()
-        .find(|item| item.id == item_id)
-        .map(|item| item.url)
-        .ok_or_else(|| WindowShellError::unavailable("Discovery item is no longer available."))?;
-    app.opener()
-        .open_url(url, None::<String>)
-        .map_err(|error| WindowShellError::unavailable(error.to_string()))
-}
-
-#[tauri::command]
 fn get_public_source_status(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PublicSourceState>,
@@ -552,28 +463,9 @@ fn capture_live_tile_once(
     Ok(outcome.response)
 }
 
-#[derive(Debug, Clone, Copy, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-enum MonitorInsightKind {
-    Baseline,
-    Change,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MonitorInsight {
-    kind: MonitorInsightKind,
-    summary: String,
-}
-
-const MONITOR_INSIGHT_EVENT: &str = "pebble://monitor-insight";
-
 fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::MonitoringDecision) {
-    let insight = match decision {
-        monitoring::MonitoringDecision::Baseline => MonitorInsight {
-            kind: MonitorInsightKind::Baseline,
-            summary: "LOCAL MONITORING ACTIVE".to_string(),
-        },
+    let summary = match decision {
+        monitoring::MonitoringDecision::Baseline => return,
         monitoring::MonitoringDecision::Changed { kind, .. } => {
             let summary = kind.summary();
             menu_bar::set_attention(app, true);
@@ -583,23 +475,13 @@ fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::M
                 .title("PEBBLE WATCH")
                 .body(summary)
                 .show();
-            MonitorInsight {
-                kind: MonitorInsightKind::Change,
-                summary: summary.to_string(),
-            }
+            summary
         }
     };
-    if matches!(insight.kind, MonitorInsightKind::Change) {
-        activity_feed::record_watch(
-            app,
-            app.state::<ActivityFeedState>().inner(),
-            &insight.summary,
-        );
-    }
-    let _ = app.emit_to(
-        pebble_session::PEBBLE_TILE_LABEL,
-        MONITOR_INSIGHT_EVENT,
-        insight,
+    activity_feed::record_watch(
+        app,
+        app.state::<ActivityFeedState>().inner(),
+        summary,
     );
 }
 
@@ -669,7 +551,6 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_notification::init())
         .manage(AiRuntimeState::default())
         .manage(ActivityFeedState::default())
-        .manage(DiscoveryState::default())
         .manage(LiveTileState::default())
         .manage(monitoring::MonitoringState::default())
         .manage(SmartWatchState::default())
@@ -677,6 +558,7 @@ pub fn run() -> tauri::Result<()> {
         .manage(PublicSourceState::default())
         .setup(|app| {
             menu_bar::setup(app)?;
+            smart_watch::show_startup_notice(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -701,11 +583,6 @@ pub fn run() -> tauri::Result<()> {
             connect_ai_provider,
             ask_selected_region,
             get_update_feed,
-            get_discovery_status,
-            enable_discovery,
-            refresh_discovery,
-            disable_discovery,
-            open_discovery_item,
             get_public_source_status,
             follow_public_source,
             unfollow_public_source,

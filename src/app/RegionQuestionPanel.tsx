@@ -167,7 +167,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
                 disabled || asking || privacyBlankActive || normalizedQuestion === null
               }
             >
-              {asking ? "LOOKING" : "ASK"}
+              {asking ? "LOOKING" : "SEND"}
             </button>
           </div>
         </form>
