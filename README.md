@@ -23,7 +23,10 @@ The product idea is intentionally small:
 select any visible desktop region -> keep it visible -> local alerts -> optionally ask AI
 ```
 
-![Pebble demo](docs/assets/pebble-demo.gif)
+![Pebble selecting and keeping a live TradingView region visible on macOS](docs/assets/pebble-demo.gif)
+
+_Actual Pebble running on macOS with a user-selected TradingView region. This
+is a real app capture, not a UI mockup or synthetic animation._
 
 ## Why
 
