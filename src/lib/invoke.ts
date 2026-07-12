@@ -103,7 +103,12 @@ export interface BackendCommandMap {
     result: SmartWatchStatus;
   };
   set_smart_watch: {
-    args: { enabled: boolean; consentVersion: number };
+    args: { request: {
+      enabled: boolean;
+      consentVersion: number;
+      provider: AiProvider;
+      locale: string;
+    } };
     result: SmartWatchStatus;
   };
   get_update_feed: {
@@ -271,10 +276,18 @@ export function getSmartWatchStatus(): Promise<SmartWatchStatus> {
   return invokeBackend("get_smart_watch_status");
 }
 
-export function setSmartWatch(enabled: boolean): Promise<SmartWatchStatus> {
+export function setSmartWatch(
+  enabled: boolean,
+  provider: AiProvider,
+  locale: string
+): Promise<SmartWatchStatus> {
   return invokeBackend("set_smart_watch", {
-    enabled,
-    consentVersion: SMART_WATCH_CONSENT_VERSION
+    request: {
+      enabled,
+      consentVersion: SMART_WATCH_CONSENT_VERSION,
+      provider,
+      locale
+    }
   });
 }
 

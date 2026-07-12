@@ -1,15 +1,17 @@
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 2;
-pub const SMART_WATCH_SESSION_LIMIT: u16 = 24;
+use crate::ai_runtime::AiProvider;
+
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 3;
+pub const SMART_WATCH_SESSION_LIMIT: u16 = 6;
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "SELECT A REGION, THEN PRESS WATCH TO RECEIVE LOCAL CHANGE ALERTS. NO AUTOMATIC AI UPLOAD.";
+    "WATCH SENDS CHANGED SELECTED-REGION CROPS TO YOUR CHOSEN AI. LIMITED TO 6 ANALYSES PER APP SESSION.";
 
 pub fn show_startup_notice(app: &tauri::AppHandle) {
     let _ = app
@@ -34,11 +36,29 @@ pub struct SmartWatchState {
     data: Arc<Mutex<SmartWatchData>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SmartWatchData {
     enabled: bool,
     revision: Option<u64>,
     notifications_sent: u16,
+    analysis_in_flight: bool,
+    provider: AiProvider,
+    locale: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchAnalysisContext {
+    pub provider: AiProvider,
+    pub locale: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSmartWatchRequest {
+    pub enabled: bool,
+    pub consent_version: u16,
+    pub provider: AiProvider,
+    pub locale: String,
 }
 
 impl SmartWatchState {
@@ -47,6 +67,8 @@ impl SmartWatchState {
         enabled: bool,
         revision: u64,
         consent_version: u16,
+        provider: AiProvider,
+        locale: String,
     ) -> Result<SmartWatchStatus, SmartWatchError> {
         if enabled && consent_version != SMART_WATCH_CONSENT_VERSION {
             return Err(SmartWatchError::consent_required());
@@ -58,6 +80,9 @@ impl SmartWatchState {
             .map_err(|_| SmartWatchError::unavailable())?;
         data.enabled = enabled;
         data.revision = enabled.then_some(revision);
+        data.analysis_in_flight = false;
+        data.provider = provider;
+        data.locale = normalized_locale(locale);
         Ok(data.status())
     }
 
@@ -65,6 +90,7 @@ impl SmartWatchState {
         let mut data = self.data.lock().expect("smart watch state lock");
         data.enabled = false;
         data.revision = None;
+        data.analysis_in_flight = false;
         data.status()
     }
 
@@ -73,7 +99,7 @@ impl SmartWatchState {
         data.status()
     }
 
-    pub fn claim_notification(&self, revision: u64) -> Option<SmartWatchStatus> {
+    pub fn begin_analysis(&self, revision: u64) -> Option<WatchAnalysisContext> {
         let mut data = self.data.lock().ok()?;
         if !data.enabled {
             return None;
@@ -83,12 +109,53 @@ impl SmartWatchState {
             data.revision = None;
             return None;
         }
-        if data.notifications_sent >= SMART_WATCH_SESSION_LIMIT {
+        if data.analysis_in_flight || data.notifications_sent >= SMART_WATCH_SESSION_LIMIT {
             return None;
         }
 
-        data.notifications_sent = data.notifications_sent.saturating_add(1);
-        Some(data.status())
+        data.analysis_in_flight = true;
+        Some(WatchAnalysisContext {
+            provider: data.provider,
+            locale: data.locale.clone(),
+        })
+    }
+
+    pub fn finish_analysis(&self, revision: u64, completed: bool) -> (SmartWatchStatus, bool) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let accepted = data.enabled && data.revision == Some(revision);
+        if accepted {
+            data.analysis_in_flight = false;
+            if completed {
+                data.notifications_sent = data.notifications_sent.saturating_add(1);
+            }
+        }
+        (data.status(), accepted)
+    }
+}
+
+impl Default for SmartWatchData {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            revision: None,
+            notifications_sent: 0,
+            analysis_in_flight: false,
+            provider: AiProvider::OpenAi,
+            locale: "und".to_string(),
+        }
+    }
+}
+
+fn normalized_locale(locale: String) -> String {
+    let valid = !locale.is_empty()
+        && locale.len() <= 35
+        && locale
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
+    if valid {
+        locale
+    } else {
+        "und".to_string()
     }
 }
 
@@ -158,9 +225,8 @@ mod tests {
 
     #[test]
     fn startup_notice_explains_activation_and_local_privacy() {
-        assert!(STARTUP_NOTICE_BODY.contains("SELECT A REGION"));
-        assert!(STARTUP_NOTICE_BODY.contains("PRESS WATCH"));
-        assert!(STARTUP_NOTICE_BODY.contains("NO AUTOMATIC AI UPLOAD"));
+        assert!(STARTUP_NOTICE_BODY.contains("CHANGED SELECTED-REGION CROPS"));
+        assert!(STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
 
     #[test]
@@ -168,12 +234,27 @@ mod tests {
         let state = SmartWatchState::default();
         assert!(!state.status().enabled);
         assert_eq!(
-            state.configure(true, 7, 0).unwrap_err().code,
+            state
+                .configure(
+                    true,
+                    7,
+                    0,
+                    crate::ai_runtime::AiProvider::OpenAi,
+                    "ko-KR".into()
+                )
+                .unwrap_err()
+                .code,
             SmartWatchErrorCode::ConsentRequired
         );
         assert!(
             state
-                .configure(true, 7, SMART_WATCH_CONSENT_VERSION)
+                .configure(
+                    true,
+                    7,
+                    SMART_WATCH_CONSENT_VERSION,
+                    crate::ai_runtime::AiProvider::OpenAi,
+                    "ko-KR".into()
+                )
                 .unwrap()
                 .enabled
         );
@@ -183,10 +264,16 @@ mod tests {
     fn region_change_disables_watch() {
         let state = SmartWatchState::default();
         state
-            .configure(true, 7, SMART_WATCH_CONSENT_VERSION)
+            .configure(
+                true,
+                7,
+                SMART_WATCH_CONSENT_VERSION,
+                crate::ai_runtime::AiProvider::OpenAi,
+                "ko-KR".into(),
+            )
             .unwrap();
 
-        assert!(state.claim_notification(8).is_none());
+        assert!(state.begin_analysis(8).is_none());
         assert!(!state.status().enabled);
     }
 
@@ -194,24 +281,62 @@ mod tests {
     fn watch_exposes_a_bounded_session_notification_budget() {
         let state = SmartWatchState::default();
         state
-            .configure(true, 2, SMART_WATCH_CONSENT_VERSION)
+            .configure(
+                true,
+                2,
+                SMART_WATCH_CONSENT_VERSION,
+                crate::ai_runtime::AiProvider::OpenAi,
+                "ko-KR".into(),
+            )
             .unwrap();
 
         for _ in 0..SMART_WATCH_SESSION_LIMIT {
-            assert!(state.claim_notification(2).is_some());
+            assert!(state.begin_analysis(2).is_some());
+            state.finish_analysis(2, true);
         }
-        assert!(state.claim_notification(2).is_none());
+        assert!(state.begin_analysis(2).is_none());
         assert_eq!(state.status().remaining, 0);
+    }
+
+    #[test]
+    fn failed_or_cancelled_analysis_does_not_consume_budget_or_emit_late_results() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                true,
+                9,
+                SMART_WATCH_CONSENT_VERSION,
+                crate::ai_runtime::AiProvider::OpenAi,
+                "ko-KR".into(),
+            )
+            .unwrap();
+
+        assert!(state.begin_analysis(9).is_some());
+        assert!(state.begin_analysis(9).is_none());
+        let (status, accepted) = state.finish_analysis(9, false);
+        assert!(accepted);
+        assert_eq!(status.remaining, SMART_WATCH_SESSION_LIMIT);
+
+        assert!(state.begin_analysis(9).is_some());
+        state.disable();
+        let (_, accepted) = state.finish_analysis(9, true);
+        assert!(!accepted);
     }
 
     #[test]
     fn disable_stops_notifications_immediately() {
         let state = SmartWatchState::default();
         state
-            .configure(true, 3, SMART_WATCH_CONSENT_VERSION)
+            .configure(
+                true,
+                3,
+                SMART_WATCH_CONSENT_VERSION,
+                crate::ai_runtime::AiProvider::OpenAi,
+                "ko-KR".into(),
+            )
             .unwrap();
         state.disable();
 
-        assert!(state.claim_notification(3).is_none());
+        assert!(state.begin_analysis(3).is_none());
     }
 }

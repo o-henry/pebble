@@ -28,7 +28,8 @@ export function AiPanelHeader({
       <div className="region-question__actions">
         {!browserPreview ? (
           <SmartWatchControl
-            disabled={disabled}
+            provider={provider}
+            disabled={disabled || connection !== "connected"}
             privacyBlankActive={privacyBlankActive}
             onBusyChange={onBusyChange}
             onError={onError}

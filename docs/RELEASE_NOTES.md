@@ -35,7 +35,8 @@ This is a contributor-facing pre-alpha demo build.
 - No OCR history persistence.
 - No AI website automation.
 - No browser cookie, token, or API-key reuse.
-- No automatic AI requests; one crop is sent only after **Send**.
+- Manual AI sends one crop only after **Send**; semantic Watch sends bounded
+  before/after crops only after an opt-in local material-change gate.
 - No inherited API-key environment, browser cookie access, MCP, web search, or
   webview shell permission.
 

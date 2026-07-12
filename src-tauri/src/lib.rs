@@ -60,7 +60,7 @@ use performance_limits::{PerformanceLimitRequest, PerformanceLimits, Performance
 use platform_capture::BackdropColor;
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
-use smart_watch::{SmartWatchError, SmartWatchState, SmartWatchStatus};
+use smart_watch::{SetSmartWatchRequest, SmartWatchError, SmartWatchState, SmartWatchStatus};
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use window_shell::WindowShellError;
@@ -306,8 +306,7 @@ fn set_smart_watch(
     window: tauri::WebviewWindow,
     session: tauri::State<'_, PebbleSessionState>,
     state: tauri::State<'_, SmartWatchState>,
-    enabled: bool,
-    consent_version: u16,
+    request: SetSmartWatchRequest,
 ) -> Result<SmartWatchStatus, SmartWatchError> {
     if !pebble_window_allows_ai(&window) {
         return Err(SmartWatchError::unavailable());
@@ -315,13 +314,19 @@ fn set_smart_watch(
     let snapshot = session
         .snapshot()
         .map_err(|_| SmartWatchError::invalid_session())?;
-    if enabled
+    if request.enabled
         && (snapshot.region.is_none() || !snapshot.window_open || snapshot.privacy_blank_active)
     {
         return Err(SmartWatchError::invalid_session());
     }
 
-    let status = state.configure(enabled, snapshot.revision, consent_version)?;
+    let status = state.configure(
+        request.enabled,
+        snapshot.revision,
+        request.consent_version,
+        request.provider,
+        request.locale,
+    )?;
     smart_watch::emit_status(&app, status.clone());
     Ok(status)
 }
@@ -391,16 +396,26 @@ fn capture_live_tile_once(
         if let Some(decision) = monitoring.observe(expected_revision, &event.frame, event.sequence)
         {
             match decision {
-                monitoring::MonitoringDecision::Baseline => {
-                    emit_local_monitoring_insight(&app, decision);
-                }
-                monitoring::MonitoringDecision::Changed { .. } => {
-                    if let Some(status) = smart_watch.claim_notification(expected_revision) {
-                        smart_watch::emit_status(&app, status);
-                        emit_local_monitoring_insight(&app, decision);
-                    } else {
-                        smart_watch::emit_status(&app, smart_watch.status());
+                monitoring::MonitoringDecision::Baseline => {}
+                monitoring::MonitoringDecision::Changed {
+                    kind,
+                    previous_frame,
+                    ..
+                } => {
+                    if let Some(context) = smart_watch.begin_analysis(expected_revision) {
+                        schedule_watch_analysis(
+                            app.clone(),
+                            app.state::<AiRuntimeState>().inner().clone(),
+                            session.inner().clone(),
+                            smart_watch.inner().clone(),
+                            expected_revision,
+                            context,
+                            kind,
+                            previous_frame,
+                            event.frame.clone(),
+                        );
                     }
+                    smart_watch::emit_status(&app, smart_watch.status());
                 }
             }
         }
@@ -409,22 +424,86 @@ fn capture_live_tile_once(
     Ok(outcome.response)
 }
 
-fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::MonitoringDecision) {
-    let summary = match decision {
-        monitoring::MonitoringDecision::Baseline => return,
-        monitoring::MonitoringDecision::Changed { kind, .. } => {
-            let summary = kind.summary();
-            menu_bar::set_attention(app, true);
-            let _ = app
-                .notification()
-                .builder()
-                .title("PEBBLE WATCH")
-                .body(summary)
-                .show();
-            summary
+#[allow(clippy::too_many_arguments)]
+fn schedule_watch_analysis(
+    app: tauri::AppHandle,
+    runtime: AiRuntimeState,
+    session: PebbleSessionState,
+    watch: SmartWatchState,
+    revision: u64,
+    context: smart_watch::WatchAnalysisContext,
+    kind: monitoring::VisualChangeKind,
+    previous_frame: capture_backend::CroppedFramePayload,
+    current_frame: capture_backend::CroppedFramePayload,
+) {
+    tauri::async_runtime::spawn(async move {
+        let result = ai_runtime::analyze_watch_change(
+            &app,
+            &runtime,
+            &session,
+            ai_runtime::WatchAnalysisRequest {
+                revision,
+                provider: context.provider,
+                locale: context.locale,
+                local_signal: kind.summary(),
+                previous_frame,
+                current_frame,
+            },
+        )
+        .await;
+        match result {
+            Ok(analysis) => {
+                let (status, accepted) = watch.finish_analysis(revision, true);
+                smart_watch::emit_status(&app, status);
+                if !accepted {
+                    return;
+                }
+                menu_bar::set_attention(&app, true);
+                let title = format!(
+                    "PEBBLE WATCH · {} · {:.1}S",
+                    analysis.model.to_ascii_uppercase(),
+                    analysis.duration_ms as f64 / 1_000.0
+                );
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title(&title)
+                    .body(&analysis.summary)
+                    .show();
+                let log = compact_watch_log(format!(
+                    "{} · {:.1}S · {}",
+                    analysis.model.to_ascii_uppercase(),
+                    analysis.duration_ms as f64 / 1_000.0,
+                    analysis.summary
+                ));
+                activity_feed::record_watch(&app, app.state::<ActivityFeedState>().inner(), &log);
+            }
+            Err(error) => {
+                let (status, accepted) = watch.finish_analysis(revision, false);
+                smart_watch::emit_status(&app, status);
+                if !accepted {
+                    return;
+                }
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("PEBBLE WATCH ANALYSIS SKIPPED")
+                    .body(&error.message)
+                    .show();
+            }
         }
-    };
-    activity_feed::record_watch(app, app.state::<ActivityFeedState>().inner(), summary);
+    });
+}
+
+fn compact_watch_log(value: String) -> String {
+    const MAX_CHARS: usize = 480;
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAX_CHARS {
+        return normalized;
+    }
+    let mut compact = normalized.chars().take(MAX_CHARS - 3).collect::<String>();
+    compact.push_str("...");
+    compact
 }
 
 fn current_monitor_geometries(
@@ -537,13 +616,25 @@ pub fn run() -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        get_app_status, get_performance_limits,
+        compact_watch_log, get_app_status, get_performance_limits,
         performance_limits::{PerformanceLimitErrorCode, PerformanceLimitRequest, RegionSize},
         region_selection_types::{
             LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
         resolve_region_selection, validate_performance_request,
     };
+
+    #[test]
+    fn semantic_watch_log_is_single_line_and_bounded() {
+        let log = compact_watch_log(format!(
+            "MODEL · 1.2S · {}\n{}",
+            "A".repeat(300),
+            "B".repeat(300)
+        ));
+        assert!(!log.contains('\n'));
+        assert!(log.chars().count() <= 480);
+        assert!(log.ends_with("..."));
+    }
 
     #[test]
     fn app_status_reports_platform_capture_and_explicit_ai_availability() {

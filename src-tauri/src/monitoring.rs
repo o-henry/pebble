@@ -9,10 +9,14 @@ const CHANGE_THRESHOLD: f64 = 0.06;
 const CHANGE_COOLDOWN_TICKS: u64 = 300;
 const PROFILE_SAMPLE_EDGE: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MonitoringDecision {
     Baseline,
-    Changed { score: f64, kind: VisualChangeKind },
+    Changed {
+        score: f64,
+        kind: VisualChangeKind,
+        previous_frame: CroppedFramePayload,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +51,7 @@ struct MonitoringData {
     engine: DiffEngine,
     baseline_sent: bool,
     previous_profile: Option<VisualProfile>,
+    previous_frame: Option<CroppedFramePayload>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +87,7 @@ impl MonitoringState {
             .ok()?;
         let current_profile = VisualProfile::from_frame(frame)?;
         let previous_profile = data.previous_profile.replace(current_profile);
+        let previous_frame = data.previous_frame.replace(frame.clone());
         if !data.baseline_sent {
             data.baseline_sent = true;
             return Some(MonitoringDecision::Baseline);
@@ -91,6 +97,7 @@ impl MonitoringState {
             kind: previous_profile
                 .map(|previous| classify_change(previous, current_profile))
                 .unwrap_or(VisualChangeKind::Material),
+            previous_frame: previous_frame.unwrap_or_else(|| frame.clone()),
         })
     }
 }
@@ -108,6 +115,7 @@ impl MonitoringData {
             engine: DiffEngine::new(config).expect("valid monitoring diff configuration"),
             baseline_sent: false,
             previous_profile: None,
+            previous_frame: None,
         }
     }
 }

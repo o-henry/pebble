@@ -14,9 +14,9 @@ The app must make capture visible:
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
 - App startup shows a native Watch scope notice before region selection.
-- Watch starts off for every newly selected region and remains local-only.
+- Watch starts off for every newly selected region and requires explicit semantic-analysis consent.
 - The startup notice discloses local monitoring before Watch can be enabled.
-- AI runs only after a visible **Send** action in the expanded Pebble drawer.
+- Manual AI runs after **Send**; Watch AI runs only after its local change gate.
 
 ## Local-First Default
 
@@ -92,32 +92,33 @@ Disallowed behavior:
 - AI website automation using a user's logged-in browser session.
 - API key theft, token reuse, or reading unrelated app credentials.
 
-## Local Watch Design
+## Semantic Watch Design
 
-All monitoring happens without AI:
+Every frame is filtered locally before bounded AI analysis:
 
 ```text
-small crop -> local capture/diff -> broad local visual signal -> local notification
+selected crop -> local diff gate -> bounded before/after AI comparison -> local notification
 ```
 
 Watch is off by default. App startup displays its scope before region
 selection, pressing Watch records explicit activation, and every new region
 requires a fresh opt-in. It is limited by
-the diff engine's five-minute material-change cooldown and a maximum of 24
-notifications per app session. It keeps only small in-memory statistics.
+the diff engine's five-minute material-change cooldown and a maximum of six
+completed analyses per app session. It keeps one previous crop in memory and
+drops it on session reset; no crop is written to disk.
 
-After activation, Pebble appends only generalized selected-region Watch
-summaries to one local Markdown document at
+After activation, Pebble appends semantic summaries, model names, and generation
+times to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
 text, manual AI questions, AI answers, article bodies, credentials, or browser
 session data to that journal.
 The journal directory is mode 0700, the file is mode 0600, symbolic-link
 targets are rejected, and the document stops accepting entries at 25 MB.
 
-The current local classifier can report broad brightness and color-distribution
-changes. It does not claim semantic understanding, text recognition, or
-domain-specific prediction. The only network image path remains a fresh
-selected crop sent after the user presses **Send**.
+Unchanged frames never reach AI. A locally detected material change sends the
+previous and current selected-region crops to the provider chosen at Watch
+activation. OpenAI and Claude run with tools, MCP, shell, files, and web search
+disabled. Manual AI still sends one fresh crop only after **Send**.
 
 Adaptive window color is a separate local-only capture path. On macOS, Pebble
 uses the system's below-window capture option to sample a 96-physical-pixel
@@ -168,8 +169,8 @@ Check for:
 - New shell or filesystem access.
 - Capture continuing in inactive states.
 - Full-monitor frames crossing process or UI boundaries.
-- AI calls becoming automatic or detached from the visible **Send** action.
-- Watch bypassing its consent version, per-region opt-in, or local-only boundary.
+- Automatic AI calls bypassing the local material-change gate or analysis cap.
+- Watch bypassing its consent version, per-region opt-in, or selected-region boundary.
 - Logs, errors, tests, fixtures, or examples containing private screen content,
   OCR output, secrets, tokens, cookies, or local account data.
 

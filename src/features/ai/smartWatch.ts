@@ -1,4 +1,4 @@
-export const SMART_WATCH_CONSENT_VERSION = 2;
+export const SMART_WATCH_CONSENT_VERSION = 3;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 
@@ -29,8 +29,8 @@ export function rememberSmartWatchConsent(storage: ConsentStorage): void {
 }
 
 export function smartWatchTitle(status: SmartWatchStatus | null): string {
-  if (!status) return "LOCAL SMART WATCH";
+  if (!status) return "SEMANTIC SMART WATCH";
   return status.enabled
-    ? `LOCAL SMART WATCH ON · ${status.remaining}/${status.sessionLimit} ALERTS LEFT THIS SESSION`
-    : "LOCAL SMART WATCH OFF";
+    ? `SEMANTIC SMART WATCH ON · ${status.remaining}/${status.sessionLimit} ANALYSES LEFT`
+    : "SEMANTIC SMART WATCH OFF";
 }

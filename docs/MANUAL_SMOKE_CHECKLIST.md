@@ -58,7 +58,7 @@ npm run tauri:build
   logs, docs, fixtures, or tests.
 - Captured frame payloads remain cropped and memory-only.
 - Paused, hidden, blanked, closed, and deleted states do not capture.
-- No AI request occurs before a visible **Send** action.
+- No manual AI request occurs before **Send**, and no Watch AI request occurs before opt-in and a material local change.
 - A fresh app data directory shows **Connect OpenAI** and does not reuse another
   Codex installation's account.
 - OpenAI sign-in opens only an exact `https://chatgpt.com` or

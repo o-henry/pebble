@@ -19,18 +19,18 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("2");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("3");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
-  it("reports the bounded local alert budget", () => {
+  it("reports the bounded semantic analysis budget", () => {
     expect(
       smartWatchTitle({
         enabled: true,
         notificationsSent: 3,
-        sessionLimit: 24,
-        remaining: 21
+        sessionLimit: 6,
+        remaining: 3
       })
-    ).toContain("21/24");
+    ).toContain("3/6");
   });
 });

@@ -58,11 +58,11 @@ Implemented:
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
   tile.
-- Explicit **Watch** mode with local visual classification, a five-minute
-  change cooldown, and at most 24 native alerts per app session.
-- Local-only material-change alerts through the menu bar and native
-  notifications; Watch never uploads frames.
-- Collapsible Updates feed whose generic Watch summaries are appended to one
+- Explicit **Watch** mode with local prefiltering, a five-minute change
+  cooldown, and at most six semantic analyses per app session.
+- Changed before/after crops are sent only to the provider selected when Watch
+  is enabled; unchanged frames never trigger AI.
+- Collapsible Updates feed whose semantic Watch summaries are appended to one
   local Markdown journal under Downloads after Watch is explicitly enabled.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
@@ -90,15 +90,15 @@ Not shipped yet:
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
 | Local first | Diff runs locally now; future OCR and AI handoff must stay behind local gates. |
 | Watch is opt-in | Startup explains the scope; every new region starts with Watch off. |
-| AI is explicit | One selected crop is sent only after the user presses **Send**. |
+| AI is bounded | Manual AI uses **Send**; Watch AI requires opt-in and only runs after a local material-change gate. |
 | Instant privacy | Privacy blank stops capture loops, not just the UI. |
 
 ## Privacy
 
 Pebble should be safe to explain in one sentence:
 
-> It watches only the small regions you pin, locally, with no frame history and
-> no upload unless you explicitly ask AI about the selected crop.
+> It watches only the small region you pin, filters changes locally, and sends
+> before/after crops only when you explicitly enable semantic Watch.
 
 Never persisted:
 
@@ -108,10 +108,9 @@ Never persisted:
 - AI prompts derived from screen content.
 - Browser URLs, cookies, tokens, API keys, or clipboard contents.
 
-Generic Watch alert summaries are an explicit exception: after the versioned
-Watch is explicitly enabled, they are appended to
+Semantic Watch summaries, model names, and generation times are appended to
 `Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
-questions, and AI answers are never written to that journal.
+questions and manual AI answers are never written to that journal.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -119,8 +118,7 @@ coordinates, and refresh configuration. See
 
 ## Ask AI
 
-OpenAI and Claude are outside the monitoring loop. Pebble makes no automatic
-AI requests.
+Manual questions are separate from Watch. They run only after **Send**.
 
 After selecting a region:
 
@@ -145,21 +143,21 @@ app's tokens, use MCP, or stream screen images continuously.
 
 ## Smart Watch
 
-**Watch** is a local notification layer, not background cloud AI. On every app
-launch, a native notification explains how to start it and that:
+**Watch** uses a local change gate before bounded background AI. On every app
+launch, a native notification discloses that:
 
 - Only the selected region is compared on the Mac.
 - Watch cannot follow URLs, browser sessions, other windows, or the full screen.
-- No frame is automatically sent to OpenAI or Claude.
-- Notifications are capped at 24 per app session and material changes have a
-  five-minute cooldown.
+- A material change sends only the previous and current selected-region crops
+  to the chosen provider.
+- Analyses are capped at six per app session and have a five-minute cooldown.
 - Pause, Hide, privacy blank, close, and reselection stop monitoring; a newly
   selected region requires Watch to be enabled again.
 
-Watch classifies broad visible changes such as marked brightness shifts or a
-large increase in red, amber, or green content. It does not claim to understand
-text or predict domain-specific outcomes. Production local OCR remains future
-work.
+OpenAI Watch prefers gpt-5.6-luna at medium effort and uses Terra only when
+Luna is unavailable. Claude Watch uses Sonnet 5. Tools, MCP, shell, files, and
+web search remain disabled. The AI compares before/after crops, describes the
+visible change and uncertainty, and writes the model and generation time.
 
 ## Adaptive Background
 

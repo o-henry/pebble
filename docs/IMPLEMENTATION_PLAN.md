@@ -378,8 +378,7 @@ feat: add optional local ocr
 
 ## Phase 13 - Explicit AI Region Questions
 
-Goal: let a user explicitly ask OpenAI or Claude about one selected crop without
-an API key or automatic AI monitoring.
+Goal: let a user ask OpenAI or Claude about one selected crop without an API key.
 
 Build:
 
@@ -397,11 +396,11 @@ Do not build:
 - Continuous image streaming.
 - Whole-screen AI access.
 - MCP integration.
-- Automatic change-triggered AI calls.
+- Ungated or unbounded change-triggered AI calls.
 
 Tests:
 
-- No AI request occurs without **Send**.
+- Manual AI does not run without **Send**.
 - Unauthorized, blanked, stale, or reconfigured regions cannot upload data.
 - The image payload is a selected crop encoded without a temp file.
 - Expensive non-mini model fallback is rejected.

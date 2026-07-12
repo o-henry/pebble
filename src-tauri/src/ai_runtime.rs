@@ -35,6 +35,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const TURN_TIMEOUT: Duration = Duration::from_secs(120);
 const OPENAI_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-terra", "gpt-5.6-luna"];
+const OPENAI_WATCH_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-luna", "gpt-5.6-terra"];
 const OPENAI_MODEL_LABEL: &str = "GPT-5.6-TERRA";
 const OPENAI_REASONING_EFFORT: &str = "medium";
 const CLAUDE_MODEL_ID: &str = "claude-sonnet-5";
@@ -44,6 +45,8 @@ const CLAUDE_INSTALL_URL: &str = "https://code.claude.com/docs/en/quickstart";
 
 const BASE_INSTRUCTIONS: &str = "You answer a user's question about one explicitly supplied cropped screen-region image. Use only visible evidence in that image. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. If the image does not contain enough evidence, say so plainly. Reply in the language of the user's question, directly and concisely, in at most five short sentences.";
 const DEVELOPER_INSTRUCTIONS: &str = "Pebble sends exactly one user-requested cropped image. Never invoke any tool or request more access.";
+const WATCH_INSTRUCTIONS: &str = "Compare exactly two cropped images from one user-selected screen region. The first image is BEFORE and the second is AFTER. Identify concrete visible content and explain what changed, why it may matter, and uncertainty. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. Never invent names, numbers, causes, or current events that are not visible. Reply in the requested locale in at most three compact sentences.";
+const WATCH_DEVELOPER_INSTRUCTIONS: &str = "This is an automatic, user-enabled Watch analysis. Use only the two supplied images and the local visual signal. Never invoke a tool or request more access.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +72,23 @@ pub struct AiAnswer {
     pub provider: AiProvider,
     pub model: String,
     pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchAnalysis {
+    pub summary: String,
+    pub model: String,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct WatchAnalysisRequest {
+    pub revision: u64,
+    pub provider: AiProvider,
+    pub locale: String,
+    pub local_signal: &'static str,
+    pub previous_frame: CroppedFramePayload,
+    pub current_frame: CroppedFramePayload,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -255,6 +275,113 @@ pub async fn ask_selected_region(
             .await
         }
     }
+}
+
+pub async fn analyze_watch_change(
+    app: &AppHandle,
+    runtime: &AiRuntimeState,
+    session: &PebbleSessionState,
+    request: WatchAnalysisRequest,
+) -> Result<WatchAnalysis, AiRuntimeError> {
+    let _guard = runtime.begin_request()?;
+    ensure_watch_session_current(app, session, request.revision)?;
+    let previous_image = encode_frame_data_url(&request.previous_frame)?;
+    let current_image = encode_frame_data_url(&request.current_frame)?;
+
+    match request.provider {
+        AiProvider::OpenAi => {
+            analyze_watch_openai(
+                app,
+                session,
+                request.revision,
+                request.locale,
+                request.local_signal,
+                previous_image,
+                current_image,
+            )
+            .await
+        }
+        AiProvider::Claude => {
+            analyze_watch_claude(
+                app,
+                session,
+                request.revision,
+                request.locale,
+                request.local_signal,
+                previous_image,
+                current_image,
+            )
+            .await
+        }
+    }
+}
+
+async fn analyze_watch_openai(
+    app: &AppHandle,
+    session: &PebbleSessionState,
+    revision: u64,
+    locale: String,
+    local_signal: &'static str,
+    previous_image: String,
+    current_image: String,
+) -> Result<WatchAnalysis, AiRuntimeError> {
+    let mut server = AppServerProcess::start(app).await?;
+    if !read_chatgpt_account(&mut server).await?.connected {
+        return Err(runtime_error(
+            AiRuntimeErrorCode::NotConnected,
+            "Connect OpenAI before enabling semantic Watch analysis.",
+            true,
+        ));
+    }
+    let model = watch_image_model(&mut server).await?;
+    let thread = server
+        .request(
+            "thread/start",
+            json!({
+                "model": model,
+                "cwd": server.codex_home,
+                "approvalPolicy": "never",
+                "sandbox": "read-only",
+                "baseInstructions": WATCH_INSTRUCTIONS,
+                "developerInstructions": WATCH_DEVELOPER_INSTRUCTIONS,
+                "ephemeral": true
+            }),
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+    let thread_id = required_string(
+        &thread,
+        &["thread", "id"],
+        "The private Watch analysis session did not start.",
+    )?
+    .to_string();
+    ensure_watch_session_current(app, session, revision)?;
+    let started = Instant::now();
+    server
+        .request(
+            "turn/start",
+            json!({
+                "threadId": thread_id,
+                "input": [
+                    { "type": "text", "text": watch_prompt(&locale, local_signal), "text_elements": [] },
+                    { "type": "image", "url": previous_image },
+                    { "type": "image", "url": current_image }
+                ],
+                "approvalPolicy": "never",
+                "model": model,
+                "effort": OPENAI_REASONING_EFFORT,
+                "summary": "none"
+            }),
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+    let summary = collect_answer(&mut server, &thread_id).await?;
+    ensure_watch_session_current(app, session, revision)?;
+    Ok(WatchAnalysis {
+        summary,
+        model,
+        duration_ms: duration_millis(started.elapsed()),
+    })
 }
 
 async fn ask_openai(
@@ -462,6 +589,86 @@ async fn ask_claude(
     })
 }
 
+async fn analyze_watch_claude(
+    app: &AppHandle,
+    session: &PebbleSessionState,
+    revision: u64,
+    locale: String,
+    local_signal: &'static str,
+    previous_image: String,
+    current_image: String,
+) -> Result<WatchAnalysis, AiRuntimeError> {
+    let binary = claude_binary(app).ok_or_else(|| sidecar_error_for(AiProvider::Claude))?;
+    if !claude_connection_status(app).await?.connected {
+        return Err(runtime_error(
+            AiRuntimeErrorCode::NotConnected,
+            "CONNECT CLAUDE BEFORE ENABLING SEMANTIC WATCH ANALYSIS.",
+            true,
+        ));
+    }
+    ensure_watch_session_current(app, session, revision)?;
+    let mut command = claude_command(app, &binary)?;
+    command.args([
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--safe-mode",
+        "--disable-slash-commands",
+        "--strict-mcp-config",
+        "--tools",
+        "",
+        "--disallowedTools",
+        "*",
+        "--model",
+        CLAUDE_MODEL_ID,
+        "--effort",
+        CLAUDE_REASONING_EFFORT,
+        "--max-turns",
+        "1",
+        "--system-prompt",
+        WATCH_INSTRUCTIONS,
+    ]);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let started = Instant::now();
+    let mut child = command
+        .spawn()
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    let input = claude_watch_input(
+        &watch_prompt(&locale, local_signal),
+        &previous_image,
+        &current_image,
+    )?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| sidecar_error_for(AiProvider::Claude))?;
+    stdin
+        .write_all(&input)
+        .await
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    drop(stdin);
+    let output = timeout(TURN_TIMEOUT, child.wait_with_output())
+        .await
+        .map_err(|_| timeout_error("CLAUDE WATCH ANALYSIS TOOK TOO LONG."))?
+        .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
+    if !output.status.success() {
+        return Err(response_error("CLAUDE COULD NOT COMPLETE WATCH ANALYSIS."));
+    }
+    let (summary, model, reported_duration) = parse_claude_answer(&output.stdout)?;
+    ensure_watch_session_current(app, session, revision)?;
+    Ok(WatchAnalysis {
+        summary,
+        model,
+        duration_ms: reported_duration.unwrap_or_else(|| duration_millis(started.elapsed())),
+    })
+}
+
 fn ensure_capture_is_current(
     app: &AppHandle,
     window: &WebviewWindow,
@@ -569,7 +776,35 @@ async fn balanced_image_model(server: &mut AppServerProcess) -> Result<String, A
     })
 }
 
+async fn watch_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
+    let response = server
+        .request(
+            "model/list",
+            json!({ "limit": 100, "includeHidden": false }),
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+    select_image_model(
+        response
+            .get("data")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice),
+        &OPENAI_WATCH_MODEL_PREFERENCES,
+    )
+    .ok_or_else(|| {
+        runtime_error(
+            AiRuntimeErrorCode::ModelUnavailable,
+            "This OpenAI account does not offer a supported Watch image model.",
+            true,
+        )
+    })
+}
+
 fn select_balanced_model(models: Option<&[Value]>) -> Option<String> {
+    select_image_model(models, &OPENAI_MODEL_PREFERENCES)
+}
+
+fn select_image_model(models: Option<&[Value]>, preferences: &[&str]) -> Option<String> {
     let candidates = models?.iter().filter(|model| {
         has_string(model, "inputModalities", "image")
             && model
@@ -584,16 +819,40 @@ fn select_balanced_model(models: Option<&[Value]>) -> Option<String> {
     });
     let candidates = candidates.collect::<Vec<_>>();
 
-    for preferred in OPENAI_MODEL_PREFERENCES {
+    for preferred in preferences {
         if let Some(model) = candidates
             .iter()
-            .find(|model| model.get("model").and_then(Value::as_str) == Some(preferred))
+            .find(|model| model.get("model").and_then(Value::as_str) == Some(*preferred))
         {
             return model.get("model")?.as_str().map(str::to_string);
         }
     }
 
     None
+}
+
+fn watch_prompt(locale: &str, local_signal: &str) -> String {
+    format!(
+        "Reply locale: {}. Local visual signal: {}. Compare BEFORE and AFTER. State the concrete visible change, its likely significance, and uncertainty. Do not claim a cause that is not visible.",
+        normalized_locale(locale),
+        local_signal
+    )
+}
+
+fn ensure_watch_session_current(
+    app: &AppHandle,
+    session: &PebbleSessionState,
+    revision: u64,
+) -> Result<(), AiRuntimeError> {
+    let monitors = crate::current_monitor_geometries(app).map_err(capture_runtime_error)?;
+    if session
+        .frame_delivery_is_current(revision, &monitors)
+        .map_err(|_| session_changed_error())?
+    {
+        Ok(())
+    } else {
+        Err(session_changed_error())
+    }
 }
 
 async fn collect_answer(
@@ -822,6 +1081,48 @@ fn claude_image_input(
     Ok(input)
 }
 
+fn claude_watch_input(
+    prompt: &str,
+    previous_image_data_url: &str,
+    current_image_data_url: &str,
+) -> Result<Vec<u8>, AiRuntimeError> {
+    let previous = previous_image_data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(invalid_frame_error)?;
+    let current = current_image_data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(invalid_frame_error)?;
+    let mut input = serde_json::to_vec(&json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                { "type": "text", "text": prompt },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": previous
+                    }
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": current
+                    }
+                }
+            ]
+        },
+        "parent_tool_use_id": Value::Null
+    }))
+    .map_err(|_| invalid_frame_error())?;
+    input.push(b'\n');
+    Ok(input)
+}
+
 fn parse_claude_answer(bytes: &[u8]) -> Result<(String, String, Option<u64>), AiRuntimeError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| response_error("CLAUDE RETURNED AN INVALID RESPONSE."))?;
@@ -920,6 +1221,14 @@ fn invalid_frame_error() -> AiRuntimeError {
     runtime_error(
         AiRuntimeErrorCode::CaptureUnavailable,
         "The selected region could not be encoded safely.",
+        true,
+    )
+}
+
+fn session_changed_error() -> AiRuntimeError {
+    runtime_error(
+        AiRuntimeErrorCode::SessionChanged,
+        "Watch analysis stopped because the selected region changed.",
         true,
     )
 }
@@ -1245,7 +1554,7 @@ mod tests {
     use super::{
         chatgpt_login_params, claude_image_input, encode_frame_data_url, login_failure_message,
         normalize_question, normalized_locale, parse_claude_answer, select_balanced_model,
-        validate_auth_url, AiRuntimeErrorCode,
+        select_image_model, validate_auth_url, AiRuntimeErrorCode,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
@@ -1381,6 +1690,10 @@ mod tests {
             "supportedReasoningEfforts": [{ "reasoningEffort": "medium" }]
         })];
         assert_eq!(select_balanced_model(Some(&mini_only)), None);
+        assert_eq!(
+            select_image_model(Some(&models), &super::OPENAI_WATCH_MODEL_PREFERENCES).as_deref(),
+            Some("gpt-5.6-luna")
+        );
     }
 
     #[test]

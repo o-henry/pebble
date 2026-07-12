@@ -10,13 +10,16 @@ import {
 } from "../lib/invoke";
 import { listenToSmartWatchStatus } from "../lib/events";
 import { errorMessage } from "./usePebbleSession";
+import type { AiProvider } from "../features/ai/regionQuestion";
 
 export function SmartWatchControl({
+  provider,
   disabled,
   privacyBlankActive,
   onBusyChange,
   onError
 }: {
+  provider: AiProvider;
   disabled: boolean;
   privacyBlankActive: boolean;
   onBusyChange: (busy: boolean) => void;
@@ -50,14 +53,14 @@ export function SmartWatchControl({
       setBusy(true);
       onBusyChange(true);
       onError(null);
-      setStatus(await setSmartWatch(enabled));
+      setStatus(await setSmartWatch(enabled, provider, globalThis.navigator.language));
     } catch (reason) {
       onError(errorMessage(reason, "SMART WATCH COULD NOT BE UPDATED."));
     } finally {
       setBusy(false);
       onBusyChange(false);
     }
-  }, [onBusyChange, onError]);
+  }, [onBusyChange, onError, provider]);
 
   function toggle() {
     if (status?.enabled) {
