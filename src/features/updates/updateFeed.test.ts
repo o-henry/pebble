@@ -8,7 +8,6 @@ describe("update feed", () => {
         id: 1,
         kind: "watch",
         summary: "OLD",
-        sourceUrl: null,
         occurredAt: "2026-07-11T10:00:00Z",
         saved: true
       }]

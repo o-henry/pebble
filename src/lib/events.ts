@@ -11,11 +11,9 @@ import {
 import { isTauriRuntime } from "./runtime";
 import type { SmartWatchStatus } from "../features/ai/smartWatch";
 import type { UpdateEntry } from "../features/updates/updateFeed";
-import type { PublicSourceStatus } from "../features/updates/publicSource";
 
 export const SMART_WATCH_STATUS_EVENT = "pebble://smart-watch-status";
 export const UPDATE_FEED_EVENT = "pebble://update-feed";
-export const PUBLIC_SOURCE_STATUS_EVENT = "pebble://public-source-status";
 
 export function listenToLiveTileFrames(
   tileId: string,
@@ -65,17 +63,6 @@ export function listenToUpdateFeed(
   }
   return listen<UpdateEntry>(UPDATE_FEED_EVENT, (event) => {
     onEntry(event.payload);
-  });
-}
-
-export function listenToPublicSourceStatus(
-  onStatus: (status: PublicSourceStatus) => void
-): Promise<UnlistenFn> {
-  if (!isTauriRuntime()) {
-    return Promise.resolve(noop);
-  }
-  return listen<PublicSourceStatus>(PUBLIC_SOURCE_STATUS_EVENT, (event) => {
-    onStatus(event.payload);
   });
 }
 

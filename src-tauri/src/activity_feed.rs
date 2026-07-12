@@ -9,7 +9,6 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use url::Url;
 
 const MAX_MEMORY_ENTRIES: usize = 100;
 const MAX_SUMMARY_CHARS: usize = 500;
@@ -22,14 +21,12 @@ pub const UPDATE_FEED_EVENT: &str = "pebble://update-feed";
 #[serde(rename_all = "camelCase")]
 pub enum UpdateKind {
     Watch,
-    Source,
 }
 
 impl UpdateKind {
     fn label(self) -> &'static str {
         match self {
             Self::Watch => "WATCH",
-            Self::Source => "SOURCE",
         }
     }
 }
@@ -40,7 +37,6 @@ pub struct UpdateEntry {
     pub id: u64,
     pub kind: UpdateKind,
     pub summary: String,
-    pub source_url: Option<String>,
     pub occurred_at: String,
     pub saved: bool,
 }
@@ -76,22 +72,18 @@ impl ActivityFeedState {
         &self,
         kind: UpdateKind,
         summary: &str,
-        source_url: Option<&str>,
         occurred_at: String,
         journal_path: Option<&Path>,
     ) -> Option<UpdateEntry> {
         let summary = sanitize_summary(summary)?;
-        let source_url = sanitize_source_url(source_url)?;
         let mut data = self.data.lock().ok()?;
-        let saved = journal_path.is_some_and(|path| {
-            append_journal(path, kind, &summary, source_url.as_deref(), &occurred_at).is_ok()
-        });
+        let saved = journal_path
+            .is_some_and(|path| append_journal(path, kind, &summary, &occurred_at).is_ok());
         data.next_id = data.next_id.saturating_add(1);
         let entry = UpdateEntry {
             id: data.next_id,
             kind,
             summary,
-            source_url,
             occurred_at,
             saved,
         };
@@ -106,16 +98,7 @@ pub fn snapshot(state: &ActivityFeedState) -> UpdateFeedSnapshot {
 }
 
 pub fn record_watch(app: &tauri::AppHandle, state: &ActivityFeedState, summary: &str) {
-    record_and_emit(app, state, UpdateKind::Watch, summary, None);
-}
-
-pub fn record_source(
-    app: &tauri::AppHandle,
-    state: &ActivityFeedState,
-    summary: &str,
-    source_url: &str,
-) {
-    record_and_emit(app, state, UpdateKind::Source, summary, Some(source_url));
+    record_and_emit(app, state, UpdateKind::Watch, summary);
 }
 
 fn record_and_emit(
@@ -123,13 +106,12 @@ fn record_and_emit(
     state: &ActivityFeedState,
     kind: UpdateKind,
     summary: &str,
-    source_url: Option<&str>,
 ) {
     let occurred_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| "UNKNOWN".to_string());
     let path = journal_path(app);
-    if let Some(entry) = state.record(kind, summary, source_url, occurred_at, path.as_deref()) {
+    if let Some(entry) = state.record(kind, summary, occurred_at, path.as_deref()) {
         let _ = app.emit_to(
             crate::pebble_session::PEBBLE_TILE_LABEL,
             UPDATE_FEED_EVENT,
@@ -149,7 +131,6 @@ fn append_journal(
     path: &Path,
     kind: UpdateKind,
     summary: &str,
-    source_url: Option<&str>,
     occurred_at: &str,
 ) -> std::io::Result<()> {
     let parent = path
@@ -179,16 +160,12 @@ fn append_journal(
     if needs_header {
         file.write_all(b"# Pebble Updates\n\n")?;
     }
-    let source = source_url
-        .map(|url| format!(" | <{url}>"))
-        .unwrap_or_default();
     writeln!(
         file,
-        "- {} | {} | {}{}",
+        "- {} | {} | {}",
         occurred_at,
         kind.label(),
-        escape_markdown(summary),
-        source
+        escape_markdown(summary)
     )
 }
 
@@ -225,19 +202,6 @@ fn sanitize_summary(value: &str) -> Option<String> {
     }
     let summary = value.split_whitespace().collect::<Vec<_>>().join(" ");
     (!summary.is_empty() && summary.chars().count() <= MAX_SUMMARY_CHARS).then_some(summary)
-}
-
-fn sanitize_source_url(value: Option<&str>) -> Option<Option<String>> {
-    let Some(value) = value else {
-        return Some(None);
-    };
-    let url = Url::parse(value).ok()?;
-    let allowed = url.scheme() == "https"
-        && url.host_str().is_some()
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.port_or_known_default() == Some(443);
-    allowed.then(|| Some(url.to_string()))
 }
 
 fn escape_markdown(value: &str) -> String {

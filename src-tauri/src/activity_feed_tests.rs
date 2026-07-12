@@ -10,7 +10,6 @@ fn journal_appends_entries_to_one_markdown_document() {
         .record(
             UpdateKind::Watch,
             "Material change detected",
-            None,
             "2026-07-11T10:00:00Z".into(),
             Some(&path),
         )
@@ -19,7 +18,6 @@ fn journal_appends_entries_to_one_markdown_document() {
         .record(
             UpdateKind::Watch,
             "A second material change",
-            None,
             "2026-07-11T10:15:00Z".into(),
             Some(&path),
         )
@@ -35,25 +33,10 @@ fn journal_appends_entries_to_one_markdown_document() {
 }
 
 #[test]
-fn feed_rejects_controls_and_non_https_sources() {
+fn feed_rejects_control_characters() {
     let state = ActivityFeedState::default();
     assert!(state
-        .record(
-            UpdateKind::Watch,
-            "unsafe\0summary",
-            None,
-            "now".into(),
-            None,
-        )
-        .is_none());
-    assert!(state
-        .record(
-            UpdateKind::Watch,
-            "local",
-            Some("http://127.0.0.1/private"),
-            "now".into(),
-            None,
-        )
+        .record(UpdateKind::Watch, "unsafe\0summary", "now".into(), None,)
         .is_none());
 }
 
@@ -61,10 +44,10 @@ fn feed_rejects_controls_and_non_https_sources() {
 fn snapshot_keeps_newest_entries_first_without_private_frames() {
     let state = ActivityFeedState::default();
     state
-        .record(UpdateKind::Watch, "first", None, "one".into(), None)
+        .record(UpdateKind::Watch, "first", "one".into(), None)
         .expect("first");
     state
-        .record(UpdateKind::Watch, "second", None, "two".into(), None)
+        .record(UpdateKind::Watch, "second", "two".into(), None)
         .expect("second");
 
     let snapshot = state.snapshot();
@@ -87,7 +70,7 @@ fn journal_refuses_a_symlink_target() {
     symlink(&target, &path).expect("symlink");
     let state = ActivityFeedState::default();
     let entry = state
-        .record(UpdateKind::Watch, "change", None, "now".into(), Some(&path))
+        .record(UpdateKind::Watch, "change", "now".into(), Some(&path))
         .expect("memory entry");
 
     assert!(!entry.saved);

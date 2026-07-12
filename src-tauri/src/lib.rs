@@ -38,10 +38,6 @@ mod performance_limits_tests;
 pub mod platform_capture;
 #[cfg(test)]
 mod platform_capture_tests;
-mod public_source;
-mod public_source_fetch;
-#[cfg(test)]
-mod public_source_tests;
 mod region_selection;
 #[cfg(test)]
 mod region_selection_tests;
@@ -62,7 +58,6 @@ use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionSta
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
 use platform_capture::BackdropColor;
-use public_source::{PublicSourceError, PublicSourceState, PublicSourceStatus};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
 use smart_watch::{SmartWatchError, SmartWatchState, SmartWatchStatus};
@@ -295,55 +290,6 @@ fn get_update_feed(
 }
 
 #[tauri::command]
-fn get_public_source_status(
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, PublicSourceState>,
-) -> Result<PublicSourceStatus, WindowShellError> {
-    if !is_pebble_window(window.label()) {
-        return Err(WindowShellError::unavailable(
-            "Public sources are available only from the Pebble window.",
-        ));
-    }
-    Ok(state.status())
-}
-
-#[tauri::command]
-async fn follow_public_source(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, PublicSourceState>,
-    url: String,
-) -> Result<PublicSourceStatus, PublicSourceError> {
-    if !pebble_window_allows_ai(&window) {
-        return Err(PublicSourceError {
-            code: public_source::PublicSourceErrorCode::Unavailable,
-            message: "PUBLIC SOURCE WATCH NEEDS THE VISIBLE PEBBLE WINDOW.",
-        });
-    }
-    public_source::follow(app, state.inner().clone(), url).await
-}
-
-#[tauri::command]
-fn unfollow_public_source(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    state: tauri::State<'_, PublicSourceState>,
-) -> Result<PublicSourceStatus, WindowShellError> {
-    if !is_pebble_window(window.label()) {
-        return Err(WindowShellError::unavailable(
-            "Public sources are available only from the Pebble window.",
-        ));
-    }
-    let status = state.disable();
-    let _ = app.emit_to(
-        pebble_session::PEBBLE_TILE_LABEL,
-        public_source::PUBLIC_SOURCE_STATUS_EVENT,
-        status.clone(),
-    );
-    Ok(status)
-}
-
-#[tauri::command]
 fn get_smart_watch_status(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, SmartWatchState>,
@@ -478,11 +424,7 @@ fn emit_local_monitoring_insight(app: &tauri::AppHandle, decision: monitoring::M
             summary
         }
     };
-    activity_feed::record_watch(
-        app,
-        app.state::<ActivityFeedState>().inner(),
-        summary,
-    );
+    activity_feed::record_watch(app, app.state::<ActivityFeedState>().inner(), summary);
 }
 
 fn current_monitor_geometries(
@@ -555,7 +497,6 @@ pub fn run() -> tauri::Result<()> {
         .manage(monitoring::MonitoringState::default())
         .manage(SmartWatchState::default())
         .manage(PebbleSessionState::default())
-        .manage(PublicSourceState::default())
         .setup(|app| {
             menu_bar::setup(app)?;
             smart_watch::show_startup_notice(app.handle());
@@ -583,9 +524,6 @@ pub fn run() -> tauri::Result<()> {
             connect_ai_provider,
             ask_selected_region,
             get_update_feed,
-            get_public_source_status,
-            follow_public_source,
-            unfollow_public_source,
             get_smart_watch_status,
             set_smart_watch,
             capture_live_tile_once,

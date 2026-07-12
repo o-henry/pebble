@@ -111,8 +111,7 @@ Never persisted:
 Generic Watch alert summaries are an explicit exception: after the versioned
 Watch is explicitly enabled, they are appended to
 `Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
-questions, and AI answers are never written to that journal. Public Source
-entries contain one title and link.
+questions, and AI answers are never written to that journal.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -150,6 +149,7 @@ app's tokens, use MCP, or stream screen images continuously.
 launch, a native notification explains how to start it and that:
 
 - Only the selected region is compared on the Mac.
+- Watch cannot follow URLs, browser sessions, other windows, or the full screen.
 - No frame is automatically sent to OpenAI or Claude.
 - Notifications are capped at 24 per app session and material changes have a
   five-minute cooldown.
@@ -168,17 +168,6 @@ region. While the window is visible, macOS samples a 96-pixel square beneath
 the center of Pebble every 1.5 seconds. Rust reduces that temporary sample to
 three quantized RGB values before returning anything to the webview. The sample
 is never persisted, included in Updates, or sent to AI.
-
-## Public Source Watch
-
-The expanded Updates area can follow one user-entered public HTTPS RSS, Atom,
-JSON, or web URL for the current app session. Pebble checks it every 15 minutes
-and appends only the latest public title and source link when it changes.
-
-Pebble never derives a search query from captured screen content. Source Watch
-does not use cookies, browser sessions, credentials, proxies, redirects, custom
-ports, local hosts, private IP ranges, or responses larger than 512 KB. Article
-bodies are neither displayed nor saved.
 
 ## Use
 

@@ -1,10 +1,9 @@
-export type UpdateKind = "watch" | "source";
+export type UpdateKind = "watch";
 
 export interface UpdateEntry {
   id: number;
   kind: UpdateKind;
   summary: string;
-  sourceUrl: string | null;
   occurredAt: string;
   saved: boolean;
 }

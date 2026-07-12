@@ -106,8 +106,8 @@ requires a fresh opt-in. It is limited by
 the diff engine's five-minute material-change cooldown and a maximum of 24
 notifications per app session. It keeps only small in-memory statistics.
 
-After activation, Pebble appends only generalized Watch summaries and explicitly
-followed public-source titles to one local Markdown document at
+After activation, Pebble appends only generalized selected-region Watch
+summaries to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
 text, manual AI questions, AI answers, article bodies, credentials, or browser
 session data to that journal.
@@ -127,12 +127,11 @@ median RGB color. The webview receives three color channels, not an image. No
 sample is taken while the window or document is hidden, and neither pixels nor
 RGB history are persisted, journaled, logged, or sent over the network.
 
-Public Source Watch is a separate opt-in network path. It accepts one
-user-entered public HTTPS URL for the current app session and checks it every 15
-minutes. DNS is resolved and pinned to public addresses, redirects and system
-proxies are disabled, private and reserved ranges are rejected, responses are
-limited to 512 KB, and only a title fingerprint plus source URL is retained.
-Captured pixels and OCR text are never converted into search queries.
+Automatic Watch has no URL, RSS, web-search, browser-session, or arbitrary
+network-fetch path. It accepts frames only after the backend confirms that the
+request matches the current selected region and session revision. Reselection,
+display reconfiguration, hiding, pausing, or privacy blank invalidates capture
+delivery and disables or stops Watch.
 
 ## Permission Rules
 
