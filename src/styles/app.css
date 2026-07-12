@@ -220,7 +220,8 @@ input {
 .region-question__actions {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 9px;
+  flex-wrap: nowrap;
 }
 
 .region-question h3 {
@@ -281,13 +282,12 @@ input {
   border-radius: 5px;
 }
 
-.provider-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
+.provider-switch,
+.smart-watch-control {
+  display: contents;
 }
 
-.provider-switch button {
+.region-question__actions button {
   width: auto;
   min-width: 0;
   height: 24px;
@@ -298,6 +298,8 @@ input {
   color: var(--ink-muted);
   background: transparent;
   font-size: 0.58rem;
+  line-height: 24px;
+  white-space: nowrap;
 }
 
 .region-question__connect button {
