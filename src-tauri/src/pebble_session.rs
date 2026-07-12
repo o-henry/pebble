@@ -548,8 +548,11 @@ fn open_pebble_window(
     .visible(false)
     .on_page_load(|window, payload| {
         if should_reveal_window(payload.event()) {
-            let _ = window.show();
-            let _ = window.set_focus();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                let _ = window.show();
+                let _ = window.set_focus();
+            });
         }
     });
 
