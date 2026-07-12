@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import sendIcon from "../assets/icons/up-arrow.svg";
 import {
   MAX_REGION_QUESTION_LENGTH,
   defaultAiModelLabel,
@@ -162,12 +163,21 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             <span className="region-question__model">{modelLabel} · MEDIUM</span>
             <button
               type="submit"
-              className="primary-action"
+              className="region-question__send"
+              aria-label={asking ? "SENDING" : "SEND"}
+              title={asking ? "SENDING" : "SEND"}
               disabled={
                 disabled || asking || privacyBlankActive || normalizedQuestion === null
               }
             >
-              {asking ? "LOOKING" : "SEND"}
+              <span
+                className="region-question__send-icon"
+                aria-hidden="true"
+                style={{
+                  maskImage: `url("${sendIcon}")`,
+                  WebkitMaskImage: `url("${sendIcon}")`
+                }}
+              />
             </button>
           </div>
         </form>
