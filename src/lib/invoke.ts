@@ -30,6 +30,7 @@ import type { RegionSelectorWindowShell } from "../features/region-selector/regi
 import type { UpdateFeedSnapshot } from "../features/updates/updateFeed";
 import type { PublicSourceStatus } from "../features/updates/publicSource";
 import type { DiscoveryStatus } from "../features/updates/discovery";
+import type { BackdropColor } from "../features/adaptive-theme/adaptiveTheme";
 
 export interface BackendCommandMap {
   get_app_status: {
@@ -84,6 +85,9 @@ export interface BackendCommandMap {
   };
   request_screen_capture_access: {
     result: boolean;
+  };
+  get_pebble_backdrop_color: {
+    result: BackdropColor | null;
   };
   get_ai_connection_status: {
     args: { provider: AiProvider };
@@ -258,6 +262,10 @@ export function startPebbleWindowDrag(): Promise<void> {
 
 export function requestScreenCaptureAccess(): Promise<boolean> {
   return invokeBackend("request_screen_capture_access");
+}
+
+export function getPebbleBackdropColor(): Promise<BackdropColor | null> {
+  return invokeBackend("get_pebble_backdrop_color");
 }
 
 const pendingAiConnectionStatus = new Map<AiProvider, Promise<AiConnectionStatus>>();

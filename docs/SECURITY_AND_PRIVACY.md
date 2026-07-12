@@ -118,6 +118,14 @@ changes. It does not claim semantic understanding, text recognition, or
 domain-specific prediction. The only network image path remains a fresh
 selected crop sent after the user presses **Ask**.
 
+Adaptive window color is a separate local-only capture path. On macOS, Pebble
+uses the system's below-window capture option to sample a 96-physical-pixel
+square beneath the center of its own visible window every 1.5 seconds. Raw
+sample pixels remain inside Rust only long enough to calculate a quantized
+median RGB color. The webview receives three color channels, not an image. No
+sample is taken while the window or document is hidden, and neither pixels nor
+RGB history are persisted, journaled, logged, or sent over the network.
+
 Public Source Watch is a separate opt-in network path. It accepts one
 user-entered public HTTPS URL for the current app session and checks it every 15
 minutes. DNS is resolved and pinned to public addresses, redirects and system

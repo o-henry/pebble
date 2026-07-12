@@ -5,12 +5,22 @@ use crate::{
     },
     region_selection_types::PhysicalRegion,
 };
+use serde::Serialize;
+use tauri::WebviewWindow;
 
 #[cfg(target_os = "macos")]
 mod platform_capture_macos;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PlatformCaptureBackend;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackdropColor {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
 
 impl CaptureBackend for PlatformCaptureBackend {
     fn capture_region(&self, region: &PhysicalRegion) -> CaptureResult {
@@ -26,6 +36,16 @@ impl CaptureBackend for PlatformCaptureBackend {
 
 pub fn capture_real_region_once(region: PhysicalRegion) -> CaptureResult {
     PlatformCaptureBackend.capture_region(&region)
+}
+
+#[cfg(target_os = "macos")]
+pub fn capture_window_backdrop_color(window: &WebviewWindow) -> Option<BackdropColor> {
+    platform_capture_macos::capture_window_backdrop_color(window)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn capture_window_backdrop_color(_window: &WebviewWindow) -> Option<BackdropColor> {
+    None
 }
 
 #[cfg(target_os = "macos")]
@@ -121,5 +141,16 @@ pub(crate) mod platform_capture_test_support {
     #[cfg(target_os = "macos")]
     pub fn is_supported_bgra_bitmap_info(bitmap_info: u32) -> bool {
         platform_capture_macos::test_is_supported_bgra_bitmap_info(bitmap_info)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn backdrop_rect(
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        scale_factor: f64,
+    ) -> (f64, f64, f64, f64) {
+        platform_capture_macos::test_backdrop_rect(x, y, width, height, scale_factor)
     }
 }

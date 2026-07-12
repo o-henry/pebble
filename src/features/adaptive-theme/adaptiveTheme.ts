@@ -1,22 +1,24 @@
-import type { CroppedFramePayload } from "../capture/captureFrame";
-
 export type AdaptiveThemeMode = "light" | "dark";
+
+export interface BackdropColor {
+  red: number;
+  green: number;
+  blue: number;
+}
 
 export interface AdaptiveTheme {
   mode: AdaptiveThemeMode;
   variables: Readonly<Record<string, string>>;
 }
 
-const MAX_SAMPLES = 1_024;
-
 export function deriveAdaptiveTheme(
-  frame: CroppedFramePayload
+  sample: BackdropColor
 ): AdaptiveTheme | null {
-  if (!isValidRgbaFrame(frame)) {
+  if (!isValidColor(sample)) {
     return null;
   }
 
-  const color = representativeColor(frame);
+  const color = [sample.red, sample.green, sample.blue].map(quantize);
   const mode = relativeLuminance(color) < 0.38 ? "dark" : "light";
   const ink = mode === "dark" ? [245, 247, 248] : [37, 41, 44];
   const inkStrong = mode === "dark" ? [255, 255, 255] : [17, 20, 22];
@@ -46,35 +48,11 @@ export function deriveAdaptiveTheme(
   };
 }
 
-function isValidRgbaFrame(frame: CroppedFramePayload) {
-  return (
-    frame.pixelFormat === "rgba8" &&
-    frame.width > 0 &&
-    frame.height > 0 &&
-    frame.bytes.length === frame.width * frame.height * 4
+function isValidColor(color: BackdropColor) {
+  return [color.red, color.green, color.blue].every(
+    (channel) =>
+      Number.isInteger(channel) && channel >= 0 && channel <= 255
   );
-}
-
-function representativeColor(frame: CroppedFramePayload): number[] {
-  const pixelCount = frame.width * frame.height;
-  const stride = Math.max(1, Math.ceil(Math.sqrt(pixelCount / MAX_SAMPLES)));
-  const channels: [number[], number[], number[]] = [[], [], []];
-
-  for (let y = 0; y < frame.height; y += stride) {
-    for (let x = 0; x < frame.width; x += stride) {
-      const offset = (y * frame.width + x) * 4;
-      channels[0].push(frame.bytes[offset]);
-      channels[1].push(frame.bytes[offset + 1]);
-      channels[2].push(frame.bytes[offset + 2]);
-    }
-  }
-
-  return channels.map((values) => quantize(median(values)));
-}
-
-function median(values: number[]) {
-  values.sort((left, right) => left - right);
-  return values[Math.floor(values.length / 2)] ?? 0;
 }
 
 function quantize(value: number) {

@@ -24,16 +24,26 @@
   min-width: 29px;
   height: 29px;
   min-height: 29px;
-  padding: 0;
-  border-radius: 5px;
-  background: var(--ink-strong);
+  padding: 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-strong);
+  background: transparent;
+}
+
+.update-feed__toggle:hover {
+  border: 0;
+  background: transparent;
 }
 
 .update-feed__toggle img {
   width: 15px;
   height: 15px;
-  filter: invert(1);
   transition: transform 140ms ease;
+}
+
+html[data-adaptive-theme="dark"] .update-feed__toggle img {
+  filter: invert(1);
 }
 
 .update-feed__toggle img.is-expanded {

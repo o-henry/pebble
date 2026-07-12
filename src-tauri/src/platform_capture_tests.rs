@@ -42,6 +42,14 @@ fn macos_capture_rect_converts_retina_pixels_to_screen_points() {
 
 #[cfg(target_os = "macos")]
 #[test]
+fn macos_backdrop_sample_tracks_the_window_center_in_screen_points() {
+    let rect = platform_capture_test_support::backdrop_rect(100, 200, 880, 680, 2.0);
+
+    assert_eq!(rect, (246.0, 246.0, 48.0, 48.0));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 fn macos_bitmap_info_must_be_supported_bgra_layout() {
     let byte_order_32_little = 2 << 12;
     let premultiplied_first = 2;

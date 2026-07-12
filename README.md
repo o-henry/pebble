@@ -161,6 +161,14 @@ large increase in red, amber, or green content. It does not claim to understand
 text or predict domain-specific outcomes. Production local OCR remains future
 work.
 
+## Adaptive Background
+
+Pebble matches the color directly behind its own window, not the selected
+region. While the window is visible, macOS samples a 96-pixel square beneath
+the center of Pebble every 1.5 seconds. Rust reduces that temporary sample to
+three quantized RGB values before returning anything to the webview. The sample
+is never persisted, included in Updates, or sent to AI.
+
 ## Public Source Watch
 
 The expanded Updates area can follow one user-entered public HTTPS RSS, Atom,

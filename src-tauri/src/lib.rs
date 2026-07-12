@@ -66,6 +66,7 @@ use ocr_engine::OcrStatus;
 use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
+use platform_capture::BackdropColor;
 use public_source::{PublicSourceError, PublicSourceState, PublicSourceStatus};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
@@ -215,6 +216,19 @@ fn start_pebble_window_drag(window: tauri::WebviewWindow) -> Result<(), WindowSh
 #[tauri::command]
 fn request_screen_capture_access(window: tauri::WebviewWindow) -> bool {
     is_pebble_window(window.label()) && platform_capture::request_screen_capture_access()
+}
+
+#[tauri::command]
+fn get_pebble_backdrop_color(window: tauri::WebviewWindow) -> Option<BackdropColor> {
+    let visible = window.is_visible().unwrap_or(false);
+    let minimized = window.is_minimized().unwrap_or(true);
+    backdrop_capture_is_allowed(window.label(), visible, minimized)
+        .then(|| platform_capture::capture_window_backdrop_color(&window))
+        .flatten()
+}
+
+fn backdrop_capture_is_allowed(label: &str, visible: bool, minimized: bool) -> bool {
+    is_pebble_window(label) && visible && !minimized
 }
 
 #[tauri::command]
@@ -682,6 +696,7 @@ pub fn run() -> tauri::Result<()> {
             set_pebble_ai_panel_expanded,
             start_pebble_window_drag,
             request_screen_capture_access,
+            get_pebble_backdrop_color,
             get_ai_connection_status,
             connect_ai_provider,
             ask_selected_region,
@@ -742,6 +757,26 @@ mod tests {
         assert!(!super::capture_window_allows_delivery(false, false, true));
         assert!(!super::capture_window_allows_delivery(true, true, true));
         assert!(!super::capture_window_allows_delivery(true, false, false));
+    }
+
+    #[test]
+    fn backdrop_color_is_available_only_to_the_visible_pebble_window() {
+        assert!(super::backdrop_capture_is_allowed(
+            super::pebble_session::PEBBLE_TILE_LABEL,
+            true,
+            false
+        ));
+        assert!(!super::backdrop_capture_is_allowed("main", true, false));
+        assert!(!super::backdrop_capture_is_allowed(
+            super::pebble_session::PEBBLE_TILE_LABEL,
+            false,
+            false
+        ));
+        assert!(!super::backdrop_capture_is_allowed(
+            super::pebble_session::PEBBLE_TILE_LABEL,
+            true,
+            true
+        ));
     }
 
     #[test]

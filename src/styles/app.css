@@ -283,26 +283,33 @@ input {
 
 .provider-switch {
   display: inline-flex;
-  gap: 5px;
+  align-items: center;
+  gap: 9px;
 }
 
 .provider-switch button {
-  width: 29px;
-  min-width: 29px;
-  height: 29px;
-  min-height: 29px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
   padding: 0;
-  border-radius: 50%;
+  border: 0;
+  border-radius: 0;
   color: var(--ink-muted);
-  border-color: var(--line-strong);
-  background: var(--surface);
+  background: transparent;
 }
 
-.provider-switch img {
+.provider-switch__icon {
   display: block;
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
 }
 
 .region-question__connect button {
@@ -314,14 +321,20 @@ input {
 }
 
 .provider-switch button.is-active {
-  z-index: 1;
-  border-color: var(--ink-strong);
-  background: var(--surface-soft);
-  box-shadow: inset 0 0 0 1px var(--ink-strong);
+  border: 0;
+  color: var(--blue);
+  background: transparent;
+  box-shadow: none;
 }
 
-html[data-adaptive-theme="dark"] .provider-switch img {
-  filter: invert(1);
+.provider-switch button:hover {
+  border: 0;
+  color: var(--ink-strong);
+  background: transparent;
+}
+
+.provider-switch button.is-active:hover {
+  color: var(--blue-strong);
 }
 
 .region-question__error,

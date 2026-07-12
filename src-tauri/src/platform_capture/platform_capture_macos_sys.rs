@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 
 pub(super) type CGFloat = f64;
 pub(super) type CGImageRef = *const c_void;
@@ -8,6 +8,7 @@ pub(super) type CFTypeRef = *const c_void;
 
 pub(super) const K_CG_NULL_WINDOW_ID: u32 = 0;
 pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1;
+pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW: u32 = 1 << 1;
 pub(super) const K_CG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING: u32 = 1 << 0;
 pub(super) const K_CG_BITMAP_ALPHA_INFO_MASK: u32 = 0x1f;
 pub(super) const K_CG_IMAGE_ALPHA_PREMULTIPLIED_FIRST: u32 = 2;
@@ -54,6 +55,16 @@ extern "C" {
     pub(super) fn CGImageGetBytesPerRow(image: CGImageRef) -> usize;
     pub(super) fn CGImageGetDataProvider(image: CGImageRef) -> CGDataProviderRef;
     pub(super) fn CGDataProviderCopyData(provider: CGDataProviderRef) -> CFDataRef;
+}
+
+#[link(name = "objc")]
+extern "C" {
+    pub(super) fn sel_registerName(name: *const c_char) -> *const c_void;
+    #[link_name = "objc_msgSend"]
+    pub(super) fn objc_msg_send_window_number(
+        receiver: *mut c_void,
+        selector: *const c_void,
+    ) -> isize;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]

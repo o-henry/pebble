@@ -43,7 +43,7 @@ export function LiveTilePanel({
   const requestMode: LiveTileMode = privacyBlankActive ? "blanked" : tile.mode;
   const visibleFrame = privacyBlankActive ? null : tile.latestFrame;
   const visibleMode = privacyBlankActive ? "blanked" : tile.mode;
-  useAdaptiveTheme(visibleFrame);
+  useAdaptiveTheme();
   const handleBackendError = useCallback((message: string | null) => {
     setCaptureError(message);
     if (message) {
