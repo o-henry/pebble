@@ -51,17 +51,19 @@ mod window_shell_tests;
 use activity_feed::{ActivityFeedState, UpdateFeedSnapshot};
 use ai_runtime::{AiAnswer, AiConnectionStatus, AiProvider, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
-use capture_backend::{capture_error, CaptureError, CaptureErrorCode};
+use capture_backend::{
+    capture_error, CaptureBackend, CaptureError, CaptureErrorCode, CroppedFramePayload,
+};
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
 use ocr_engine::OcrStatus;
 use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
-use platform_capture::BackdropColor;
+use platform_capture::{BackdropColor, PlatformCaptureBackend};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
 use smart_watch::{SetSmartWatchRequest, SmartWatchError, SmartWatchState, SmartWatchStatus};
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use window_shell::WindowShellError;
 
@@ -175,11 +177,8 @@ fn close_pebble_window(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, PebbleSessionState>,
-    smart_watch: tauri::State<'_, SmartWatchState>,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-    let snapshot = pebble_session::close_pebble_window(&app, &window, state.inner())?;
-    smart_watch::emit_status(&app, smart_watch.disable());
-    Ok(snapshot)
+    pebble_session::close_pebble_window(&app, &window, state.inner())
 }
 
 #[tauri::command]
@@ -306,6 +305,8 @@ fn set_smart_watch(
     window: tauri::WebviewWindow,
     session: tauri::State<'_, PebbleSessionState>,
     state: tauri::State<'_, SmartWatchState>,
+    monitoring: tauri::State<'_, monitoring::MonitoringState>,
+    activity_feed: tauri::State<'_, ActivityFeedState>,
     request: SetSmartWatchRequest,
 ) -> Result<SmartWatchStatus, SmartWatchError> {
     if !pebble_window_allows_ai(&window) {
@@ -320,6 +321,8 @@ fn set_smart_watch(
         return Err(SmartWatchError::invalid_session());
     }
 
+    let enabled = request.enabled;
+    let provider = request.provider;
     let status = state.configure(
         request.enabled,
         snapshot.revision,
@@ -327,7 +330,11 @@ fn set_smart_watch(
         request.provider,
         request.locale,
     )?;
+    monitoring.reset();
     smart_watch::emit_status(&app, status.clone());
+    if enabled {
+        activity_feed::record_watch(&app, activity_feed.inner(), &watch_started_log(provider));
+    }
     Ok(status)
 }
 
@@ -337,8 +344,6 @@ async fn capture_live_tile_once(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, LiveTileState>,
     session: tauri::State<'_, PebbleSessionState>,
-    monitoring: tauri::State<'_, monitoring::MonitoringState>,
-    smart_watch: tauri::State<'_, SmartWatchState>,
     request: LiveTileCaptureRequest,
 ) -> Result<LiveTileCaptureResponse, CaptureError> {
     if !is_live_tile_window(window.label()) {
@@ -402,36 +407,104 @@ async fn capture_live_tile_once(
             live_tile::live_tile_frame_event_name(),
             event,
         );
-
-        if let Some(decision) = monitoring.observe(expected_revision, &event.frame, event.sequence)
-        {
-            match decision {
-                monitoring::MonitoringDecision::Baseline => {}
-                monitoring::MonitoringDecision::Changed {
-                    kind,
-                    previous_frame,
-                    ..
-                } => {
-                    if let Some(context) = smart_watch.begin_analysis(expected_revision) {
-                        schedule_watch_analysis(
-                            app.clone(),
-                            app.state::<AiRuntimeState>().inner().clone(),
-                            session.inner().clone(),
-                            smart_watch.inner().clone(),
-                            expected_revision,
-                            context,
-                            kind,
-                            previous_frame,
-                            event.frame.clone(),
-                        );
-                    }
-                    smart_watch::emit_status(&app, smart_watch.status());
-                }
-            }
-        }
     }
 
     Ok(outcome.response)
+}
+
+const WATCH_CAPTURE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+fn start_background_watch(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(WATCH_CAPTURE_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut tick = 0_u64;
+        let mut last_capture_error = None;
+
+        loop {
+            interval.tick().await;
+            let watch = app.state::<SmartWatchState>().inner().clone();
+            if !watch.status().enabled {
+                last_capture_error = None;
+                continue;
+            }
+
+            match capture_background_watch_frame(&app).await {
+                Ok((revision, frame)) => {
+                    last_capture_error = None;
+                    tick = tick.saturating_add(1);
+                    let monitoring = app.state::<monitoring::MonitoringState>();
+                    let Some(decision) = monitoring.observe(revision, &frame, tick) else {
+                        continue;
+                    };
+                    if let monitoring::MonitoringDecision::Changed {
+                        kind,
+                        previous_frame,
+                        ..
+                    } = decision
+                    {
+                        if let Some(context) = watch.begin_analysis(revision) {
+                            schedule_watch_analysis(
+                                app.clone(),
+                                app.state::<AiRuntimeState>().inner().clone(),
+                                app.state::<PebbleSessionState>().inner().clone(),
+                                watch.clone(),
+                                revision,
+                                context,
+                                kind,
+                                previous_frame,
+                                frame,
+                            );
+                        }
+                        smart_watch::emit_status(&app, watch.status());
+                    }
+                }
+                Err(error) => {
+                    if last_capture_error != Some(error.code) {
+                        let log = compact_watch_log(format!("WATCH WAITING · {}", error.message));
+                        activity_feed::record_watch(
+                            &app,
+                            app.state::<ActivityFeedState>().inner(),
+                            &log,
+                        );
+                        last_capture_error = Some(error.code);
+                    }
+                }
+            }
+        }
+    });
+}
+
+async fn capture_background_watch_frame(
+    app: &AppHandle,
+) -> Result<(u64, CroppedFramePayload), CaptureError> {
+    let monitors = current_monitor_geometries(app)?;
+    let session = app.state::<PebbleSessionState>().inner().clone();
+    let authorized = session.authorize_ai_capture(&monitors)?;
+    let revision = authorized.session_revision();
+    let region = authorized.region().clone();
+    let monitor_id = region.monitor_id.clone();
+    let scale_factor = authorized.scale_factor();
+    let frame = tauri::async_runtime::spawn_blocking(move || {
+        PlatformCaptureBackend.capture_region_at_scale(&region, scale_factor)
+    })
+    .await
+    .map_err(|_| {
+        capture_error(
+            CaptureErrorCode::CaptureUnavailable,
+            &monitor_id,
+            "The background Watch capture worker stopped unexpectedly.",
+        )
+    })??;
+    Ok((revision, frame))
+}
+
+fn watch_started_log(provider: AiProvider) -> String {
+    let provider = match provider {
+        AiProvider::OpenAi => "OPENAI",
+        AiProvider::Claude => "CLAUDE",
+    };
+    format!("WATCH STARTED · {provider} · LOCAL CHECK EVERY 5S · AI ONLY AFTER A MATERIAL CHANGE")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -500,6 +573,8 @@ fn schedule_watch_analysis(
                     .title("PEBBLE WATCH ANALYSIS SKIPPED")
                     .body(&error.message)
                     .show();
+                let log = compact_watch_log(format!("WATCH ANALYSIS SKIPPED · {}", error.message));
+                activity_feed::record_watch(&app, app.state::<ActivityFeedState>().inner(), &log);
             }
         }
     });
@@ -589,6 +664,7 @@ pub fn run() -> tauri::Result<()> {
         .setup(|app| {
             menu_bar::setup(app)?;
             smart_watch::show_startup_notice(app.handle());
+            start_background_watch(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -631,7 +707,8 @@ mod tests {
         region_selection_types::{
             LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
-        resolve_region_selection, validate_performance_request,
+        resolve_region_selection, validate_performance_request, watch_started_log, AiProvider,
+        WATCH_CAPTURE_INTERVAL,
     };
 
     #[test]
@@ -644,6 +721,16 @@ mod tests {
         assert!(!log.contains('\n'));
         assert!(log.chars().count() <= 480);
         assert!(log.ends_with("..."));
+    }
+
+    #[test]
+    fn watch_start_log_explains_local_cadence_and_ai_gate() {
+        let log = watch_started_log(AiProvider::OpenAi);
+
+        assert!(log.contains("OPENAI"));
+        assert!(log.contains("LOCAL CHECK EVERY 5S"));
+        assert!(log.contains("AI ONLY AFTER A MATERIAL CHANGE"));
+        assert_eq!(WATCH_CAPTURE_INTERVAL, std::time::Duration::from_secs(5));
     }
 
     #[test]

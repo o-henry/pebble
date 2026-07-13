@@ -19,7 +19,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("3");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("4");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 

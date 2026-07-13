@@ -6,7 +6,7 @@ use crate::{
 };
 
 const CHANGE_THRESHOLD: f64 = 0.06;
-const CHANGE_COOLDOWN_TICKS: u64 = 300;
+const CHANGE_COOLDOWN_TICKS: u64 = 60;
 const PROFILE_SAMPLE_EDGE: usize = 64;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +70,12 @@ impl Default for MonitoringState {
 }
 
 impl MonitoringState {
+    pub fn reset(&self) {
+        if let Ok(mut data) = self.data.lock() {
+            *data = MonitoringData::new();
+        }
+    }
+
     pub fn observe(
         &self,
         revision: u64,
@@ -211,6 +217,18 @@ mod tests {
         );
         assert_eq!(
             state.observe(2, &frame(0), 2),
+            Some(MonitoringDecision::Baseline)
+        );
+    }
+
+    #[test]
+    fn resetting_watch_discards_the_previous_baseline() {
+        let state = MonitoringState::default();
+        state.observe(1, &frame(0), 1);
+        state.reset();
+
+        assert_eq!(
+            state.observe(1, &frame(255), 2),
             Some(MonitoringDecision::Baseline)
         );
     }

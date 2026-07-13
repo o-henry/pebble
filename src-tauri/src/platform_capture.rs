@@ -162,13 +162,12 @@ pub(crate) mod platform_capture_test_support {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn backdrop_rect(
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-        scale_factor: f64,
-    ) -> (f64, f64, f64, f64) {
-        platform_capture_macos::test_backdrop_rect(x, y, width, height, scale_factor)
+    pub fn window_list_options() -> (u32, u32) {
+        platform_capture_macos::test_window_list_options()
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn backdrop_rect(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64, f64) {
+        platform_capture_macos::test_backdrop_rect(x, y, width, height)
     }
 }

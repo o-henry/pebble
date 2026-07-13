@@ -1,14 +1,17 @@
 .update-feed {
+  position: relative;
   display: grid;
+  gap: 2px;
   border-top: 1px solid var(--line);
 }
 
 .update-feed__header {
   display: flex;
-  min-height: 27px;
-  align-items: center;
+  min-height: 0;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  padding-right: 22px;
+  line-height: 1.1;
 }
 
 .update-feed__header > span,
@@ -20,11 +23,14 @@
 }
 
 .update-feed__toggle {
-  width: 29px;
-  min-width: 29px;
-  height: 29px;
-  min-height: 29px;
-  padding: 4px;
+  position: absolute;
+  top: -5px;
+  right: -4px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 3px;
   border: 0;
   border-radius: 0;
   color: var(--ink-strong);
@@ -63,10 +69,16 @@ html[data-adaptive-theme="dark"] .update-feed__toggle img {
   display: none;
 }
 
+.update-feed__path {
+  line-height: 1.1;
+}
+
 .update-feed__empty {
-  padding: 3px 0 2px;
+  margin: 0;
+  padding: 0;
   color: var(--ink-muted);
   font-size: 0.6rem;
+  line-height: 1.1;
 }
 
 .update-feed ol {

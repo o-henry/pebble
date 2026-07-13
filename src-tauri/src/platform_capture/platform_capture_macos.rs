@@ -15,7 +15,7 @@ use screencapturekit::{
 
 use super::BackdropColor;
 
-const BACKDROP_SAMPLE_PHYSICAL_SIZE: f64 = 96.0;
+const BACKDROP_SAMPLE_POINT_SIZE: f64 = 128.0;
 const MAX_BACKDROP_PIXELS: usize = 1_024;
 
 #[path = "platform_capture_macos_sys.rs"]
@@ -244,16 +244,8 @@ pub(super) fn capture_window_backdrop_color(
 
     let native_window = window.ns_window().ok()?;
     let window_id = unsafe { native_window_number(native_window) }?;
-    let position = window.outer_position().ok()?;
-    let size = window.outer_size().ok()?;
-    let scale_factor = window.scale_factor().ok()?;
-    let rect = backdrop_rect(
-        position.x,
-        position.y,
-        size.width,
-        size.height,
-        scale_factor,
-    )?;
+    let bounds = window_bounds(window_id)?;
+    let rect = backdrop_rect(bounds)?;
     let image = unsafe {
         CGWindowListCreateImage(
             rect,
@@ -264,6 +256,23 @@ pub(super) fn capture_window_backdrop_color(
     };
     let image = ScopedCfRef::new(image.cast())?;
     unsafe { representative_color_from_image(image.as_cg_image()) }
+}
+
+fn window_bounds(window_id: u32) -> Option<CGRect> {
+    let list =
+        unsafe { CGWindowListCopyWindowInfo(K_CG_WINDOW_LIST_OPTION_INCLUDING_WINDOW, window_id) };
+    let list = ScopedCfRef::new(list.cast())?;
+    let count = unsafe { CFArrayGetCount(list.as_cf_array()) };
+    for index in 0..count {
+        let dictionary = unsafe { CFArrayGetValueAtIndex(list.as_cf_array(), index) };
+        let Some(info) = (unsafe { window_info_from_dictionary(dictionary.cast()) }) else {
+            continue;
+        };
+        if info.window_id == window_id {
+            return Some(info.bounds);
+        }
+    }
+    None
 }
 
 unsafe fn native_window_number(native_window: *mut std::ffi::c_void) -> Option<u32> {
@@ -278,19 +287,23 @@ unsafe fn native_window_number(native_window: *mut std::ffi::c_void) -> Option<u
     u32::try_from(number).ok().filter(|number| *number != 0)
 }
 
-fn backdrop_rect(x: i32, y: i32, width: u32, height: u32, scale_factor: f64) -> Option<CGRect> {
-    if !scale_factor.is_finite() || scale_factor <= 0.0 || width == 0 || height == 0 {
+fn backdrop_rect(window_bounds: CGRect) -> Option<CGRect> {
+    let width = window_bounds.size.width;
+    let height = window_bounds.size.height;
+    if !window_bounds.origin.x.is_finite()
+        || !window_bounds.origin.y.is_finite()
+        || !width.is_finite()
+        || !height.is_finite()
+        || width <= 0.0
+        || height <= 0.0
+    {
         return None;
     }
-    let window_width = f64::from(width) / scale_factor;
-    let window_height = f64::from(height) / scale_factor;
-    let sample_size = (BACKDROP_SAMPLE_PHYSICAL_SIZE / scale_factor)
-        .min(window_width)
-        .min(window_height);
+    let sample_size = BACKDROP_SAMPLE_POINT_SIZE.min(width).min(height);
     Some(CGRect {
         origin: CGPoint {
-            x: f64::from(x) / scale_factor + (window_width - sample_size) / 2.0,
-            y: f64::from(y) / scale_factor + (window_height - sample_size) / 2.0,
+            x: window_bounds.origin.x + (width - sample_size) / 2.0,
+            y: window_bounds.origin.y + (height - sample_size) / 2.0,
         },
         size: CGSize {
             width: sample_size,
@@ -348,9 +361,9 @@ unsafe fn representative_color_from_image(image: CGImageRef) -> Option<BackdropC
     }
 
     Some(BackdropColor {
-        red: quantize(median(&mut red)?),
-        green: quantize(median(&mut green)?),
-        blue: quantize(median(&mut blue)?),
+        red: median(&mut red)?,
+        green: median(&mut green)?,
+        blue: median(&mut blue)?,
     })
 }
 
@@ -365,10 +378,6 @@ fn unpremultiply(channel: u8, alpha: u8) -> u8 {
 fn median(values: &mut [u8]) -> Option<u8> {
     values.sort_unstable();
     values.get(values.len() / 2).copied()
-}
-
-fn quantize(value: u8) -> u8 {
-    ((u16::from(value) + 4) / 8 * 8).min(u16::from(u8::MAX)) as u8
 }
 
 pub(super) fn request_screen_capture_access() -> bool {
@@ -591,14 +600,20 @@ pub(super) fn test_is_supported_bgra_bitmap_info(bitmap_info: u32) -> bool {
 }
 
 #[cfg(test)]
-pub(super) fn test_backdrop_rect(
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    scale_factor: f64,
-) -> (f64, f64, f64, f64) {
-    let rect = backdrop_rect(x, y, width, height, scale_factor).expect("backdrop rect");
+pub(super) fn test_window_list_options() -> (u32, u32) {
+    (
+        K_CG_WINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW,
+        K_CG_WINDOW_LIST_OPTION_INCLUDING_WINDOW,
+    )
+}
+
+#[cfg(test)]
+pub(super) fn test_backdrop_rect(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64, f64) {
+    let rect = backdrop_rect(CGRect {
+        origin: CGPoint { x, y },
+        size: CGSize { width, height },
+    })
+    .expect("backdrop rect");
     (
         rect.origin.x,
         rect.origin.y,

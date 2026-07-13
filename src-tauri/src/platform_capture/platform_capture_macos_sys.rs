@@ -11,7 +11,8 @@ pub(super) type CFStringRef = *const c_void;
 
 pub(super) const K_CG_NULL_WINDOW_ID: u32 = 0;
 pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1;
-pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW: u32 = 1 << 1;
+pub(super) const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW: u32 = 1 << 2;
+pub(super) const K_CG_WINDOW_LIST_OPTION_INCLUDING_WINDOW: u32 = 1 << 3;
 pub(super) const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: u32 = 1 << 4;
 pub(super) const K_CG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING: u32 = 1 << 0;
 pub(super) const K_CF_NUMBER_SINT32_TYPE: isize = 3;

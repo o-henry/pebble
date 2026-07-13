@@ -1,4 +1,5 @@
 use crate::{
+    ai_runtime::AiProvider,
     capture_backend::CaptureErrorCode,
     capture_lifecycle::CaptureTileMode,
     live_tile::{LiveTileCaptureRequest, MAIN_LIVE_TILE_ID},
@@ -10,6 +11,7 @@ use crate::{
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
     },
+    smart_watch::{SmartWatchState, SMART_WATCH_CONSENT_VERSION},
 };
 use tauri::webview::PageLoadEvent;
 
@@ -47,7 +49,7 @@ fn session_accepts_a_valid_region_and_tracks_window_state() {
     assert_eq!(selected.region.as_ref().expect("region").width, 300);
     assert_eq!(selected.revision, 1);
     assert!(opened.window_open);
-    assert_eq!(opened.revision, 2);
+    assert_eq!(opened.revision, 1);
 }
 
 #[test]
@@ -57,11 +59,37 @@ fn hiding_the_window_preserves_the_region_and_disables_capture() {
         .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
         .expect("selected region");
     state.set_window_open(true).expect("opened window");
+    let active_revision = state.snapshot().expect("active session").revision;
     let hidden = state.set_window_open(false).expect("hidden window");
 
     assert_eq!(hidden.region, selected.region);
     assert!(!hidden.window_open);
+    assert_eq!(hidden.revision, active_revision);
     assert!(!frame_delivery_is_current(&hidden, hidden.revision));
+}
+
+#[test]
+fn hiding_the_window_keeps_explicit_watch_authorization_active() {
+    let session = PebbleSessionState::default();
+    session
+        .select_region(selection_request(10.0, 20.0, 310.0, 200.0))
+        .expect("selected region");
+    let opened = session.set_window_open(true).expect("opened window");
+    let watch = SmartWatchState::default();
+    watch
+        .configure(
+            true,
+            opened.revision,
+            SMART_WATCH_CONSENT_VERSION,
+            AiProvider::OpenAi,
+            "ko-KR".into(),
+        )
+        .expect("enabled watch");
+
+    let hidden = session.set_window_open(false).expect("hidden window");
+
+    assert!(!hidden.window_open);
+    assert!(watch.begin_analysis(hidden.revision).is_some());
 }
 
 #[test]

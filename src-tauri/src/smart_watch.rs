@@ -6,12 +6,12 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::ai_runtime::AiProvider;
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 3;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 4;
 pub const SMART_WATCH_SESSION_LIMIT: u16 = 6;
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WATCH SENDS CHANGED SELECTED-REGION CROPS TO YOUR CHOSEN AI. LIMITED TO 6 ANALYSES PER APP SESSION.";
+    "WHEN ENABLED, WATCH CHECKS THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. ONLY MATERIAL CHANGES ARE SENT TO YOUR CHOSEN AI. LIMITED TO 6 ANALYSES PER APP SESSION.";
 
 pub fn show_startup_notice(app: &tauri::AppHandle) {
     let _ = app
@@ -225,7 +225,9 @@ mod tests {
 
     #[test]
     fn startup_notice_explains_activation_and_local_privacy() {
-        assert!(STARTUP_NOTICE_BODY.contains("CHANGED SELECTED-REGION CROPS"));
+        assert!(STARTUP_NOTICE_BODY.contains("EVERY 5S"));
+        assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
+        assert!(STARTUP_NOTICE_BODY.contains("ONLY MATERIAL CHANGES"));
         assert!(STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
 

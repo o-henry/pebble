@@ -19,9 +19,9 @@ describe("deriveAdaptiveTheme", () => {
   });
 
   it("preserves the sampled backdrop hue", () => {
-    const theme = deriveAdaptiveTheme({ red: 32, green: 104, blue: 152 });
+    const theme = deriveAdaptiveTheme({ red: 31, green: 103, blue: 151 });
 
-    expect(theme?.variables["--surface"]).toBe("rgb(32 104 152)");
+    expect(theme?.variables["--surface"]).toBe("rgb(31 103 151)");
   });
 
   it("rejects malformed color channels", () => {

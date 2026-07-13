@@ -138,7 +138,6 @@ impl PebbleSessionState {
 
         if data.snapshot.window_open != window_open {
             data.snapshot.window_open = window_open;
-            increment_revision(&mut data.snapshot);
         }
         Ok(data.snapshot.clone())
     }
@@ -598,12 +597,10 @@ fn open_pebble_window(
             match close_state.set_window_open(false) {
                 Ok(snapshot) => {
                     close_capture.close_tile(MAIN_LIVE_TILE_ID, snapshot.revision);
-                    smart_watch::emit_status(&close_app, close_watch.disable());
                     emit_session(&close_app, &snapshot);
                 }
                 Err(_) => {
                     close_capture.close_tile(MAIN_LIVE_TILE_ID, u64::MAX);
-                    smart_watch::emit_status(&close_app, close_watch.disable());
                 }
             }
             let _ = close_window.hide();

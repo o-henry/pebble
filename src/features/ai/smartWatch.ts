@@ -1,4 +1,4 @@
-export const SMART_WATCH_CONSENT_VERSION = 3;
+export const SMART_WATCH_CONSENT_VERSION = 4;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 

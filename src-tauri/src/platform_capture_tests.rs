@@ -43,9 +43,35 @@ fn macos_capture_rect_converts_retina_pixels_to_screen_points() {
 #[cfg(target_os = "macos")]
 #[test]
 fn macos_backdrop_sample_tracks_the_window_center_in_screen_points() {
-    let rect = platform_capture_test_support::backdrop_rect(100, 200, 880, 680, 2.0);
+    let rect = platform_capture_test_support::backdrop_rect(3_456.0, 200.0, 440.0, 340.0);
 
-    assert_eq!(rect, (246.0, 246.0, 48.0, 48.0));
+    assert_eq!(rect, (3_612.0, 306.0, 128.0, 128.0));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_backdrop_capture_reads_only_windows_below_pebble() {
+    let (below_window, including_window) = platform_capture_test_support::window_list_options();
+
+    assert_eq!(below_window, 1 << 2);
+    assert_eq!(including_window, 1 << 3);
+}
+
+#[test]
+fn capture_bindings_do_not_expose_input_injection() {
+    let bindings = include_str!("platform_capture/platform_capture_macos_sys.rs");
+    let manifest = include_str!("../Cargo.toml");
+
+    for forbidden in [
+        "CGEventPost",
+        "CGEventCreateKeyboardEvent",
+        "AXUIElementPerformAction",
+    ] {
+        assert!(!bindings.contains(forbidden));
+    }
+    for forbidden_dependency in ["enigo", "rdev", "autopilot"] {
+        assert!(!manifest.contains(forbidden_dependency));
+    }
 }
 
 #[cfg(target_os = "macos")]

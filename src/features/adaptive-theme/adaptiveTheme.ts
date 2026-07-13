@@ -18,7 +18,7 @@ export function deriveAdaptiveTheme(
     return null;
   }
 
-  const color = [sample.red, sample.green, sample.blue].map(quantize);
+  const color = [sample.red, sample.green, sample.blue];
   const mode = relativeLuminance(color) < 0.38 ? "dark" : "light";
   const ink = mode === "dark" ? [245, 247, 248] : [37, 41, 44];
   const inkStrong = mode === "dark" ? [255, 255, 255] : [17, 20, 22];
@@ -53,10 +53,6 @@ function isValidColor(color: BackdropColor) {
     (channel) =>
       Number.isInteger(channel) && channel >= 0 && channel <= 255
   );
-}
-
-function quantize(value: number) {
-  return Math.min(255, Math.max(0, Math.round(value / 8) * 8));
 }
 
 function relativeLuminance(color: number[]) {
