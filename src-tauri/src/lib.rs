@@ -65,7 +65,10 @@ use performance_limits::{PerformanceLimitRequest, PerformanceLimits, Performance
 use platform_capture::{BackdropColor, PlatformCaptureBackend};
 use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelectionRequest};
 use region_selector_window::RegionSelectorWindowShell;
-use smart_watch::{SetSmartWatchRequest, SmartWatchError, SmartWatchState, SmartWatchStatus};
+use smart_watch::{
+    SetSmartWatchIntervalRequest, SetSmartWatchRequest, SmartWatchError, SmartWatchState,
+    SmartWatchStatus,
+};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use window_shell::WindowShellError;
@@ -362,17 +365,46 @@ fn set_smart_watch(
 
     let enabled = request.enabled;
     let provider = request.provider;
+    let analysis_interval_minutes = request.analysis_interval_minutes;
     let status = state.configure(
         request.enabled,
         snapshot.revision,
         request.consent_version,
         request.provider,
         request.locale,
+        analysis_interval_minutes,
     )?;
     monitoring.reset();
     smart_watch::emit_status(&app, status.clone());
     if enabled {
-        activity_feed::record_watch(&app, activity_feed.inner(), &watch_started_log(provider));
+        activity_feed::record_watch(
+            &app,
+            activity_feed.inner(),
+            &watch_started_log(provider, analysis_interval_minutes),
+        );
+    }
+    Ok(status)
+}
+
+#[tauri::command]
+fn set_smart_watch_interval(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, SmartWatchState>,
+    activity_feed: tauri::State<'_, ActivityFeedState>,
+    request: SetSmartWatchIntervalRequest,
+) -> Result<SmartWatchStatus, SmartWatchError> {
+    if !pebble_window_allows_ai(&window) {
+        return Err(SmartWatchError::unavailable());
+    }
+    let status = state.set_analysis_interval(request.analysis_interval_minutes)?;
+    smart_watch::emit_status(&app, status.clone());
+    if status.enabled {
+        activity_feed::record_watch(
+            &app,
+            activity_feed.inner(),
+            &watch_interval_log(status.analysis_interval_minutes),
+        );
     }
     Ok(status)
 }
@@ -451,7 +483,8 @@ async fn capture_live_tile_once(
     Ok(outcome.response)
 }
 
-const WATCH_CAPTURE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+const WATCH_CAPTURE_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(smart_watch::WATCH_CAPTURE_INTERVAL_SECONDS);
 
 fn start_background_watch(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -459,12 +492,14 @@ fn start_background_watch(app: AppHandle) {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut tick = 0_u64;
         let mut last_capture_error = None;
+        let mut pending_analysis: Option<PendingWatchAnalysis> = None;
 
         loop {
             interval.tick().await;
             let watch = app.state::<SmartWatchState>().inner().clone();
             if !watch.status().enabled {
                 last_capture_error = None;
+                pending_analysis = None;
                 continue;
             }
 
@@ -472,17 +507,40 @@ fn start_background_watch(app: AppHandle) {
                 Ok((revision, frame)) => {
                     last_capture_error = None;
                     tick = tick.saturating_add(1);
+                    if pending_analysis
+                        .as_ref()
+                        .is_some_and(|pending| pending.revision != revision)
+                    {
+                        pending_analysis = None;
+                    }
                     let monitoring = app.state::<monitoring::MonitoringState>();
-                    let Some(decision) = monitoring.observe(revision, &frame, tick) else {
-                        continue;
-                    };
-                    if let monitoring::MonitoringDecision::Changed {
+                    if let Some(monitoring::MonitoringDecision::Changed {
                         kind,
                         previous_frame,
                         ..
-                    } = decision
+                    }) = monitoring.observe(revision, &frame, tick)
                     {
-                        if let Some(context) = watch.begin_analysis(revision) {
+                        match pending_analysis.as_mut() {
+                            Some(pending) => pending.update(kind, frame),
+                            None => {
+                                pending_analysis = Some(PendingWatchAnalysis {
+                                    revision,
+                                    kind,
+                                    previous_frame,
+                                    current_frame: frame,
+                                });
+                            }
+                        }
+                    }
+
+                    if pending_analysis
+                        .as_ref()
+                        .is_some_and(|pending| pending.revision == revision)
+                    {
+                        if let Some(context) = watch.begin_analysis(revision, tick) {
+                            let pending = pending_analysis
+                                .take()
+                                .expect("pending analysis was checked above");
                             schedule_watch_analysis(
                                 app.clone(),
                                 app.state::<AiRuntimeState>().inner().clone(),
@@ -490,12 +548,12 @@ fn start_background_watch(app: AppHandle) {
                                 watch.clone(),
                                 revision,
                                 context,
-                                kind,
-                                previous_frame,
-                                frame,
+                                pending.kind,
+                                pending.previous_frame,
+                                pending.current_frame,
                             );
+                            smart_watch::emit_status(&app, watch.status());
                         }
-                        smart_watch::emit_status(&app, watch.status());
                     }
                 }
                 Err(error) => {
@@ -512,6 +570,21 @@ fn start_background_watch(app: AppHandle) {
             }
         }
     });
+}
+
+#[derive(Debug)]
+struct PendingWatchAnalysis {
+    revision: u64,
+    kind: monitoring::VisualChangeKind,
+    previous_frame: CroppedFramePayload,
+    current_frame: CroppedFramePayload,
+}
+
+impl PendingWatchAnalysis {
+    fn update(&mut self, kind: monitoring::VisualChangeKind, current_frame: CroppedFramePayload) {
+        self.kind = kind;
+        self.current_frame = current_frame;
+    }
 }
 
 async fn capture_background_watch_frame(
@@ -538,12 +611,30 @@ async fn capture_background_watch_frame(
     Ok((revision, frame))
 }
 
-fn watch_started_log(provider: AiProvider) -> String {
+fn watch_started_log(provider: AiProvider, analysis_interval_minutes: u16) -> String {
     let provider = match provider {
         AiProvider::OpenAi => "OPENAI",
         AiProvider::Claude => "CLAUDE",
     };
-    format!("WATCH STARTED · {provider} · LOCAL CHECK EVERY 5S · AI ONLY AFTER A MATERIAL CHANGE")
+    format!(
+        "WATCH STARTED · {provider} · LOCAL CHECK EVERY 5S · AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
+        watch_interval_label(analysis_interval_minutes)
+    )
+}
+
+fn watch_interval_log(analysis_interval_minutes: u16) -> String {
+    format!(
+        "WATCH INTERVAL UPDATED · AI MAX ONCE EVERY {}",
+        watch_interval_label(analysis_interval_minutes)
+    )
+}
+
+fn watch_interval_label(minutes: u16) -> String {
+    if minutes == 60 {
+        "1 HOUR".to_string()
+    } else {
+        format!("{minutes} MIN")
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -733,6 +824,7 @@ pub fn run() -> tauri::Result<()> {
             get_update_feed,
             get_smart_watch_status,
             set_smart_watch,
+            set_smart_watch_interval,
             capture_live_tile_once,
             load_pebble_config,
             save_pebble_config,
@@ -749,8 +841,8 @@ mod tests {
         region_selection_types::{
             LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
-        resolve_region_selection, validate_performance_request, watch_started_log, AiProvider,
-        WATCH_CAPTURE_INTERVAL,
+        resolve_region_selection, validate_performance_request, watch_interval_log,
+        watch_started_log, AiProvider, WATCH_CAPTURE_INTERVAL,
     };
 
     #[test]
@@ -767,12 +859,18 @@ mod tests {
 
     #[test]
     fn watch_start_log_explains_local_cadence_and_ai_gate() {
-        let log = watch_started_log(AiProvider::OpenAi);
+        let log = watch_started_log(AiProvider::OpenAi, 30);
 
         assert!(log.contains("OPENAI"));
         assert!(log.contains("LOCAL CHECK EVERY 5S"));
-        assert!(log.contains("AI ONLY AFTER A MATERIAL CHANGE"));
+        assert!(log.contains("AI AFTER A MATERIAL CHANGE"));
+        assert!(log.contains("30 MIN"));
         assert_eq!(WATCH_CAPTURE_INTERVAL, std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn watch_interval_log_formats_hour_choice_for_people() {
+        assert!(watch_interval_log(60).contains("1 HOUR"));
     }
 
     #[test]

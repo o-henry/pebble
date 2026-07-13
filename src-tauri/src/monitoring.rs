@@ -1,13 +1,16 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{
-    capture_backend::CroppedFramePayload,
-    diff_engine::{DiffEngine, DiffEngineConfig},
-};
+use crate::capture_backend::CroppedFramePayload;
 
-const CHANGE_THRESHOLD: f64 = 0.06;
-const CHANGE_COOLDOWN_TICKS: u64 = 60;
-const PROFILE_SAMPLE_EDGE: usize = 64;
+const SAMPLE_EDGE: usize = 128;
+const TILE_EDGE: usize = 8;
+const PIXEL_DELTA_THRESHOLD: u8 = 24;
+const MIN_CHANGED_SAMPLES: usize = 6;
+const MIN_CHANGED_SAMPLES_PER_TILE: usize = 4;
+const GLOBAL_MEAN_DELTA_THRESHOLD: f64 = 0.06;
+const GLOBAL_CHANGED_RATIO_THRESHOLD: f64 = 0.012;
+const LOCAL_CHANGED_RATIO_THRESHOLD: f64 = 0.12;
+const LOCAL_MEAN_DELTA_THRESHOLD: f64 = 0.08;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MonitoringDecision {
@@ -48,10 +51,29 @@ pub struct MonitoringState {
 #[derive(Debug)]
 struct MonitoringData {
     revision: Option<u64>,
-    engine: DiffEngine,
-    baseline_sent: bool,
-    previous_profile: Option<VisualProfile>,
-    previous_frame: Option<CroppedFramePayload>,
+    baseline: Option<VisualBaseline>,
+    candidate_tiles: Option<Vec<bool>>,
+}
+
+#[derive(Debug)]
+struct VisualBaseline {
+    sample: VisualSample,
+    profile: VisualProfile,
+    frame: CroppedFramePayload,
+}
+
+#[derive(Debug)]
+struct VisualSample {
+    width: usize,
+    height: usize,
+    rgb: Vec<[u8; 3]>,
+}
+
+#[derive(Debug)]
+struct ChangeEvidence {
+    score: f64,
+    changed_tiles: Vec<bool>,
+    meaningful: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,50 +102,173 @@ impl MonitoringState {
         &self,
         revision: u64,
         frame: &CroppedFramePayload,
-        tick: u64,
+        _tick: u64,
     ) -> Option<MonitoringDecision> {
         let mut data = self.data.lock().ok()?;
         if data.revision != Some(revision) {
             *data = MonitoringData::new();
             data.revision = Some(revision);
         }
-        let observation = data
-            .engine
-            .observe_frame("active-region", frame, tick)
-            .ok()?;
+        let current_sample = VisualSample::from_frame(frame)?;
         let current_profile = VisualProfile::from_frame(frame)?;
-        let previous_profile = data.previous_profile.replace(current_profile);
-        let previous_frame = data.previous_frame.replace(frame.clone());
-        if !data.baseline_sent {
-            data.baseline_sent = true;
+        let Some(baseline) = data.baseline.as_ref() else {
+            data.baseline = Some(VisualBaseline {
+                sample: current_sample,
+                profile: current_profile,
+                frame: frame.clone(),
+            });
             return Some(MonitoringDecision::Baseline);
+        };
+        let evidence = compare_samples(&baseline.sample, &current_sample)?;
+        if !evidence.meaningful {
+            data.candidate_tiles = None;
+            return None;
         }
-        observation.changed.then(|| MonitoringDecision::Changed {
-            score: observation.score,
-            kind: previous_profile
-                .map(|previous| classify_change(previous, current_profile))
-                .unwrap_or(VisualChangeKind::Material),
-            previous_frame: previous_frame.unwrap_or_else(|| frame.clone()),
+
+        let persistent = data
+            .candidate_tiles
+            .as_ref()
+            .is_some_and(|candidate| tiles_overlap(candidate, &evidence.changed_tiles));
+        if !persistent {
+            data.candidate_tiles = Some(evidence.changed_tiles);
+            return None;
+        }
+
+        let previous_frame = baseline.frame.clone();
+        let kind = classify_change(baseline.profile, current_profile);
+        data.baseline = Some(VisualBaseline {
+            sample: current_sample,
+            profile: current_profile,
+            frame: frame.clone(),
+        });
+        data.candidate_tiles = None;
+        Some(MonitoringDecision::Changed {
+            score: evidence.score,
+            kind,
+            previous_frame,
         })
     }
 }
 
 impl MonitoringData {
     fn new() -> Self {
-        let config = DiffEngineConfig {
-            sample_width: 64,
-            sample_height: 64,
-            change_threshold: CHANGE_THRESHOLD,
-            cooldown_ticks: CHANGE_COOLDOWN_TICKS,
-        };
         Self {
             revision: None,
-            engine: DiffEngine::new(config).expect("valid monitoring diff configuration"),
-            baseline_sent: false,
-            previous_profile: None,
-            previous_frame: None,
+            baseline: None,
+            candidate_tiles: None,
         }
     }
+}
+
+impl VisualSample {
+    fn from_frame(frame: &CroppedFramePayload) -> Option<Self> {
+        let width = usize::try_from(frame.width).ok()?;
+        let height = usize::try_from(frame.height).ok()?;
+        let expected_len = width.checked_mul(height)?.checked_mul(4)?;
+        if width == 0 || height == 0 || frame.bytes.len() != expected_len {
+            return None;
+        }
+
+        let sample_width = width.min(SAMPLE_EDGE);
+        let sample_height = height.min(SAMPLE_EDGE);
+        let mut rgb = Vec::with_capacity(sample_width.checked_mul(sample_height)?);
+        for sample_y in 0..sample_height {
+            let source_y = sample_y * height / sample_height;
+            for sample_x in 0..sample_width {
+                let source_x = sample_x * width / sample_width;
+                let index = (source_y * width + source_x) * 4;
+                rgb.push([
+                    frame.bytes[index],
+                    frame.bytes[index + 1],
+                    frame.bytes[index + 2],
+                ]);
+            }
+        }
+        Some(Self {
+            width: sample_width,
+            height: sample_height,
+            rgb,
+        })
+    }
+}
+
+fn compare_samples(baseline: &VisualSample, current: &VisualSample) -> Option<ChangeEvidence> {
+    if baseline.width != current.width
+        || baseline.height != current.height
+        || baseline.rgb.len() != current.rgb.len()
+        || baseline.rgb.is_empty()
+    {
+        return None;
+    }
+
+    let tiles_x = baseline.width.div_ceil(TILE_EDGE);
+    let tiles_y = baseline.height.div_ceil(TILE_EDGE);
+    let tile_count = tiles_x.checked_mul(tiles_y)?;
+    let mut tile_pixels = vec![0_usize; tile_count];
+    let mut tile_changed = vec![0_usize; tile_count];
+    let mut tile_delta = vec![0_u64; tile_count];
+    let mut changed_samples = 0_usize;
+    let mut total_delta = 0_u64;
+
+    for (index, (before, after)) in baseline.rgb.iter().zip(&current.rgb).enumerate() {
+        let delta = before
+            .iter()
+            .zip(after.iter())
+            .map(|(before, after)| before.abs_diff(*after))
+            .max()?;
+        let x = index % baseline.width;
+        let y = index / baseline.width;
+        let tile = (y / TILE_EDGE) * tiles_x + (x / TILE_EDGE);
+        tile_pixels[tile] += 1;
+        tile_delta[tile] += u64::from(delta);
+        total_delta += u64::from(delta);
+        if delta >= PIXEL_DELTA_THRESHOLD {
+            changed_samples += 1;
+            tile_changed[tile] += 1;
+        }
+    }
+
+    let sample_count = baseline.rgb.len() as f64;
+    let mean_delta = total_delta as f64 / (sample_count * 255.0);
+    let changed_ratio = changed_samples as f64 / sample_count;
+    let mut max_tile_changed_ratio = 0.0_f64;
+    let mut max_tile_mean_delta = 0.0_f64;
+    let changed_tiles = tile_pixels
+        .iter()
+        .zip(tile_changed.iter())
+        .zip(tile_delta.iter())
+        .map(|((pixels, changed), delta)| {
+            let changed_ratio = *changed as f64 / *pixels as f64;
+            let mean_delta = *delta as f64 / (*pixels as f64 * 255.0);
+            max_tile_changed_ratio = max_tile_changed_ratio.max(changed_ratio);
+            max_tile_mean_delta = max_tile_mean_delta.max(mean_delta);
+            *changed >= MIN_CHANGED_SAMPLES_PER_TILE
+                && (changed_ratio >= LOCAL_CHANGED_RATIO_THRESHOLD
+                    || mean_delta >= LOCAL_MEAN_DELTA_THRESHOLD)
+        })
+        .collect::<Vec<_>>();
+
+    let meaningful = changed_samples >= MIN_CHANGED_SAMPLES
+        && (mean_delta >= GLOBAL_MEAN_DELTA_THRESHOLD
+            || changed_ratio >= GLOBAL_CHANGED_RATIO_THRESHOLD
+            || max_tile_changed_ratio >= LOCAL_CHANGED_RATIO_THRESHOLD
+            || max_tile_mean_delta >= LOCAL_MEAN_DELTA_THRESHOLD);
+    Some(ChangeEvidence {
+        score: mean_delta
+            .max(changed_ratio)
+            .max(max_tile_changed_ratio)
+            .max(max_tile_mean_delta),
+        changed_tiles,
+        meaningful,
+    })
+}
+
+fn tiles_overlap(previous: &[bool], current: &[bool]) -> bool {
+    previous.len() == current.len()
+        && previous
+            .iter()
+            .zip(current)
+            .any(|(previous, current)| *previous && *current)
 }
 
 impl VisualProfile {
@@ -135,8 +280,8 @@ impl VisualProfile {
             return None;
         }
 
-        let sample_width = width.min(PROFILE_SAMPLE_EDGE);
-        let sample_height = height.min(PROFILE_SAMPLE_EDGE);
+        let sample_width = width.min(SAMPLE_EDGE);
+        let sample_height = height.min(SAMPLE_EDGE);
         let pixel_count = sample_width.checked_mul(sample_height)?;
         let mut luma_total = 0_u64;
         let mut warning = 0_usize;
@@ -194,18 +339,84 @@ mod tests {
     };
 
     #[test]
-    fn sends_one_baseline_then_only_material_changes() {
+    fn local_detection_keeps_collecting_material_changes_without_ai_cooldown() {
         let state = MonitoringState::default();
         assert_eq!(
             state.observe(1, &frame(0), 1),
             Some(MonitoringDecision::Baseline)
         );
         assert_eq!(state.observe(1, &frame(1), 2), None);
+        assert_eq!(state.observe(1, &frame(255), 3), None);
         assert!(matches!(
-            state.observe(1, &frame(255), 3),
+            state.observe(1, &frame(255), 4),
             Some(MonitoringDecision::Changed { .. })
         ));
-        assert_eq!(state.observe(1, &frame(0), 4), None);
+        assert_eq!(state.observe(1, &frame(0), 5), None);
+        assert!(matches!(
+            state.observe(1, &frame(0), 6),
+            Some(MonitoringDecision::Changed { .. })
+        ));
+    }
+
+    #[test]
+    fn localized_text_sized_change_triggers_below_global_average_threshold() {
+        let state = MonitoringState::default();
+        let baseline = frame(0);
+        let changed = frame_with_patch(0, 255, 16, 16, 8, 8);
+        state.observe(1, &baseline, 1);
+
+        assert_eq!(state.observe(1, &changed, 2), None);
+        let decision = state.observe(1, &changed, 3);
+        assert!(matches!(
+            &decision,
+            Some(MonitoringDecision::Changed { .. })
+        ));
+        let Some(MonitoringDecision::Changed { score, .. }) = decision else {
+            unreachable!();
+        };
+        assert!(score >= 0.99);
+    }
+
+    #[test]
+    fn cumulative_change_uses_the_stable_baseline_instead_of_each_previous_frame() {
+        let state = MonitoringState::default();
+        let baseline = frame(0);
+        let small_change = frame_with_patch(0, 255, 16, 16, 4, 4);
+        let larger_change = frame_with_patch(0, 255, 16, 16, 8, 8);
+        state.observe(1, &baseline, 1);
+
+        assert_eq!(state.observe(1, &small_change, 2), None);
+        assert!(matches!(
+            state.observe(1, &larger_change, 3),
+            Some(MonitoringDecision::Changed { previous_frame, .. })
+                if previous_frame == baseline
+        ));
+    }
+
+    #[test]
+    fn one_poll_transient_noise_does_not_trigger_analysis() {
+        let state = MonitoringState::default();
+        let baseline = frame(0);
+        let transient = frame_with_patch(0, 255, 16, 16, 8, 8);
+        state.observe(1, &baseline, 1);
+
+        assert_eq!(state.observe(1, &transient, 2), None);
+        assert_eq!(state.observe(1, &baseline, 3), None);
+        assert_eq!(state.observe(1, &baseline, 4), None);
+    }
+
+    #[test]
+    fn equal_luma_color_change_is_detected_from_rgb_content() {
+        let state = MonitoringState::default();
+        let red = rgba_frame([255, 0, 0, 255]);
+        let green_with_similar_luma = rgba_frame([0, 131, 0, 255]);
+        state.observe(1, &red, 1);
+
+        assert_eq!(state.observe(1, &green_with_similar_luma, 2), None);
+        assert!(matches!(
+            state.observe(1, &green_with_similar_luma, 3),
+            Some(MonitoringDecision::Changed { .. })
+        ));
     }
 
     #[test]
@@ -237,8 +448,12 @@ mod tests {
     fn classifies_local_brightness_and_warning_color_changes() {
         let brightness = MonitoringState::default();
         brightness.observe(1, &rgba_frame([0, 0, 0, 255]), 1);
-        assert!(matches!(
+        assert_eq!(
             brightness.observe(1, &rgba_frame([255, 255, 255, 255]), 2),
+            None
+        );
+        assert!(matches!(
+            brightness.observe(1, &rgba_frame([255, 255, 255, 255]), 3),
             Some(MonitoringDecision::Changed {
                 kind: VisualChangeKind::Brighter,
                 ..
@@ -247,8 +462,9 @@ mod tests {
 
         let warning = MonitoringState::default();
         warning.observe(2, &rgba_frame([255, 255, 255, 255]), 1);
+        assert_eq!(warning.observe(2, &rgba_frame([220, 70, 40, 255]), 2), None);
         assert!(matches!(
-            warning.observe(2, &rgba_frame([220, 70, 40, 255]), 2),
+            warning.observe(2, &rgba_frame([220, 70, 40, 255]), 3),
             Some(MonitoringDecision::Changed {
                 kind: VisualChangeKind::WarningColor,
                 ..
@@ -278,5 +494,23 @@ mod tests {
             storage_policy: FrameStoragePolicy::MemoryOnly,
             bytes: pixel.into_iter().cycle().take(64 * 64 * 4).collect(),
         }
+    }
+
+    fn frame_with_patch(
+        background: u8,
+        foreground: u8,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> CroppedFramePayload {
+        let mut frame = frame(background);
+        for pixel_y in y..y + height {
+            for pixel_x in x..x + width {
+                let index = (pixel_y * 64 + pixel_x) * 4;
+                frame.bytes[index..index + 3].fill(foreground);
+            }
+        }
+        frame
     }
 }

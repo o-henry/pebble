@@ -6,12 +6,14 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::ai_runtime::AiProvider;
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 4;
-pub const SMART_WATCH_SESSION_LIMIT: u16 = 6;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 5;
+pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
+pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
+pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. ONLY MATERIAL CHANGES ARE SENT TO YOUR CHOSEN AI. LIMITED TO 6 ANALYSES PER APP SESSION.";
+    "WHEN ENABLED, WATCH CHECKS ONLY THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. AI RUNS ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN YOUR SELECTED INTERVAL.";
 
 pub fn show_startup_notice(app: &tauri::AppHandle) {
     let _ = app
@@ -26,9 +28,8 @@ pub fn show_startup_notice(app: &tauri::AppHandle) {
 #[serde(rename_all = "camelCase")]
 pub struct SmartWatchStatus {
     pub enabled: bool,
-    pub notifications_sent: u16,
-    pub session_limit: u16,
-    pub remaining: u16,
+    pub analyses_completed: u32,
+    pub analysis_interval_minutes: u16,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -40,8 +41,10 @@ pub struct SmartWatchState {
 struct SmartWatchData {
     enabled: bool,
     revision: Option<u64>,
-    notifications_sent: u16,
+    analyses_completed: u32,
     analysis_in_flight: bool,
+    analysis_interval_minutes: u16,
+    last_analysis_tick: Option<u64>,
     provider: AiProvider,
     locale: String,
 }
@@ -59,6 +62,13 @@ pub struct SetSmartWatchRequest {
     pub consent_version: u16,
     pub provider: AiProvider,
     pub locale: String,
+    pub analysis_interval_minutes: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSmartWatchIntervalRequest {
+    pub analysis_interval_minutes: u16,
 }
 
 impl SmartWatchState {
@@ -69,10 +79,12 @@ impl SmartWatchState {
         consent_version: u16,
         provider: AiProvider,
         locale: String,
+        analysis_interval_minutes: u16,
     ) -> Result<SmartWatchStatus, SmartWatchError> {
         if enabled && consent_version != SMART_WATCH_CONSENT_VERSION {
             return Err(SmartWatchError::consent_required());
         }
+        validate_analysis_interval(analysis_interval_minutes)?;
 
         let mut data = self
             .data
@@ -81,6 +93,8 @@ impl SmartWatchState {
         data.enabled = enabled;
         data.revision = enabled.then_some(revision);
         data.analysis_in_flight = false;
+        data.last_analysis_tick = None;
+        data.analysis_interval_minutes = analysis_interval_minutes;
         data.provider = provider;
         data.locale = normalized_locale(locale);
         Ok(data.status())
@@ -91,6 +105,7 @@ impl SmartWatchState {
         data.enabled = false;
         data.revision = None;
         data.analysis_in_flight = false;
+        data.last_analysis_tick = None;
         data.status()
     }
 
@@ -99,7 +114,20 @@ impl SmartWatchState {
         data.status()
     }
 
-    pub fn begin_analysis(&self, revision: u64) -> Option<WatchAnalysisContext> {
+    pub fn set_analysis_interval(
+        &self,
+        analysis_interval_minutes: u16,
+    ) -> Result<SmartWatchStatus, SmartWatchError> {
+        validate_analysis_interval(analysis_interval_minutes)?;
+        let mut data = self
+            .data
+            .lock()
+            .map_err(|_| SmartWatchError::unavailable())?;
+        data.analysis_interval_minutes = analysis_interval_minutes;
+        Ok(data.status())
+    }
+
+    pub fn begin_analysis(&self, revision: u64, tick: u64) -> Option<WatchAnalysisContext> {
         let mut data = self.data.lock().ok()?;
         if !data.enabled {
             return None;
@@ -107,13 +135,15 @@ impl SmartWatchState {
         if data.revision != Some(revision) {
             data.enabled = false;
             data.revision = None;
+            data.last_analysis_tick = None;
             return None;
         }
-        if data.analysis_in_flight || data.notifications_sent >= SMART_WATCH_SESSION_LIMIT {
+        if data.analysis_in_flight || !data.analysis_interval_elapsed(tick) {
             return None;
         }
 
         data.analysis_in_flight = true;
+        data.last_analysis_tick = Some(tick);
         Some(WatchAnalysisContext {
             provider: data.provider,
             locale: data.locale.clone(),
@@ -126,7 +156,7 @@ impl SmartWatchState {
         if accepted {
             data.analysis_in_flight = false;
             if completed {
-                data.notifications_sent = data.notifications_sent.saturating_add(1);
+                data.analyses_completed = data.analyses_completed.saturating_add(1);
             }
         }
         (data.status(), accepted)
@@ -138,8 +168,10 @@ impl Default for SmartWatchData {
         Self {
             enabled: false,
             revision: None,
-            notifications_sent: 0,
+            analyses_completed: 0,
             analysis_in_flight: false,
+            analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+            last_analysis_tick: None,
             provider: AiProvider::OpenAi,
             locale: "und".to_string(),
         }
@@ -163,11 +195,31 @@ impl SmartWatchData {
     fn status(&self) -> SmartWatchStatus {
         SmartWatchStatus {
             enabled: self.enabled,
-            notifications_sent: self.notifications_sent,
-            session_limit: SMART_WATCH_SESSION_LIMIT,
-            remaining: SMART_WATCH_SESSION_LIMIT.saturating_sub(self.notifications_sent),
+            analyses_completed: self.analyses_completed,
+            analysis_interval_minutes: self.analysis_interval_minutes,
         }
     }
+
+    fn analysis_interval_elapsed(&self, tick: u64) -> bool {
+        self.last_analysis_tick
+            .map(|last_tick| {
+                tick.saturating_sub(last_tick)
+                    >= analysis_interval_ticks(self.analysis_interval_minutes)
+            })
+            .unwrap_or(true)
+    }
+}
+
+fn validate_analysis_interval(minutes: u16) -> Result<(), SmartWatchError> {
+    if ANALYSIS_INTERVAL_OPTIONS_MINUTES.contains(&minutes) {
+        Ok(())
+    } else {
+        Err(SmartWatchError::invalid_interval())
+    }
+}
+
+fn analysis_interval_ticks(minutes: u16) -> u64 {
+    u64::from(minutes) * 60 / WATCH_CAPTURE_INTERVAL_SECONDS
 }
 
 pub fn emit_status(app: &tauri::AppHandle, status: SmartWatchStatus) {
@@ -182,6 +234,7 @@ pub fn emit_status(app: &tauri::AppHandle, status: SmartWatchStatus) {
 #[serde(rename_all = "camelCase")]
 pub enum SmartWatchErrorCode {
     ConsentRequired,
+    InvalidInterval,
     InvalidSession,
     Unavailable,
 }
@@ -208,6 +261,13 @@ impl SmartWatchError {
         }
     }
 
+    fn invalid_interval() -> Self {
+        Self {
+            code: SmartWatchErrorCode::InvalidInterval,
+            message: "CHOOSE A WATCH INTERVAL OF 1, 5, 30, OR 60 MINUTES.",
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
             code: SmartWatchErrorCode::Unavailable,
@@ -219,16 +279,18 @@ impl SmartWatchError {
 #[cfg(test)]
 mod tests {
     use super::{
-        SmartWatchErrorCode, SmartWatchState, SMART_WATCH_CONSENT_VERSION,
-        SMART_WATCH_SESSION_LIMIT, STARTUP_NOTICE_BODY,
+        SmartWatchErrorCode, SmartWatchState, DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+        SMART_WATCH_CONSENT_VERSION, STARTUP_NOTICE_BODY,
     };
+    use crate::ai_runtime::AiProvider;
 
     #[test]
     fn startup_notice_explains_activation_and_local_privacy() {
         assert!(STARTUP_NOTICE_BODY.contains("EVERY 5S"));
+        assert!(STARTUP_NOTICE_BODY.contains("ONLY THE SELECTED REGION"));
         assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
-        assert!(STARTUP_NOTICE_BODY.contains("ONLY MATERIAL CHANGES"));
-        assert!(STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
+        assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
+        assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
 
     #[test]
@@ -241,8 +303,9 @@ mod tests {
                     true,
                     7,
                     0,
-                    crate::ai_runtime::AiProvider::OpenAi,
-                    "ko-KR".into()
+                    AiProvider::OpenAi,
+                    "ko-KR".into(),
+                    DEFAULT_ANALYSIS_INTERVAL_MINUTES,
                 )
                 .unwrap_err()
                 .code,
@@ -254,8 +317,9 @@ mod tests {
                     true,
                     7,
                     SMART_WATCH_CONSENT_VERSION,
-                    crate::ai_runtime::AiProvider::OpenAi,
-                    "ko-KR".into()
+                    AiProvider::OpenAi,
+                    "ko-KR".into(),
+                    DEFAULT_ANALYSIS_INTERVAL_MINUTES,
                 )
                 .unwrap()
                 .enabled
@@ -270,75 +334,109 @@ mod tests {
                 true,
                 7,
                 SMART_WATCH_CONSENT_VERSION,
-                crate::ai_runtime::AiProvider::OpenAi,
+                AiProvider::OpenAi,
                 "ko-KR".into(),
+                DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             )
             .unwrap();
 
-        assert!(state.begin_analysis(8).is_none());
+        assert!(state.begin_analysis(8, 1).is_none());
         assert!(!state.status().enabled);
     }
 
     #[test]
-    fn watch_exposes_a_bounded_session_notification_budget() {
+    fn watch_interval_accepts_only_supported_values() {
+        let state = SmartWatchState::default();
+        assert_eq!(state.status().analysis_interval_minutes, 5);
+        assert_eq!(
+            state
+                .set_analysis_interval(1)
+                .unwrap()
+                .analysis_interval_minutes,
+            1
+        );
+        assert_eq!(
+            state
+                .set_analysis_interval(30)
+                .unwrap()
+                .analysis_interval_minutes,
+            30
+        );
+        assert_eq!(
+            state.set_analysis_interval(2).unwrap_err().code,
+            SmartWatchErrorCode::InvalidInterval
+        );
+    }
+
+    #[test]
+    fn selected_interval_limits_ai_analysis_without_stopping_local_watch() {
+        let state = enabled_watch(5);
+
+        assert!(state.begin_analysis(2, 1).is_some());
+        state.finish_analysis(2, true);
+        assert!(state.begin_analysis(2, 60).is_none());
+        assert!(state.status().enabled);
+        assert!(state.begin_analysis(2, 61).is_some());
+    }
+
+    #[test]
+    fn changing_interval_applies_to_the_next_analysis() {
+        let state = enabled_watch(30);
+
+        assert!(state.begin_analysis(2, 1).is_some());
+        state.finish_analysis(2, true);
+        state.set_analysis_interval(1).unwrap();
+        assert!(state.begin_analysis(2, 13).is_some());
+    }
+
+    #[test]
+    fn watch_has_no_fixed_session_analysis_cap() {
+        let state = enabled_watch(1);
+
+        for analysis in 0..20_u64 {
+            assert!(state.begin_analysis(2, analysis * 12).is_some());
+            state.finish_analysis(2, true);
+        }
+        assert_eq!(state.status().analyses_completed, 20);
+        assert!(state.status().enabled);
+    }
+
+    #[test]
+    fn failed_or_cancelled_analysis_does_not_count_or_emit_late_results() {
+        let state = enabled_watch(1);
+
+        assert!(state.begin_analysis(2, 1).is_some());
+        assert!(state.begin_analysis(2, 2).is_none());
+        let (status, accepted) = state.finish_analysis(2, false);
+        assert!(accepted);
+        assert_eq!(status.analyses_completed, 0);
+
+        assert!(state.begin_analysis(2, 13).is_some());
+        state.disable();
+        let (_, accepted) = state.finish_analysis(2, true);
+        assert!(!accepted);
+    }
+
+    #[test]
+    fn disable_stops_notifications_immediately() {
+        let state = enabled_watch(5);
+        state.disable();
+
+        assert!(state.begin_analysis(2, 1).is_none());
+    }
+
+    fn enabled_watch(interval_minutes: u16) -> SmartWatchState {
         let state = SmartWatchState::default();
         state
             .configure(
                 true,
                 2,
                 SMART_WATCH_CONSENT_VERSION,
-                crate::ai_runtime::AiProvider::OpenAi,
+                AiProvider::OpenAi,
                 "ko-KR".into(),
+                interval_minutes,
             )
             .unwrap();
-
-        for _ in 0..SMART_WATCH_SESSION_LIMIT {
-            assert!(state.begin_analysis(2).is_some());
-            state.finish_analysis(2, true);
-        }
-        assert!(state.begin_analysis(2).is_none());
-        assert_eq!(state.status().remaining, 0);
-    }
-
-    #[test]
-    fn failed_or_cancelled_analysis_does_not_consume_budget_or_emit_late_results() {
-        let state = SmartWatchState::default();
         state
-            .configure(
-                true,
-                9,
-                SMART_WATCH_CONSENT_VERSION,
-                crate::ai_runtime::AiProvider::OpenAi,
-                "ko-KR".into(),
-            )
-            .unwrap();
-
-        assert!(state.begin_analysis(9).is_some());
-        assert!(state.begin_analysis(9).is_none());
-        let (status, accepted) = state.finish_analysis(9, false);
-        assert!(accepted);
-        assert_eq!(status.remaining, SMART_WATCH_SESSION_LIMIT);
-
-        assert!(state.begin_analysis(9).is_some());
-        state.disable();
-        let (_, accepted) = state.finish_analysis(9, true);
-        assert!(!accepted);
-    }
-
-    #[test]
-    fn disable_stops_notifications_immediately() {
-        let state = SmartWatchState::default();
-        state
-            .configure(
-                true,
-                3,
-                SMART_WATCH_CONSENT_VERSION,
-                crate::ai_runtime::AiProvider::OpenAi,
-                "ko-KR".into(),
-            )
-            .unwrap();
-        state.disable();
-
-        assert!(state.begin_analysis(3).is_none());
     }
 }

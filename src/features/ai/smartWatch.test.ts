@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   SMART_WATCH_CONSENT_KEY,
+  SMART_WATCH_INTERVAL_KEY,
   hasSmartWatchConsent,
   rememberSmartWatchConsent,
+  rememberSmartWatchInterval,
+  smartWatchInterval,
   smartWatchTitle
 } from "./smartWatch";
 
@@ -19,18 +22,27 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("4");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("5");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
-  it("reports the bounded semantic analysis budget", () => {
+  it("stores only a supported watch interval", () => {
+    const storage = memoryStorage();
+    expect(smartWatchInterval(storage)).toBe(5);
+    rememberSmartWatchInterval(storage, 30);
+    expect(storage.getItem(SMART_WATCH_INTERVAL_KEY)).toBe("30");
+    expect(smartWatchInterval(storage)).toBe(30);
+    storage.setItem(SMART_WATCH_INTERVAL_KEY, "2");
+    expect(smartWatchInterval(storage)).toBe(5);
+  });
+
+  it("reports the selected semantic analysis interval", () => {
     expect(
       smartWatchTitle({
         enabled: true,
-        notificationsSent: 3,
-        sessionLimit: 6,
-        remaining: 3
+        analysesCompleted: 12,
+        analysisIntervalMinutes: 60
       })
-    ).toContain("3/6");
+    ).toContain("1 HOUR");
   });
 });

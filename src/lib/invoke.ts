@@ -7,6 +7,7 @@ import type {
 } from "../features/ai/regionQuestion";
 import type { ClaudeCredentialStatus } from "../features/ai/claudeCredential";
 import {
+  type SmartWatchIntervalMinutes,
   SMART_WATCH_CONSENT_VERSION,
   type SmartWatchStatus
 } from "../features/ai/smartWatch";
@@ -119,7 +120,12 @@ export interface BackendCommandMap {
       consentVersion: number;
       provider: AiProvider;
       locale: string;
+      analysisIntervalMinutes: SmartWatchIntervalMinutes;
     } };
+    result: SmartWatchStatus;
+  };
+  set_smart_watch_interval: {
+    args: { request: { analysisIntervalMinutes: SmartWatchIntervalMinutes } };
     result: SmartWatchStatus;
   };
   get_update_feed: {
@@ -302,15 +308,25 @@ export function getSmartWatchStatus(): Promise<SmartWatchStatus> {
 export function setSmartWatch(
   enabled: boolean,
   provider: AiProvider,
-  locale: string
+  locale: string,
+  analysisIntervalMinutes: SmartWatchIntervalMinutes
 ): Promise<SmartWatchStatus> {
   return invokeBackend("set_smart_watch", {
     request: {
       enabled,
       consentVersion: SMART_WATCH_CONSENT_VERSION,
       provider,
-      locale
+      locale,
+      analysisIntervalMinutes
     }
+  });
+}
+
+export function setSmartWatchInterval(
+  analysisIntervalMinutes: SmartWatchIntervalMinutes
+): Promise<SmartWatchStatus> {
+  return invokeBackend("set_smart_watch_interval", {
+    request: { analysisIntervalMinutes }
   });
 }
 

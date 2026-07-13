@@ -15,15 +15,12 @@ use crate::{
 };
 use tauri::webview::PageLoadEvent;
 
+const _: () = assert!(PEBBLE_WINDOW_MINIMIZABLE);
+
 #[test]
 fn pebble_window_stays_hidden_until_the_page_finishes_loading() {
     assert!(!should_reveal_window(PageLoadEvent::Started));
     assert!(should_reveal_window(PageLoadEvent::Finished));
-}
-
-#[test]
-fn pebble_window_can_be_minimized() {
-    assert!(PEBBLE_WINDOW_MINIMIZABLE);
 }
 
 #[test]
@@ -83,13 +80,14 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
             SMART_WATCH_CONSENT_VERSION,
             AiProvider::OpenAi,
             "ko-KR".into(),
+            5,
         )
         .expect("enabled watch");
 
     let hidden = session.set_window_open(false).expect("hidden window");
 
     assert!(!hidden.window_open);
-    assert!(watch.begin_analysis(hidden.revision).is_some());
+    assert!(watch.begin_analysis(hidden.revision, 1).is_some());
 }
 
 #[test]

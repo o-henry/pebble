@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  isSmartWatchInterval,
   rememberSmartWatchConsent,
+  rememberSmartWatchInterval,
+  smartWatchInterval,
+  smartWatchIntervalLabel,
   smartWatchTitle,
+  SMART_WATCH_INTERVAL_OPTIONS,
+  type SmartWatchIntervalMinutes,
   type SmartWatchStatus
 } from "../features/ai/smartWatch";
 import {
   getSmartWatchStatus,
-  setSmartWatch
+  setSmartWatch,
+  setSmartWatchInterval
 } from "../lib/invoke";
 import { listenToSmartWatchStatus } from "../lib/events";
 import { errorMessage } from "./usePebbleSession";
@@ -26,17 +33,32 @@ export function SmartWatchControl({
   onError: (message: string | null) => void;
 }) {
   const [status, setStatus] = useState<SmartWatchStatus | null>(null);
+  const [intervalMinutes, setIntervalMinutes] =
+    useState<SmartWatchIntervalMinutes>(() =>
+      smartWatchInterval(globalThis.localStorage)
+    );
   const [busy, setBusy] = useState(false);
+
+  const acceptStatus = useCallback((next: SmartWatchStatus) => {
+    setStatus(next);
+    if (next.enabled) {
+      setIntervalMinutes(next.analysisIntervalMinutes);
+      rememberSmartWatchInterval(
+        globalThis.localStorage,
+        next.analysisIntervalMinutes
+      );
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     let unlisten: () => void = () => undefined;
     getSmartWatchStatus()
-      .then((next) => active && setStatus(next))
+      .then((next) => active && acceptStatus(next))
       .catch((reason: unknown) => {
         if (active) onError(errorMessage(reason, "SMART WATCH IS UNAVAILABLE."));
       });
-    void listenToSmartWatchStatus((next) => active && setStatus(next)).then(
+    void listenToSmartWatchStatus((next) => active && acceptStatus(next)).then(
       (nextUnlisten) => {
         if (active) unlisten = nextUnlisten;
         else nextUnlisten();
@@ -46,21 +68,42 @@ export function SmartWatchControl({
       active = false;
       unlisten();
     };
-  }, [onError]);
+  }, [acceptStatus, onError]);
 
   const update = useCallback(async (enabled: boolean) => {
     try {
       setBusy(true);
       onBusyChange(true);
       onError(null);
-      setStatus(await setSmartWatch(enabled, provider, globalThis.navigator.language));
+      acceptStatus(await setSmartWatch(
+        enabled,
+        provider,
+        globalThis.navigator.language,
+        intervalMinutes
+      ));
     } catch (reason) {
       onError(errorMessage(reason, "SMART WATCH COULD NOT BE UPDATED."));
     } finally {
       setBusy(false);
       onBusyChange(false);
     }
-  }, [onBusyChange, onError, provider]);
+  }, [acceptStatus, intervalMinutes, onBusyChange, onError, provider]);
+
+  const updateInterval = useCallback(async (
+    nextInterval: SmartWatchIntervalMinutes
+  ) => {
+    try {
+      setBusy(true);
+      onBusyChange(true);
+      onError(null);
+      acceptStatus(await setSmartWatchInterval(nextInterval));
+    } catch (reason) {
+      onError(errorMessage(reason, "WATCH INTERVAL COULD NOT BE UPDATED."));
+    } finally {
+      setBusy(false);
+      onBusyChange(false);
+    }
+  }, [acceptStatus, onBusyChange, onError]);
 
   function toggle() {
     if (status?.enabled) {
@@ -69,6 +112,14 @@ export function SmartWatchControl({
     }
     rememberSmartWatchConsent(globalThis.localStorage);
     void update(true);
+  }
+
+  function selectInterval(value: string) {
+    const nextInterval = Number(value);
+    if (!isSmartWatchInterval(nextInterval)) return;
+    setIntervalMinutes(nextInterval);
+    rememberSmartWatchInterval(globalThis.localStorage, nextInterval);
+    if (status?.enabled) void updateInterval(nextInterval);
   }
 
   return (
@@ -83,6 +134,20 @@ export function SmartWatchControl({
       >
         {status?.enabled ? "WATCHING" : "WATCH"}
       </button>
+      <select
+        className="smart-watch-control__interval"
+        aria-label="WATCH AI ANALYSIS INTERVAL"
+        title="WATCH AI ANALYSIS INTERVAL"
+        value={intervalMinutes}
+        disabled={busy}
+        onChange={(event) => selectInterval(event.currentTarget.value)}
+      >
+        {SMART_WATCH_INTERVAL_OPTIONS.map((minutes) => (
+          <option key={minutes} value={minutes}>
+            {smartWatchIntervalLabel(minutes)}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
