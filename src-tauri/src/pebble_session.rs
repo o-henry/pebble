@@ -31,6 +31,7 @@ const PEBBLE_WINDOW_MIN_WIDTH: f64 = 300.0;
 const PEBBLE_WINDOW_MIN_HEIGHT: f64 = 240.0;
 const PEBBLE_WINDOW_OUTER_HEIGHT: f64 = 380.0;
 const PEBBLE_WINDOW_MARGIN: f64 = 16.0;
+pub(crate) const PEBBLE_WINDOW_MINIMIZABLE: bool = true;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PebbleWindowPosition {
@@ -552,7 +553,7 @@ fn open_pebble_window(
     .inner_size(PEBBLE_WINDOW_WIDTH, PEBBLE_WINDOW_HEIGHT)
     .min_inner_size(PEBBLE_WINDOW_MIN_WIDTH, PEBBLE_WINDOW_MIN_HEIGHT)
     .resizable(true)
-    .minimizable(false)
+    .minimizable(PEBBLE_WINDOW_MINIMIZABLE)
     .always_on_top(true)
     .content_protected(true)
     .visible(false)

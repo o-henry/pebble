@@ -68,7 +68,7 @@
   min-height: 0;
   object-fit: contain;
   background: var(--frame);
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 
 .live-frame-canvas.is-empty {

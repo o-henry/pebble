@@ -5,7 +5,7 @@
 
 .update-feed__header {
   display: flex;
-  min-height: 34px;
+  min-height: 27px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -53,9 +53,9 @@ html[data-adaptive-theme="dark"] .update-feed__toggle img {
 .update-feed__body {
   display: grid;
   max-height: 300px;
-  gap: 6px;
+  gap: 2px;
   overflow: auto;
-  padding: 4px 0 2px;
+  padding: 0 0 2px;
   scrollbar-width: none;
 }
 
@@ -64,7 +64,7 @@ html[data-adaptive-theme="dark"] .update-feed__toggle img {
 }
 
 .update-feed__empty {
-  padding: 9px 0;
+  padding: 3px 0 2px;
   color: var(--ink-muted);
   font-size: 0.6rem;
 }

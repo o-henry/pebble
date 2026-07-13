@@ -5,6 +5,7 @@ use crate::{
     pebble_session::{
         frame_delivery_is_current, position_pebble_away_from_region, should_reveal_window,
         trusted_selection_request, PebbleSessionSnapshot, PebbleSessionState,
+        PEBBLE_WINDOW_MINIMIZABLE,
     },
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
@@ -16,6 +17,11 @@ use tauri::webview::PageLoadEvent;
 fn pebble_window_stays_hidden_until_the_page_finishes_loading() {
     assert!(!should_reveal_window(PageLoadEvent::Started));
     assert!(should_reveal_window(PageLoadEvent::Finished));
+}
+
+#[test]
+fn pebble_window_can_be_minimized() {
+    assert!(PEBBLE_WINDOW_MINIMIZABLE);
 }
 
 #[test]
