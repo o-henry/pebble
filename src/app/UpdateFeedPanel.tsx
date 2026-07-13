@@ -34,6 +34,10 @@ export function UpdateFeedPanel() {
     };
   }, []);
 
+  if (feed.entries.length === 0) {
+    return <div className="update-feed update-feed--empty" aria-hidden="true" />;
+  }
+
   return (
     <section className="update-feed" aria-label="UPDATES">
       <div className="update-feed__header">
@@ -56,24 +60,17 @@ export function UpdateFeedPanel() {
       </div>
       {expanded ? (
         <div className="update-feed__body">
-          <span className="update-feed__path">
-            DOWNLOADS/PEBBLE/PEBBLE-UPDATES.MD
-          </span>
-          {feed.entries.length === 0 ? (
-            <p className="update-feed__empty">NO SAVED UPDATES YET</p>
-          ) : (
-            <ol>
-              {feed.entries.map((entry) => (
-                <li key={entry.id}>
-                  <p>{entry.summary}</p>
-                  <span>
-                    {entry.kind} · {formatUpdateTime(entry.occurredAt)}
-                    {entry.saved ? "" : " · NOT SAVED"}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
+          <ol>
+            {feed.entries.map((entry) => (
+              <li key={entry.id}>
+                <p>{entry.summary}</p>
+                <span>
+                  {entry.kind} · {formatUpdateTime(entry.occurredAt)}
+                  {entry.saved ? "" : " · NOT SAVED"}
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
       ) : null}
     </section>
