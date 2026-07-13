@@ -201,8 +201,11 @@ Optional explicit-request service. It is never part of the capture loop.
 Responsibilities:
 
 - Start the fixed bundled Codex app-server or validated installed Claude CLI
-  from Rust only.
+  from Rust only when using account access.
+- Store an optional Anthropic API key only in macOS Keychain and call only fixed
+  Anthropic HTTPS endpoints from Rust.
 - Keep provider environments and runtime directories isolated.
+- Expose the active account, subscription, or API billing path in the UI.
 - Complete official provider login without browser cookie access.
 - Capture the backend-selected region once per visible **Send** action.
 - Encode the crop to an in-memory PNG data URL.

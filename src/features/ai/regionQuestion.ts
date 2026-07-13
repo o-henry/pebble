@@ -1,6 +1,7 @@
 export const MAX_REGION_QUESTION_LENGTH = 1_000;
 
 export type AiProvider = "openAi" | "claude";
+export type AiConnectionMode = "account" | "apiKey" | "subscription";
 
 export function defaultAiModelLabel(provider: AiProvider) {
   return provider === "openAi" ? "GPT-5.6-TERRA" : "CLAUDE SONNET 5";
@@ -12,6 +13,14 @@ export interface AiConnectionStatus {
   connected: boolean;
   model: string;
   installUrl: string | null;
+  connectionMode: AiConnectionMode | null;
+}
+
+export function aiAccessLabel(mode: AiConnectionMode | null | undefined) {
+  if (mode === "apiKey") return "API BILLING";
+  if (mode === "subscription") return "SUBSCRIPTION";
+  if (mode === "account") return "ACCOUNT";
+  return "";
 }
 
 export interface AiAnswer {

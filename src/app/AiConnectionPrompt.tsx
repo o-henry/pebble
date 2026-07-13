@@ -48,7 +48,7 @@ export function AiConnectionPrompt({
       >
         {label}
       </button>
-      <span>NO API KEY</span>
+      <span>{provider === "openAi" ? "CHATGPT ACCOUNT" : "CLAUDE ACCESS"}</span>
     </div>
   );
 }

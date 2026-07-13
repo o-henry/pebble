@@ -378,12 +378,14 @@ feat: add optional local ocr
 
 ## Phase 13 - Explicit AI Region Questions
 
-Goal: let a user ask OpenAI or Claude about one selected crop without an API key.
+Goal: let a user ask OpenAI or Claude about one selected crop through a bounded,
+explicitly identified account or credential path.
 
 Build:
 
 - Codex app-server sidecar with isolated OpenAI account login.
 - Optional installed official Claude CLI with Pro/Max account login.
+- Optional Anthropic API key stored only in macOS Keychain.
 - One backend-authorized crop per visible **Send** action.
 - Memory-only PNG data URL payload.
 - Balanced provider-specific image model selection with medium reasoning effort.

@@ -24,6 +24,8 @@ use url::Url;
 
 use crate::{
     capture_backend::{capture_error, CaptureBackend, CaptureErrorCode, CroppedFramePayload},
+    claude_api::{self, ClaudeApiRequest},
+    claude_credentials::{self, ClaudeCredentialError, ClaudeCredentialStatus, StoredSecret},
     pebble_session::{AuthorizedAiCapture, PebbleSessionState, PEBBLE_TILE_LABEL},
     platform_capture::PlatformCaptureBackend,
 };
@@ -42,6 +44,8 @@ const CLAUDE_MODEL_ID: &str = "claude-sonnet-5";
 const CLAUDE_MODEL_LABEL: &str = "CLAUDE SONNET 5";
 const CLAUDE_REASONING_EFFORT: &str = "medium";
 const CLAUDE_INSTALL_URL: &str = "https://code.claude.com/docs/en/quickstart";
+const CLAUDE_ASK_MAX_TOKENS: u32 = 2_048;
+const CLAUDE_WATCH_MAX_TOKENS: u32 = 1_536;
 
 const BASE_INSTRUCTIONS: &str = "You answer a user's question about one explicitly supplied cropped screen-region image. Use only visible evidence in that image. Do not use tools, files, shell, web search, plugins, skills, MCP, memory, or outside context. If the image does not contain enough evidence, say so plainly. Reply in the language of the user's question, directly and concisely, in at most five short sentences.";
 const DEVELOPER_INSTRUCTIONS: &str = "Pebble sends exactly one user-requested cropped image. Never invoke any tool or request more access.";
@@ -55,6 +59,14 @@ pub enum AiProvider {
     Claude,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AiConnectionMode {
+    Account,
+    ApiKey,
+    Subscription,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConnectionStatus {
@@ -63,6 +75,7 @@ pub struct AiConnectionStatus {
     pub connected: bool,
     pub model: String,
     pub install_url: Option<&'static str>,
+    pub connection_mode: Option<AiConnectionMode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -173,6 +186,18 @@ pub async fn connect_provider(
         AiProvider::OpenAi => connect_openai(app).await,
         AiProvider::Claude => connect_claude(app).await,
     }
+}
+
+pub fn get_claude_credential_status() -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    claude_credentials::credential_status().map_err(credential_runtime_error)
+}
+
+pub fn set_claude_api_key(api_key: String) -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    claude_credentials::store_api_key(api_key).map_err(credential_runtime_error)
+}
+
+pub fn delete_claude_api_key() -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    claude_credentials::delete_api_key().map_err(credential_runtime_error)
 }
 
 async fn connect_openai(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
@@ -471,8 +496,14 @@ async fn ask_openai(
 }
 
 async fn claude_connection_status(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
+    if let Some(api_key) = load_claude_api_key()? {
+        claude_api::validate_api_key(&api_key)
+            .await
+            .map_err(claude_api_runtime_error)?;
+        return Ok(claude_status(true, true, Some(AiConnectionMode::ApiKey)));
+    }
     let Some(binary) = claude_binary(app) else {
-        return Ok(claude_status(false, false));
+        return Ok(claude_status(false, false, None));
     };
     let output = timeout(
         REQUEST_TIMEOUT,
@@ -483,15 +514,23 @@ async fn claude_connection_status(app: &AppHandle) -> Result<AiConnectionStatus,
     .await
     .map_err(|_| timeout_error("CLAUDE AUTH STATUS TOOK TOO LONG."))?
     .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
-    Ok(claude_status(true, claude_auth_is_connected(&output)))
+    let connected = claude_auth_is_connected(&output);
+    Ok(claude_status(
+        true,
+        connected,
+        connected.then_some(AiConnectionMode::Subscription),
+    ))
 }
 
 async fn connect_claude(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
+    if load_claude_api_key()?.is_some() {
+        return claude_connection_status(app).await;
+    }
     let Some(binary) = claude_binary(app) else {
         app.opener()
             .open_url(CLAUDE_INSTALL_URL, None::<&str>)
             .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
-        return Ok(claude_status(false, false));
+        return Ok(claude_status(false, false, None));
     };
     let current = claude_connection_status(app).await?;
     if current.connected {
@@ -518,6 +557,48 @@ async fn connect_claude(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntime
 }
 
 async fn ask_claude(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    session: &PebbleSessionState,
+    authorized: &AuthorizedAiCapture,
+    image_data_url: String,
+    question: String,
+    locale: String,
+) -> Result<AiAnswer, AiRuntimeError> {
+    if let Some(api_key) = load_claude_api_key()? {
+        ensure_capture_is_current(app, window, session, authorized)?;
+        let response = claude_api::create_message(
+            &api_key,
+            ClaudeApiRequest {
+                system: BASE_INSTRUCTIONS,
+                prompt: question_prompt(&question, &locale),
+                image_data_urls: vec![image_data_url],
+                max_tokens: CLAUDE_ASK_MAX_TOKENS,
+            },
+        )
+        .await
+        .map_err(claude_api_runtime_error)?;
+        ensure_capture_is_current(app, window, session, authorized)?;
+        return Ok(AiAnswer {
+            answer: response.text,
+            provider: AiProvider::Claude,
+            model: response.model,
+            duration_ms: response.duration_ms,
+        });
+    }
+    ask_claude_subscription(
+        app,
+        window,
+        session,
+        authorized,
+        image_data_url,
+        question,
+        locale,
+    )
+    .await
+}
+
+async fn ask_claude_subscription(
     app: &AppHandle,
     window: &WebviewWindow,
     session: &PebbleSessionState,
@@ -601,6 +682,47 @@ async fn ask_claude(
 }
 
 async fn analyze_watch_claude(
+    app: &AppHandle,
+    session: &PebbleSessionState,
+    revision: u64,
+    locale: String,
+    local_signal: &'static str,
+    previous_image: String,
+    current_image: String,
+) -> Result<WatchAnalysis, AiRuntimeError> {
+    if let Some(api_key) = load_claude_api_key()? {
+        ensure_watch_session_current(app, session, revision)?;
+        let response = claude_api::create_message(
+            &api_key,
+            ClaudeApiRequest {
+                system: WATCH_INSTRUCTIONS,
+                prompt: watch_prompt(&locale, local_signal),
+                image_data_urls: vec![previous_image, current_image],
+                max_tokens: CLAUDE_WATCH_MAX_TOKENS,
+            },
+        )
+        .await
+        .map_err(claude_api_runtime_error)?;
+        ensure_watch_session_current(app, session, revision)?;
+        return Ok(WatchAnalysis {
+            summary: response.text,
+            model: response.model,
+            duration_ms: response.duration_ms,
+        });
+    }
+    analyze_watch_claude_subscription(
+        app,
+        session,
+        revision,
+        locale,
+        local_signal,
+        previous_image,
+        current_image,
+    )
+    .await
+}
+
+async fn analyze_watch_claude_subscription(
     app: &AppHandle,
     session: &PebbleSessionState,
     revision: u64,
@@ -751,16 +873,22 @@ fn openai_status(connected: bool) -> AiConnectionStatus {
         connected,
         model: OPENAI_MODEL_LABEL.to_string(),
         install_url: None,
+        connection_mode: connected.then_some(AiConnectionMode::Account),
     }
 }
 
-fn claude_status(available: bool, connected: bool) -> AiConnectionStatus {
+fn claude_status(
+    available: bool,
+    connected: bool,
+    connection_mode: Option<AiConnectionMode>,
+) -> AiConnectionStatus {
     AiConnectionStatus {
         provider: AiProvider::Claude,
         available,
         connected: available && connected,
         model: CLAUDE_MODEL_LABEL.to_string(),
         install_url: (!available).then_some(CLAUDE_INSTALL_URL),
+        connection_mode,
     }
 }
 
@@ -1187,6 +1315,52 @@ fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
+fn load_claude_api_key() -> Result<Option<StoredSecret>, AiRuntimeError> {
+    claude_credentials::load_api_key().map_err(credential_runtime_error)
+}
+
+fn credential_runtime_error(error: ClaudeCredentialError) -> AiRuntimeError {
+    match error {
+        ClaudeCredentialError::InvalidKey => runtime_error(
+            AiRuntimeErrorCode::AuthenticationFailed,
+            "ENTER A VALID ANTHROPIC API KEY.",
+            true,
+        ),
+        ClaudeCredentialError::StoreUnavailable => runtime_error(
+            AiRuntimeErrorCode::AuthenticationFailed,
+            "PEBBLE COULD NOT ACCESS THE CLAUDE API KEY IN MACOS KEYCHAIN.",
+            true,
+        ),
+    }
+}
+
+fn claude_api_runtime_error(error: claude_api::ClaudeApiError) -> AiRuntimeError {
+    match error {
+        claude_api::ClaudeApiError::Authentication => runtime_error(
+            AiRuntimeErrorCode::AuthenticationFailed,
+            "CLAUDE API REJECTED THE SAVED KEY. REPLACE OR REMOVE IT.",
+            true,
+        ),
+        claude_api::ClaudeApiError::ModelUnavailable => runtime_error(
+            AiRuntimeErrorCode::ModelUnavailable,
+            "CLAUDE SONNET 5 IS NOT AVAILABLE TO THIS API KEY.",
+            true,
+        ),
+        claude_api::ClaudeApiError::RateLimited => runtime_error(
+            AiRuntimeErrorCode::Busy,
+            "CLAUDE API RATE LIMIT REACHED. TRY AGAIN LATER.",
+            true,
+        ),
+        claude_api::ClaudeApiError::Timeout => {
+            timeout_error("CLAUDE API TOOK TOO LONG TO RESPOND.")
+        }
+        claude_api::ClaudeApiError::InvalidResponse => {
+            response_error("CLAUDE API RETURNED AN INVALID RESPONSE.")
+        }
+        claude_api::ClaudeApiError::RequestFailed => response_error("CLAUDE API REQUEST FAILED."),
+    }
+}
+
 fn timeout_error(message: &'static str) -> AiRuntimeError {
     runtime_error(AiRuntimeErrorCode::Timeout, message, true)
 }
@@ -1563,12 +1737,14 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        chatgpt_login_params, claude_image_input, encode_frame_data_url, login_failure_message,
-        normalize_question, normalized_locale, parse_claude_answer, select_balanced_model,
-        select_image_model, validate_auth_url, AiRuntimeErrorCode,
+        chatgpt_login_params, claude_api_runtime_error, claude_image_input, claude_status,
+        encode_frame_data_url, login_failure_message, normalize_question, normalized_locale,
+        parse_claude_answer, select_balanced_model, select_image_model, validate_auth_url,
+        AiConnectionMode, AiRuntimeErrorCode,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
+        claude_api::ClaudeApiError,
         region_selection_types::PhysicalRegion,
     };
 
@@ -1597,6 +1773,31 @@ mod tests {
         assert_eq!(normalized_locale("ko-KR"), "ko-KR");
         assert_eq!(normalized_locale("../../secret"), "und");
         assert_eq!(normalized_locale(&"x".repeat(36)), "und");
+    }
+
+    #[test]
+    fn exposes_the_active_claude_access_path_without_credentials() {
+        let subscription = claude_status(true, true, Some(AiConnectionMode::Subscription));
+        assert!(subscription.connected);
+        assert_eq!(
+            subscription.connection_mode,
+            Some(AiConnectionMode::Subscription)
+        );
+
+        let api_key = claude_status(true, true, Some(AiConnectionMode::ApiKey));
+        assert!(api_key.connected);
+        assert_eq!(api_key.connection_mode, Some(AiConnectionMode::ApiKey));
+    }
+
+    #[test]
+    fn sanitizes_claude_api_authentication_failures() {
+        let error = claude_api_runtime_error(ClaudeApiError::Authentication);
+        assert_eq!(error.code, AiRuntimeErrorCode::AuthenticationFailed);
+        assert_eq!(
+            error.message,
+            "CLAUDE API REJECTED THE SAVED KEY. REPLACE OR REMOVE IT."
+        );
+        assert!(!error.message.contains("sk-ant-"));
     }
 
     #[test]

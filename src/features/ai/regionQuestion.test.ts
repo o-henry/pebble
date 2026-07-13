@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_REGION_QUESTION_LENGTH,
+  aiAccessLabel,
   defaultAiModelLabel,
   normalizedRegionQuestion
 } from "./regionQuestion";
@@ -25,5 +26,12 @@ describe("region questions", () => {
   it("labels the configured balanced models", () => {
     expect(defaultAiModelLabel("openAi")).toBe("GPT-5.6-TERRA");
     expect(defaultAiModelLabel("claude")).toBe("CLAUDE SONNET 5");
+  });
+
+  it("makes the active billing path explicit", () => {
+    expect(aiAccessLabel("apiKey")).toBe("API BILLING");
+    expect(aiAccessLabel("subscription")).toBe("SUBSCRIPTION");
+    expect(aiAccessLabel("account")).toBe("ACCOUNT");
+    expect(aiAccessLabel(null)).toBe("");
   });
 });

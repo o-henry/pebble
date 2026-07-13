@@ -70,8 +70,9 @@ Implemented:
 - Config-only store for named regions and safe capture settings.
 - Optional local OCR service boundary, disabled by default.
 - API-key-free OpenAI account connection through the bundled Codex app-server.
-- Optional Claude Pro/Max account connection through an installed official
-  Claude CLI, without bundling another large runtime.
+- Claude access through either an installed official Claude CLI subscription or
+  an optional Anthropic API key stored only in macOS Keychain, without bundling
+  another large runtime.
 - Explicit selected-region image questions using balanced image models at
   medium reasoning effort, with model and generation-time metadata.
 
@@ -107,7 +108,12 @@ Never persisted:
 - Screenshots or previews.
 - OCR history.
 - AI prompts derived from screen content.
-- Browser URLs, cookies, tokens, API keys, or clipboard contents.
+- Browser URLs, cookies, subscription tokens, clipboard contents, or API keys in
+  Pebble files, logs, or configuration.
+
+An optional Anthropic API key is persisted only as a macOS Keychain generic
+password. Pebble never returns the saved key to the webview or writes it to a
+Pebble-managed file.
 
 Semantic Watch summaries, model names, and generation times are appended to
 `Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
@@ -125,19 +131,26 @@ After selecting a region:
 
 1. Toggle the **AI** button in the Pebble toolbar.
 2. Choose **OpenAI** or **Claude**.
-3. Connect the provider and complete its official account sign-in once.
+3. Connect the provider. Claude uses its CLI subscription by default, or you can
+   add an Anthropic API key from the Claude access row.
 4. Enter a question and press **Send**.
 5. Pebble captures the backend-authorized crop once, encodes it in memory,
    and sends that single image with the question.
 6. The ephemeral answer, model, and generation time are shown inside the same
    Pebble and are not persisted.
 
-No API key is requested. OpenAI uses Pebble's isolated bundled Codex app-server
-and the OS keychain. Claude uses the separately installed official
+OpenAI never accepts an API key: it uses Pebble's isolated bundled Codex
+app-server and official account sign-in. Without a saved Anthropic API key,
+Claude uses the separately installed official
 [Claude CLI](https://code.claude.com/docs/en/quickstart) and its Pro/Max account
-sign-in. Pebble prefers `gpt-5.6-terra` at medium effort, permits
-`gpt-5.6-luna` only as its OpenAI fallback, and uses Claude Sonnet 5 at medium
-effort. It never falls back to mini or Haiku automatically.
+sign-in. Adding a key switches Claude to the direct Anthropic Messages API and
+the UI labels the path **API Billing**; API usage is billed separately by
+Anthropic. An invalid saved key fails visibly instead of silently switching to
+the subscription. Removing it returns Claude to subscription mode.
+
+Pebble prefers `gpt-5.6-terra` at medium effort, permits `gpt-5.6-luna` only as
+its OpenAI fallback, and uses Claude Sonnet 5 at medium effort. It never falls
+back to mini or Haiku automatically.
 
 Pebble does not read browser cookies, automate an AI website, reuse another
 app's tokens, use MCP, or stream screen images continuously.
@@ -158,7 +171,8 @@ launch, a native notification discloses that:
 OpenAI Watch requires gpt-5.6-terra at medium effort and never falls back to a
 lower model. Claude Watch uses Sonnet 5. Tools, MCP, shell, files, and
 web search remain disabled. The AI compares before/after crops, describes the
-visible change and uncertainty, and writes the model and generation time.
+visible change and uncertainty, and writes the model and generation time. It
+uses the same explicit Claude API-key or subscription path shown in the UI.
 
 ## Adaptive Background
 

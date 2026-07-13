@@ -58,17 +58,23 @@ Current desktop safeguards:
 - Adaptive colors are sampled locally from the existing selected crop, are not
   persisted, and reset as soon as the window is hidden or privacy blank is on.
 
-No captured content leaves the machine during Watch monitoring. One selected
-crop leaves the machine only after the user explicitly asks AI about it.
+Watch compares crops locally. Unchanged frames never leave the Mac. After the
+user explicitly enables semantic Watch, a locally detected material change may
+send only the previous and current selected-region crops to the chosen provider.
+Manual AI sends one selected crop only after **Send**.
 
 ## AI Handoff Policy
 
 AI access is explicit, narrow in scope, and cheap by design:
 
-- No API key is requested or accepted by the UI.
+- OpenAI API keys are not requested or accepted.
 - The bundled Codex app-server owns the OpenAI account flow.
+- Claude API keys are optional, accepted only from the visible Pebble window,
+  and stored only in macOS Keychain. The saved value is never returned to the
+  webview or written to a file, log, config, test fixture, or update journal.
 - Claude is optional and uses only an installed official Claude CLI at a fixed,
-  validated executable path; Pebble does not bundle or download it.
+  validated executable path when no API key is configured; Pebble does not
+  bundle or download it.
 - Pebble uses a private `CODEX_HOME` under its 0700 app data directory;
   another Codex installation's login is not read.
 - Credentials use the OS keychain. Browser cookies are never read.
@@ -83,7 +89,13 @@ AI access is explicit, narrow in scope, and cheap by design:
 - OpenAI threads are ephemeral, sandboxed read-only, use approval policy `never`, and
   have web search, MCP servers, and analytics disabled.
 - Claude runs in print mode with safe mode, slash commands disabled, strict
-  empty MCP configuration, all tools denied, and one turn maximum.
+  empty MCP configuration, all tools denied, and one turn maximum when using
+  the subscription path.
+- Claude API mode uses fixed `api.anthropic.com` HTTPS endpoints, refuses
+  redirects, sets bounded timeouts and response sizes, defines no tools, and
+  rejects any tool-use response block.
+- A configured key takes precedence; authentication failures are shown and do
+  not silently switch to a subscription or another model.
 - Pebble prefers `gpt-5.6-terra`, permits only `gpt-5.6-luna` as an OpenAI
   fallback, and uses Claude Sonnet 5. All run at medium effort; mini and Haiku
   are rejected as automatic fallbacks.
@@ -97,7 +109,7 @@ Disallowed behavior:
 - Automatic or hidden background AI calls.
 - Browser cookie scraping.
 - AI website automation using a user's logged-in browser session.
-- API key theft, token reuse, or reading unrelated app credentials.
+- API key exposure, token reuse, or reading unrelated app credentials.
 
 ## Semantic Watch Design
 

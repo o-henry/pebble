@@ -1,7 +1,8 @@
 # AI Region Questions
 
-Pebble can answer a question about the selected region without an API key.
-This path is optional and never participates in continuous monitoring.
+Pebble can answer a question about the selected region through account access
+or an optional Anthropic API key. Manual questions run only after **Send**;
+semantic Watch is a separate opt-in, locally gated path.
 
 ## User Flow
 
@@ -9,42 +10,53 @@ This path is optional and never participates in continuous monitoring.
 select region -> choose provider -> connect once -> type question -> Ask -> concise answer
 ```
 
-The **Send** action is the consent boundary. Pebble does not call AI on a
-timer, on visual change, at startup, or in the background.
+The **Send** action is the manual-question consent boundary. Pebble does not
+call AI at startup. Watch may call the selected provider only after explicit
+opt-in, a local material-change gate, cooldown, and session cap.
 
 ## Runtime
 
-Pebble bundles the OpenAI Codex app-server as a Tauri sidecar. Claude support
-uses a separately installed official Claude CLI and does not add another large
-binary to Pebble.
-The React webview can invoke three typed Rust commands:
+Pebble bundles the OpenAI Codex app-server as a Tauri sidecar. Claude uses a
+separately installed official Claude CLI when no API key is configured. When a
+key is configured, Rust calls only the fixed Anthropic Messages and model URLs.
+The React webview can invoke these typed Rust commands:
 
 ```text
 get_ai_connection_status
 connect_ai_provider
 ask_selected_region
+get_claude_credential_status
+set_claude_api_key
+delete_claude_api_key
 ```
 
 The webview has no shell, opener, filesystem, or network plugin permission.
 Rust starts only the fixed `codex` sidecar or a Claude executable found at one
 of three fixed locations and rejected when group- or world-writable. OpenAI
 login opens only a validated `https://chatgpt.com` or `https://auth.openai.com`
-URL. If Claude is absent, Rust opens only its fixed official installation page.
+URL. If Claude is absent and no key is saved, Rust opens only its fixed official
+installation page. Direct API requests use HTTPS, reject redirects, have bounded
+timeouts and responses, and never expose raw server bodies to the UI.
 
 ## Account Isolation
 
-- No API key is requested.
+- OpenAI API keys are not accepted.
+- Claude API keys are optional and accepted only by the visible Pebble window.
+- Claude API keys are stored only as a macOS Keychain generic password and are
+  never returned to the webview, config, logs, tests, or Markdown journal.
 - Browser cookies are never read.
 - Other Codex, AI app, or browser tokens are never imported.
 - The sidecar uses Pebble's private app data directory as `CODEX_HOME`.
 - The directory mode is 0700 on Unix.
-- Credentials use the OS keychain.
+- Subscription credentials use provider-owned credential storage.
 - On macOS, only the real `HOME` path is provided so the system can locate the
   default login keychain; Codex state remains isolated by `CODEX_HOME`.
 - Every AI child environment is cleared before launch, preventing inherited
   API-key or proxy variables from becoming an accidental auth path.
 - Claude uses its official Pro/Max login and system credential storage; Pebble
-  never reads or persists the resulting credential.
+  never reads or persists the resulting subscription credential.
+- A configured Claude API key takes precedence. Invalid API authentication
+  fails visibly and never falls back silently to subscription billing.
 
 ## Image Boundary
 
@@ -58,8 +70,9 @@ For every question, Rust:
 5. Captures only that physical crop.
 6. Encodes the RGBA bytes as an in-memory PNG data URL.
 7. Revalidates the session and display immediately before `turn/start`.
-8. Sends exactly one image and one bounded question through the selected
-   provider's documented local process protocol.
+8. Sends exactly one image and one bounded question through the selected local
+   process, or through Anthropic's fixed Messages endpoint when API-key mode is
+   explicitly configured.
 
 No frame or prompt is written to a screenshot, temp, history, log, config, or
 thread file.
@@ -76,9 +89,10 @@ thread file.
 - Concurrency: one connection or question operation at a time.
 - Conversation: a new ephemeral thread for every question.
 
-If neither supported OpenAI model is available for the signed-in subscription
-or the official Claude CLI is unavailable, Pebble reports that condition. It
-does not silently fall back to mini, Haiku, or a premium flagship model.
+If neither supported OpenAI model is available, the official Claude CLI is
+unavailable, or the configured Claude API key cannot use Sonnet 5, Pebble
+reports that condition. It does not silently fall back to mini, Haiku, another
+Claude model, or a different authentication path.
 
 ## Tool Denial
 
@@ -96,9 +110,11 @@ Pebble additionally inspects streamed items. Any command, file change,
 web search, plugin, MCP, dynamic tool, image generation, or server approval
 request aborts the response.
 
-Claude starts with safe mode, slash commands disabled, strict empty MCP
-configuration, `--tools ""`, all tools explicitly denied, low effort, and one
-turn maximum. Stream output containing a tool-use item is rejected.
+Claude subscription mode starts with safe mode, slash commands disabled, strict
+empty MCP configuration, `--tools ""`, all tools explicitly denied, medium
+effort, and one turn maximum. Stream output containing a tool-use item is
+rejected. Claude API mode defines no tools, sends no tool-choice field, rejects
+tool-use response blocks, follows no redirects, and has no web-search path.
 
 ## Failure Behavior
 
@@ -112,6 +128,7 @@ The operation fails closed when:
 - The sidecar exits, times out, or returns invalid protocol data.
 - No supported balanced image model exists.
 - The model attempts any action outside image reasoning.
+- The saved Claude API key is rejected, rate-limited, or cannot access Sonnet 5.
 
 Errors are recoverable and do not include account email, auth URLs, tokens,
 screen bytes, prompts, sidecar stderr, or local paths.
@@ -124,6 +141,9 @@ Automated tests cover:
 - Official OAuth host validation.
 - Terra-first model selection with Luna-only fallback and mini rejection.
 - Claude stream parsing, model/duration metadata, and tool-use rejection.
+- Claude API payload boundaries, HTTP error sanitization, and tool-use rejection.
+- Claude API-key format limits and explicit subscription/API billing labels.
+- Keychain commands restricted to the visible, non-minimized Pebble window.
 - Locale validation and question-language fallback instructions.
 - Memory-only PNG data URL encoding.
 - Privacy blank and missing-region rejection.

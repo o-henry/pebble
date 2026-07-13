@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState, type FormEvent } from 
 import sendIcon from "../assets/icons/up-arrow.svg";
 import {
   MAX_REGION_QUESTION_LENGTH,
+  aiAccessLabel,
   defaultAiModelLabel,
   normalizedRegionQuestion,
   type AiAnswer,
@@ -20,6 +21,7 @@ import {
 } from "./AiConnectionPrompt";
 import { AiResponseArea } from "./AiResponseArea";
 import { AiPanelHeader } from "./AiPanelHeader";
+import { ClaudeCredentialControl } from "./ClaudeCredentialControl";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -42,6 +44,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   const [panelError, setPanelError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [credentialRevision, setCredentialRevision] = useState(0);
   const normalizedQuestion = useMemo(
     () => normalizedRegionQuestion(question),
     [question]
@@ -77,7 +80,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
     return () => {
       active = false;
     };
-  }, [browserPreview, provider]);
+  }, [browserPreview, credentialRevision, provider]);
 
   const connect = useCallback(async () => {
     try {
@@ -125,6 +128,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   }, [normalizedQuestion, onBusyChange, provider]);
 
   const modelLabel = status?.model ?? defaultAiModelLabel(provider);
+  const accessLabel = aiAccessLabel(status?.connectionMode);
   return (
     <section className="region-question" aria-label="AI">
       <AiPanelHeader
@@ -137,6 +141,15 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         onBusyChange={onBusyChange}
         onError={setPanelError}
       />
+
+      {provider === "claude" && !browserPreview ? (
+        <ClaudeCredentialControl
+          disabled={disabled || asking || connecting}
+          onChanged={() => setCredentialRevision((revision) => revision + 1)}
+          onBusyChange={onBusyChange}
+          onError={setPanelError}
+        />
+      ) : null}
 
       <AiConnectionPrompt
         connection={connection}
@@ -160,7 +173,9 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
           <div className="region-question__composer-footer">
-            <span className="region-question__model">{modelLabel} · MEDIUM</span>
+            <span className="region-question__model">
+              {modelLabel} · MEDIUM{accessLabel ? ` · ${accessLabel}` : ""}
+            </span>
             <button
               type="submit"
               className="region-question__send"

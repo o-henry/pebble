@@ -5,6 +5,7 @@ import type {
   AiConnectionStatus,
   AiProvider
 } from "../features/ai/regionQuestion";
+import type { ClaudeCredentialStatus } from "../features/ai/claudeCredential";
 import {
   SMART_WATCH_CONSENT_VERSION,
   type SmartWatchStatus
@@ -94,6 +95,16 @@ export interface BackendCommandMap {
   connect_ai_provider: {
     args: { provider: AiProvider };
     result: AiConnectionStatus;
+  };
+  get_claude_credential_status: {
+    result: ClaudeCredentialStatus;
+  };
+  set_claude_api_key: {
+    args: { apiKey: string };
+    result: ClaudeCredentialStatus;
+  };
+  delete_claude_api_key: {
+    result: ClaudeCredentialStatus;
   };
   ask_selected_region: {
     args: { provider: AiProvider; question: string; locale: string };
@@ -262,6 +273,18 @@ export function getAiConnectionStatus(provider: AiProvider): Promise<AiConnectio
 
 export function connectAiProvider(provider: AiProvider): Promise<AiConnectionStatus> {
   return invokeBackend("connect_ai_provider", { provider });
+}
+
+export function getClaudeCredentialStatus(): Promise<ClaudeCredentialStatus> {
+  return invokeBackend("get_claude_credential_status");
+}
+
+export function setClaudeApiKey(apiKey: string): Promise<ClaudeCredentialStatus> {
+  return invokeBackend("set_claude_api_key", { apiKey });
+}
+
+export function deleteClaudeApiKey(): Promise<ClaudeCredentialStatus> {
+  return invokeBackend("delete_claude_api_key");
 }
 
 export function askSelectedRegion(

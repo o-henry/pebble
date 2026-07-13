@@ -14,6 +14,8 @@ pub mod capture_lifecycle;
 #[cfg(test)]
 mod capture_lifecycle_tests;
 pub mod capture_scheduler;
+mod claude_api;
+mod claude_credentials;
 pub mod diff_engine;
 #[cfg(test)]
 mod diff_engine_tests;
@@ -54,6 +56,7 @@ use app_status::AppStatus;
 use capture_backend::{
     capture_error, CaptureBackend, CaptureError, CaptureErrorCode, CroppedFramePayload,
 };
+use claude_credentials::ClaudeCredentialStatus;
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
 use ocr_engine::OcrStatus;
 use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
@@ -251,6 +254,42 @@ async fn connect_ai_provider(
         });
     }
     ai_runtime::connect_provider(&app, state.inner(), provider).await
+}
+
+#[tauri::command]
+fn get_claude_credential_status(
+    window: tauri::WebviewWindow,
+) -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    ensure_ai_settings_window(&window)?;
+    ai_runtime::get_claude_credential_status()
+}
+
+#[tauri::command]
+fn set_claude_api_key(
+    window: tauri::WebviewWindow,
+    api_key: String,
+) -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    ensure_ai_settings_window(&window)?;
+    ai_runtime::set_claude_api_key(api_key)
+}
+
+#[tauri::command]
+fn delete_claude_api_key(
+    window: tauri::WebviewWindow,
+) -> Result<ClaudeCredentialStatus, AiRuntimeError> {
+    ensure_ai_settings_window(&window)?;
+    ai_runtime::delete_claude_api_key()
+}
+
+fn ensure_ai_settings_window(window: &tauri::WebviewWindow) -> Result<(), AiRuntimeError> {
+    if pebble_window_allows_ai(window) {
+        return Ok(());
+    }
+    Err(AiRuntimeError {
+        code: ai_runtime::AiRuntimeErrorCode::UnauthorizedWindow,
+        message: "AI settings are available only from the visible Pebble window.".to_string(),
+        recoverable: true,
+    })
 }
 
 #[tauri::command]
@@ -687,6 +726,9 @@ pub fn run() -> tauri::Result<()> {
             get_pebble_backdrop_color,
             get_ai_connection_status,
             connect_ai_provider,
+            get_claude_credential_status,
+            set_claude_api_key,
+            delete_claude_api_key,
             ask_selected_region,
             get_update_feed,
             get_smart_watch_status,

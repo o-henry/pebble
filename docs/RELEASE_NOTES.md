@@ -18,7 +18,9 @@ This is a contributor-facing pre-alpha demo build.
 - Config-only persistence for safe region settings.
 - Optional local OCR boundary, disabled by default.
 - API-key-free OpenAI account connection through a bundled Codex app-server.
-- Optional Claude Pro/Max connection through an installed official Claude CLI.
+- Claude access through an installed official Claude CLI subscription or an
+  optional Anthropic API key stored only in macOS Keychain, with the active
+  billing path shown in the UI.
 - Explicit one-shot selected-region questions using balanced medium-effort models,
   with provider, model, and generation-time metadata.
 - Local-only material-change alerts with a five-minute cooldown, orange menu-bar
@@ -38,7 +40,8 @@ This is a contributor-facing pre-alpha demo build.
 - Manual AI sends one crop only after **Send**; semantic Watch sends bounded
   before/after crops only after an opt-in local material-change gate.
 - No inherited API-key environment, browser cookie access, MCP, web search, or
-  webview shell permission.
+  webview shell permission. Optional Claude API credentials remain in macOS
+  Keychain and are never returned to the webview or written to app files.
 
 ### Known Limits
 
