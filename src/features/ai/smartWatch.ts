@@ -55,6 +55,16 @@ export function smartWatchIntervalLabel(minutes: SmartWatchIntervalMinutes): str
   return minutes === 60 ? "1 HOUR" : `${minutes} MIN`;
 }
 
+export function smartWatchIntervalAtOffset(
+  current: SmartWatchIntervalMinutes,
+  offset: number
+): SmartWatchIntervalMinutes {
+  const currentIndex = SMART_WATCH_INTERVAL_OPTIONS.indexOf(current);
+  const optionCount = SMART_WATCH_INTERVAL_OPTIONS.length;
+  const nextIndex = (currentIndex + offset % optionCount + optionCount) % optionCount;
+  return SMART_WATCH_INTERVAL_OPTIONS[nextIndex];
+}
+
 export function smartWatchTitle(status: SmartWatchStatus | null): string {
   if (!status) return "SEMANTIC SMART WATCH";
   return status.enabled

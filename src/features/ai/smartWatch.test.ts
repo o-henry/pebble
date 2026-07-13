@@ -6,6 +6,7 @@ import {
   rememberSmartWatchConsent,
   rememberSmartWatchInterval,
   smartWatchInterval,
+  smartWatchIntervalAtOffset,
   smartWatchTitle
 } from "./smartWatch";
 
@@ -44,5 +45,11 @@ describe("smart watch consent", () => {
         analysisIntervalMinutes: 60
       })
     ).toContain("1 HOUR");
+  });
+
+  it("wraps interval keyboard navigation in both directions", () => {
+    expect(smartWatchIntervalAtOffset(1, -1)).toBe(60);
+    expect(smartWatchIntervalAtOffset(60, 1)).toBe(1);
+    expect(smartWatchIntervalAtOffset(5, 2)).toBe(60);
   });
 });

@@ -26,6 +26,16 @@ fn real_capture_adapter_maps_invalid_region_to_recoverable_error() {
 
 #[cfg(target_os = "macos")]
 #[test]
+fn macos_capture_never_falls_back_to_the_current_screen_coordinates() {
+    let error = capture_real_region_once(region(10, 20, 300, 180))
+        .expect_err("unbound source window must fail closed");
+
+    assert_eq!(error.code, CaptureErrorCode::CaptureUnavailable);
+    assert!(error.message.contains("not pinned"));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 fn macos_capture_rect_uses_selected_region_dimensions() {
     let rect = platform_capture_test_support::capture_rect(&region(12, 34, 56, 78), 1.0);
 
@@ -55,6 +65,52 @@ fn macos_backdrop_capture_reads_only_windows_below_pebble() {
 
     assert_eq!(below_window, 1 << 2);
     assert_eq!(including_window, 1 << 3);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_source_binding_skips_a_small_overlay_and_pins_the_containing_window() {
+    let source = platform_capture_test_support::select_source_window(
+        (100.0, 100.0, 300.0, 180.0),
+        55,
+        &[
+            (10, 77, 0, 180.0, 140.0, 80.0, 80.0),
+            (20, 88, 0, 20.0, 20.0, 900.0, 700.0),
+        ],
+    );
+
+    assert_eq!(source, Some(20));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_source_binding_ignores_pebble_and_nonstandard_window_layers() {
+    let source = platform_capture_test_support::select_source_window(
+        (100.0, 100.0, 300.0, 180.0),
+        55,
+        &[
+            (10, 55, 0, 20.0, 20.0, 900.0, 700.0),
+            (20, 88, 2, 20.0, 20.0, 900.0, 700.0),
+            (30, 99, 0, 40.0, 40.0, 800.0, 600.0),
+        ],
+    );
+
+    assert_eq!(source, Some(30));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_source_binding_rejects_regions_that_span_multiple_windows() {
+    let source = platform_capture_test_support::select_source_window(
+        (100.0, 100.0, 500.0, 300.0),
+        55,
+        &[
+            (10, 77, 0, 100.0, 100.0, 250.0, 300.0),
+            (20, 88, 0, 350.0, 100.0, 250.0, 300.0),
+        ],
+    );
+
+    assert_eq!(source, None);
 }
 
 #[test]

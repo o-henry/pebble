@@ -4,9 +4,9 @@ use crate::{
     capture_lifecycle::CaptureTileMode,
     live_tile::{LiveTileCaptureRequest, MAIN_LIVE_TILE_ID},
     pebble_session::{
-        frame_delivery_is_current, position_pebble_away_from_region, should_reveal_window,
-        trusted_selection_request, PebbleSessionSnapshot, PebbleSessionState,
-        PEBBLE_WINDOW_MINIMIZABLE,
+        frame_delivery_is_current, position_pebble_away_from_region, require_source_window,
+        should_reveal_window, trusted_selection_request, PebbleSessionErrorCode,
+        PebbleSessionSnapshot, PebbleSessionState, PEBBLE_WINDOW_MINIMIZABLE,
     },
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
@@ -33,6 +33,13 @@ fn session_starts_without_selected_or_persisted_capture_data() {
     assert!(!snapshot.window_open);
     assert!(!snapshot.privacy_blank_active);
     assert_eq!(snapshot.revision, 0);
+}
+
+#[test]
+fn selected_regions_fail_closed_when_no_source_window_can_be_pinned() {
+    let error = require_source_window(None).expect_err("missing source window");
+
+    assert_eq!(error.code, PebbleSessionErrorCode::SourceWindowUnavailable);
 }
 
 #[test]

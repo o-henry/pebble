@@ -13,7 +13,10 @@ use crate::{
         AuthorizedLiveTileCapture, LiveTileCaptureRequest, LiveTileState, MAIN_LIVE_TILE_ID,
     },
     platform_capture, region_selection,
-    region_selection_types::{MonitorGeometry, PhysicalRegion, RegionSelectionRequest},
+    region_selection_types::{
+        MonitorGeometry, PhysicalRegion, RegionSelection, RegionSelectionRequest,
+        WindowCaptureTarget,
+    },
     region_selector_window::{
         monitor_identifier, region_selector_monitor_geometry, REGION_SELECTOR_LABEL,
     },
@@ -91,6 +94,7 @@ pub struct PebbleSessionError {
 #[serde(rename_all = "camelCase")]
 pub enum PebbleSessionErrorCode {
     InvalidRegion,
+    SourceWindowUnavailable,
     NoActivePebble,
     UnauthorizedWindow,
     WindowUnavailable,
@@ -105,16 +109,42 @@ impl PebbleSessionState {
             .map_err(|_| PebbleSessionError::state_unavailable())
     }
 
+    pub fn select_bound_region(
+        &self,
+        request: RegionSelectionRequest,
+    ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
+        let (mut selection, scale_factor) = validated_selection(request)?;
+        selection.region.source_window = Some(require_source_window(
+            platform_capture::bind_region_to_source_window(&selection.region, scale_factor),
+        )?);
+        self.store_selection(selection, scale_factor)
+    }
+
+    #[cfg(test)]
     pub fn select_region(
         &self,
         request: RegionSelectionRequest,
     ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
-        let scale_factor = request.monitor.scale_factor;
-        let mut selection = region_selection::select_region(request).map_err(|issue| {
-            PebbleSessionError::new(PebbleSessionErrorCode::InvalidRegion, issue.message)
-        })?;
-        selection.region.source_window =
-            platform_capture::bind_region_to_source_window(&selection.region, scale_factor);
+        let (mut selection, scale_factor) = validated_selection(request)?;
+        selection.region.source_window = Some(WindowCaptureTarget {
+            window_id: 1,
+            relative_x_millipoints: 0,
+            relative_y_millipoints: 0,
+            width_millipoints: u64::try_from(selection.region.width)
+                .unwrap_or_default()
+                .saturating_mul(1_000),
+            height_millipoints: u64::try_from(selection.region.height)
+                .unwrap_or_default()
+                .saturating_mul(1_000),
+        });
+        self.store_selection(selection, scale_factor)
+    }
+
+    fn store_selection(
+        &self,
+        selection: RegionSelection,
+        scale_factor: f64,
+    ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
         let mut data = self
             .data
             .lock()
@@ -327,6 +357,22 @@ impl PebbleSessionState {
     }
 }
 
+fn validated_selection(
+    request: RegionSelectionRequest,
+) -> Result<(RegionSelection, f64), PebbleSessionError> {
+    let scale_factor = request.monitor.scale_factor;
+    let selection = region_selection::select_region(request).map_err(|issue| {
+        PebbleSessionError::new(PebbleSessionErrorCode::InvalidRegion, issue.message)
+    })?;
+    Ok((selection, scale_factor))
+}
+
+pub(crate) fn require_source_window(
+    source_window: Option<WindowCaptureTarget>,
+) -> Result<WindowCaptureTarget, PebbleSessionError> {
+    source_window.ok_or_else(PebbleSessionError::source_window_unavailable)
+}
+
 fn increment_revision(snapshot: &mut PebbleSessionSnapshot) {
     snapshot.revision = snapshot.revision.saturating_add(1);
 }
@@ -403,7 +449,7 @@ pub fn confirm_region_selection(
     ensure_window(window, REGION_SELECTOR_LABEL)?;
     let monitor = region_selector_monitor_geometry(window)
         .map_err(|error| PebbleSessionError::window_unavailable(error.message))?;
-    let selected = state.select_region(trusted_selection_request(request, monitor))?;
+    let selected = state.select_bound_region(trusted_selection_request(request, monitor))?;
     let live_tile = app.state::<LiveTileState>();
     live_tile.close_tile(MAIN_LIVE_TILE_ID, selected.revision.saturating_sub(1));
     live_tile.set_privacy_blank(false, selected.revision);
@@ -770,6 +816,13 @@ impl PebbleSessionError {
 
     fn window_unavailable(message: impl Into<String>) -> Self {
         Self::new(PebbleSessionErrorCode::WindowUnavailable, message)
+    }
+
+    fn source_window_unavailable() -> Self {
+        Self::new(
+            PebbleSessionErrorCode::SourceWindowUnavailable,
+            "SELECT INSIDE ONE APP WINDOW SO PEBBLE CAN KEEP WATCHING THAT EXACT WINDOW.",
+        )
     }
 
     fn state_unavailable() -> Self {

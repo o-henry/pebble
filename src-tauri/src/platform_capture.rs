@@ -170,4 +170,13 @@ pub(crate) mod platform_capture_test_support {
     pub fn backdrop_rect(x: f64, y: f64, width: f64, height: f64) -> (f64, f64, f64, f64) {
         platform_capture_macos::test_backdrop_rect(x, y, width, height)
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn select_source_window(
+        selection: (f64, f64, f64, f64),
+        pebble_pid: i32,
+        windows: &[(u32, i32, i32, f64, f64, f64, f64)],
+    ) -> Option<u32> {
+        platform_capture_macos::test_select_source_window(selection, pebble_pid, windows)
+    }
 }

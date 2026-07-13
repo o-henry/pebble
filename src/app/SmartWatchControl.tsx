@@ -4,9 +4,7 @@ import {
   rememberSmartWatchConsent,
   rememberSmartWatchInterval,
   smartWatchInterval,
-  smartWatchIntervalLabel,
   smartWatchTitle,
-  SMART_WATCH_INTERVAL_OPTIONS,
   type SmartWatchIntervalMinutes,
   type SmartWatchStatus
 } from "../features/ai/smartWatch";
@@ -18,6 +16,7 @@ import {
 import { listenToSmartWatchStatus } from "../lib/events";
 import { errorMessage } from "./usePebbleSession";
 import type { AiProvider } from "../features/ai/regionQuestion";
+import { SmartWatchIntervalControl } from "./SmartWatchIntervalControl";
 
 export function SmartWatchControl({
   provider,
@@ -134,20 +133,11 @@ export function SmartWatchControl({
       >
         {status?.enabled ? "WATCHING" : "WATCH"}
       </button>
-      <select
-        className="smart-watch-control__interval"
-        aria-label="WATCH AI ANALYSIS INTERVAL"
-        title="WATCH AI ANALYSIS INTERVAL"
+      <SmartWatchIntervalControl
         value={intervalMinutes}
         disabled={busy}
-        onChange={(event) => selectInterval(event.currentTarget.value)}
-      >
-        {SMART_WATCH_INTERVAL_OPTIONS.map((minutes) => (
-          <option key={minutes} value={minutes}>
-            {smartWatchIntervalLabel(minutes)}
-          </option>
-        ))}
-      </select>
+        onChange={(minutes) => selectInterval(String(minutes))}
+      />
     </div>
   );
 }

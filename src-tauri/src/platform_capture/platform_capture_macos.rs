@@ -21,29 +21,18 @@ const MAX_BACKDROP_PIXELS: usize = 1_024;
 #[path = "platform_capture_macos_sys.rs"]
 mod platform_capture_macos_sys;
 
-pub(super) fn capture_region(region: &PhysicalRegion, scale_factor: f64) -> CaptureResult {
+pub(super) fn capture_region(region: &PhysicalRegion, _scale_factor: f64) -> CaptureResult {
+    let target = region.source_window.as_ref().ok_or_else(|| {
+        capture_unavailable(
+            region,
+            "The selected source window is not pinned. Select the region again.",
+        )
+    })?;
     if !preflight_screen_capture_access() {
         return Err(permission_denied(region));
     }
 
-    if let Some(target) = region.source_window.as_ref() {
-        return capture_source_window_region(region, target);
-    }
-
-    let image = unsafe {
-        CGWindowListCreateImage(
-            capture_rect(region, scale_factor),
-            K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY,
-            K_CG_NULL_WINDOW_ID,
-            K_CG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING,
-        )
-    };
-
-    let image = ScopedCfRef::new(image.cast())
-        .ok_or_else(|| capture_unavailable(region, "macOS returned no capture image."))?;
-
-    let bytes = unsafe { rgba_bytes_from_image(region, image.as_cg_image()) }?;
-    Ok(cropped_frame(region, bytes))
+    capture_source_window_region(region, target)
 }
 
 pub(super) fn source_window_for_region(
@@ -55,11 +44,7 @@ pub(super) fn source_window_for_region(
     }
 
     let selection = capture_rect(region, scale_factor);
-    let center = CGPoint {
-        x: selection.origin.x + selection.size.width / 2.0,
-        y: selection.origin.y + selection.size.height / 2.0,
-    };
-    let source = topmost_source_window(center)?;
+    let source = topmost_source_window(selection)?;
     let relative_x = selection.origin.x - source.bounds.origin.x;
     let relative_y = selection.origin.y - source.bounds.origin.y;
 
@@ -145,7 +130,7 @@ struct WindowInfo {
     bounds: CGRect,
 }
 
-fn topmost_source_window(point: CGPoint) -> Option<WindowInfo> {
+fn topmost_source_window(selection: CGRect) -> Option<WindowInfo> {
     let list = unsafe {
         CGWindowListCopyWindowInfo(
             K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS,
@@ -155,30 +140,35 @@ fn topmost_source_window(point: CGPoint) -> Option<WindowInfo> {
     let list = ScopedCfRef::new(list.cast())?;
     let count = unsafe { CFArrayGetCount(list.as_cf_array()) };
 
-    for index in 0..count {
+    let windows = (0..count).filter_map(|index| {
         let dictionary = unsafe { CFArrayGetValueAtIndex(list.as_cf_array(), index) };
-        let Some(info) = (unsafe { window_info_from_dictionary(dictionary.cast()) }) else {
-            continue;
-        };
-        if info.owner_pid != std::process::id() as i32
-            && info.layer == 0
-            && rect_contains_point(info.bounds, point)
-        {
-            return Some(WindowInfo {
-                window_id: info.window_id,
-                bounds: info.bounds,
-            });
-        }
-    }
-
-    None
+        unsafe { window_info_from_dictionary(dictionary.cast()) }
+    });
+    select_source_window(selection, std::process::id() as i32, windows)
 }
 
+#[derive(Clone, Copy)]
 struct RawWindowInfo {
     window_id: u32,
     owner_pid: i32,
     layer: i32,
     bounds: CGRect,
+}
+
+fn select_source_window(
+    selection: CGRect,
+    pebble_pid: i32,
+    windows: impl IntoIterator<Item = RawWindowInfo>,
+) -> Option<WindowInfo> {
+    windows.into_iter().find_map(|info| {
+        (info.owner_pid != pebble_pid
+            && info.layer == 0
+            && rect_contains_rect(info.bounds, selection))
+        .then_some(WindowInfo {
+            window_id: info.window_id,
+            bounds: info.bounds,
+        })
+    })
 }
 
 unsafe fn window_info_from_dictionary(dictionary: CFDictionaryRef) -> Option<RawWindowInfo> {
@@ -228,11 +218,11 @@ fn to_unsigned_millipoints(value: f64) -> Option<u64> {
     (scaled.is_finite() && scaled > 0.0 && scaled <= u64::MAX as f64).then_some(scaled as u64)
 }
 
-fn rect_contains_point(rect: CGRect, point: CGPoint) -> bool {
-    point.x >= rect.origin.x
-        && point.y >= rect.origin.y
-        && point.x < rect.origin.x + rect.size.width
-        && point.y < rect.origin.y + rect.size.height
+fn rect_contains_rect(outer: CGRect, inner: CGRect) -> bool {
+    inner.origin.x >= outer.origin.x
+        && inner.origin.y >= outer.origin.y
+        && inner.origin.x + inner.size.width <= outer.origin.x + outer.size.width
+        && inner.origin.y + inner.size.height <= outer.origin.y + outer.size.height
 }
 
 pub(super) fn capture_window_backdrop_color(
@@ -401,59 +391,6 @@ fn capture_rect(region: &PhysicalRegion, scale_factor: f64) -> CGRect {
     }
 }
 
-unsafe fn rgba_bytes_from_image(
-    region: &PhysicalRegion,
-    image: CGImageRef,
-) -> Result<Vec<u8>, CaptureError> {
-    let width = CGImageGetWidth(image);
-    let height = CGImageGetHeight(image);
-    let expected_len = byte_len(region)?;
-
-    if width != region.width as usize || height != region.height as usize {
-        return Err(capture_unavailable(
-            region,
-            "macOS returned a capture image with unexpected dimensions.",
-        ));
-    }
-
-    if CGImageGetBitsPerPixel(image) != 32
-        || !is_supported_bgra_bitmap_info(CGImageGetBitmapInfo(image))
-    {
-        return Err(unsupported_format(region));
-    }
-
-    let provider = CGImageGetDataProvider(image);
-    if provider.is_null() {
-        return Err(capture_unavailable(
-            region,
-            "macOS capture image did not include a data provider.",
-        ));
-    }
-
-    let data = ScopedCfRef::new(CGDataProviderCopyData(provider).cast()).ok_or_else(|| {
-        capture_unavailable(
-            region,
-            "macOS capture image did not include readable pixel data.",
-        )
-    })?;
-
-    copy_bgra_rows_to_rgba(
-        CFDataGetBytePtr(data.as_cf_data()),
-        CFDataGetLength(data.as_cf_data()),
-        CGImageGetBytesPerRow(image),
-        width,
-        height,
-        expected_len,
-    )
-    .map_err(|code| {
-        capture_error(
-            code,
-            &region.monitor_id,
-            "macOS capture pixel data was not usable.",
-        )
-    })
-}
-
 fn is_supported_bgra_bitmap_info(bitmap_info: u32) -> bool {
     let alpha = bitmap_info & K_CG_BITMAP_ALPHA_INFO_MASK;
     let byte_order = bitmap_info & K_CG_BITMAP_BYTE_ORDER_MASK;
@@ -467,6 +404,7 @@ fn is_supported_bgra_bitmap_info(bitmap_info: u32) -> bool {
         )
 }
 
+#[cfg(test)]
 fn copy_bgra_rows_to_rgba(
     source: *const u8,
     source_len: isize,
@@ -522,14 +460,6 @@ fn capture_unavailable(region: &PhysicalRegion, message: &'static str) -> Captur
         CaptureErrorCode::CaptureUnavailable,
         &region.monitor_id,
         message,
-    )
-}
-
-fn unsupported_format(region: &PhysicalRegion) -> CaptureError {
-    capture_error(
-        CaptureErrorCode::UnsupportedPixelFormat,
-        &region.monitor_id,
-        "macOS returned a capture pixel format Pebble cannot safely convert.",
     )
 }
 
@@ -620,4 +550,36 @@ pub(super) fn test_backdrop_rect(x: f64, y: f64, width: f64, height: f64) -> (f6
         rect.size.width,
         rect.size.height,
     )
+}
+
+#[cfg(test)]
+pub(super) fn test_select_source_window(
+    selection: (f64, f64, f64, f64),
+    pebble_pid: i32,
+    windows: &[(u32, i32, i32, f64, f64, f64, f64)],
+) -> Option<u32> {
+    let selection = CGRect {
+        origin: CGPoint {
+            x: selection.0,
+            y: selection.1,
+        },
+        size: CGSize {
+            width: selection.2,
+            height: selection.3,
+        },
+    };
+    let windows =
+        windows.iter().map(
+            |&(window_id, owner_pid, layer, x, y, width, height)| RawWindowInfo {
+                window_id,
+                owner_pid,
+                layer,
+                bounds: CGRect {
+                    origin: CGPoint { x, y },
+                    size: CGSize { width, height },
+                },
+            },
+        );
+
+    select_source_window(selection, pebble_pid, windows).map(|window| window.window_id)
 }
