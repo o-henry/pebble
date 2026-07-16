@@ -16,15 +16,16 @@ This is a contributor-facing pre-alpha demo build.
 - Always-on-top low-FPS live tile with pause, resume, privacy blank, native
   close, and direct menu-bar reopening.
 - Config-only persistence for safe region settings.
-- Optional local OCR boundary, disabled by default.
+- Ephemeral Apple Vision OCR behind the stable Watch change gate.
 - API-key-free OpenAI account connection through a bundled Codex app-server.
 - Claude access through an installed official Claude CLI subscription or an
   optional Anthropic API key stored only in macOS Keychain, with the active
   billing path shown in the UI.
-- Explicit one-shot selected-region questions using balanced medium-effort models,
-  with provider, model, and generation-time metadata.
-- Local-only material-change alerts with a five-minute cooldown, orange menu-bar
-  state, and native notifications.
+- Explicit one-shot selected-region questions using a user-selected,
+  account-validated medium-effort model, with provider, model, and
+  generation-time metadata.
+- Intent-aware material-change alerts with selectable 1, 5, 30, or 60 minute
+  maximum AI cadence, orange menu-bar state, and native notifications.
 - Desktop-wide product positioning that covers browsers and native apps rather
   than browser content alone.
 - Manual smoke checklist and issue templates.
@@ -49,4 +50,5 @@ This is a contributor-facing pre-alpha demo build.
 - No Homebrew formula yet.
 - Multi-monitor selection is still limited to the display containing the main
   window.
-- Production local OCR adapter is not wired yet.
+- Deterministic local text and numeric Watch conditions are not wired yet; OCR
+  currently supports the bounded semantic comparison.

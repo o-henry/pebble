@@ -259,16 +259,20 @@ The current architecture already provides valuable foundations:
 - Explicit provider selection and read-only AI instructions.
 - No frame-history product.
 
-The primary usability gap is that Watch knows **where** to look and **whether**
-pixels changed, but not **what the user is waiting for**. Generic change
-notifications create three problems:
+Watch now freezes the user's composer text as an explicit intent, runs Apple
+Vision OCR after a stable local candidate, and asks the selected model for a
+typed match decision and confidence. This establishes the core interaction,
+but deterministic local intent rules are still missing. Until text and numeric
+conditions can be resolved locally, semantic candidates still require AI.
+
+The remaining reliability problems are:
 
 1. Harmless animation, timestamps, cursors, or progress can produce noise.
 2. A meaningful state can be visually small and fail a generic threshold.
 3. AI must infer the user's goal repeatedly, increasing cost and uncertainty.
 
-The production local OCR adapter is also not implemented. That prevents Pebble
-from evaluating common text and number conditions cheaply on the Mac.
+The production OCR adapter is implemented, but its text currently supports the
+semantic model rather than compiling directly into local text and number rules.
 
 ## Candidate Product Kicks
 
@@ -458,9 +462,17 @@ distribution without turning Pebble into a template marketplace.
 
 ## Delivery Order
 
+Implemented foundation as of July 2026:
+
+- Public Watch and Ask documentation reconciled with current behavior.
+- Production Apple Vision OCR behind the stable-change and interval gates.
+- One-sentence intent captured from the composer and frozen when Watch starts.
+- User-selected OpenAI and Claude models validated again in the Rust backend.
+- Typed matched/unmatched model result with confidence; unmatched candidates do
+  not notify.
+
 ### P0 - Trustworthy Public Build
 
-- Reconcile all public Watch and Ask documentation with current behavior.
 - Resolve provider authentication policy for public distribution.
 - Ship a signed, notarized, directly downloadable release.
 - Publish a synthetic demo and permission explanation.
@@ -468,17 +480,15 @@ distribution without turning Pebble into a template marketplace.
 
 ### P1 - Local Understanding Foundation
 
-- Implement the production Apple Vision OCR adapter.
-- Replace the single visual score with the local signal ensemble.
 - Add synthetic Watch benchmarks and resource budgets.
 - Add typed conditions for text, numbers, progress, and state words.
 
 ### P2 - Intent Watch MVP
 
-- Add the one-sentence intent input and reviewable compiled rule.
+- Add a reviewable compiled local rule for the captured one-sentence intent.
 - Evaluate deterministic conditions locally.
 - Escalate only ambiguous semantic candidates to the chosen AI provider.
-- Add matched-intent notifications, dedupe, confidence, and ephemeral receipts.
+- Add semantic fingerprint dedupe and an ephemeral decision receipt in the UI.
 
 ### P3 - Adoption Loop
 

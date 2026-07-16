@@ -23,7 +23,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("5");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("6");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -43,7 +43,8 @@ describe("smart watch consent", () => {
         enabled: true,
         analysesCompleted: 12,
         analysisIntervalMinutes: 60,
-        model: "gpt-5.6-terra"
+        model: "gpt-5.6-terra",
+        customIntent: true
       })
     ).toContain("1 HOUR");
   });

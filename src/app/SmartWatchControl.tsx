@@ -21,6 +21,7 @@ import { SmartWatchIntervalControl } from "./SmartWatchIntervalControl";
 export function SmartWatchControl({
   provider,
   model,
+  intent,
   disabled,
   privacyBlankActive,
   onBusyChange,
@@ -28,6 +29,7 @@ export function SmartWatchControl({
 }: {
   provider: AiProvider;
   model: string;
+  intent: string;
   disabled: boolean;
   privacyBlankActive: boolean;
   onBusyChange: (busy: boolean) => void;
@@ -80,6 +82,7 @@ export function SmartWatchControl({
         enabled,
         provider,
         model,
+        intent,
         globalThis.navigator.language,
         intervalMinutes
       ));
@@ -89,7 +92,7 @@ export function SmartWatchControl({
       setBusy(false);
       onBusyChange(false);
     }
-  }, [acceptStatus, intervalMinutes, model, onBusyChange, onError, provider]);
+  }, [acceptStatus, intent, intervalMinutes, model, onBusyChange, onError, provider]);
 
   const updateInterval = useCallback(async (
     nextInterval: SmartWatchIntervalMinutes

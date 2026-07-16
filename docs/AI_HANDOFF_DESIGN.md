@@ -7,12 +7,13 @@ semantic Watch is a separate opt-in, locally gated path.
 ## User Flow
 
 ```text
-select region -> choose provider -> connect once -> type question -> Ask -> concise answer
+select region -> choose provider and model -> connect once -> type question -> Send -> concise answer
 ```
 
 The **Send** action is the manual-question consent boundary. Pebble does not
 call AI at startup. Watch may call the selected provider only after explicit
-opt-in, a local material-change gate, cooldown, and session cap.
+opt-in, a stable local material-change gate, Apple Vision OCR, and the selected
+1, 5, 30, or 60 minute analysis interval.
 
 ## Runtime
 
@@ -81,18 +82,20 @@ thread file.
 
 - Question: 1 to 1,000 Unicode characters.
 - Image: the user-selected display region, with no application-level size cap.
-- OpenAI model: prefer `gpt-5.6-terra`, allow `gpt-5.6-luna` only as fallback.
-- Claude model: Claude Sonnet 5.
+- OpenAI models: user-selected Sol, Terra, or Luna when the connected account
+  reports the model as image-capable.
+- Claude subscription models: user-selected Sonnet or Opus aliases.
+- Claude API models: user-selected Sonnet or Opus model IDs returned by the
+  fixed Anthropic models endpoint.
 - Reasoning effort: `medium`.
 - Reasoning summary: disabled.
 - Answer: at most 4,000 Unicode characters.
 - Concurrency: one connection or question operation at a time.
 - Conversation: a new ephemeral thread for every question.
 
-If neither supported OpenAI model is available, the official Claude CLI is
-unavailable, or the configured Claude API key cannot use Sonnet 5, Pebble
-reports that condition. It does not silently fall back to mini, Haiku, another
-Claude model, or a different authentication path.
+If a selected model is unavailable, the official Claude CLI is unavailable,
+or the configured Claude API key cannot use the selected model, Pebble reports
+that condition. It does not silently switch models or authentication paths.
 
 ## Tool Denial
 
@@ -128,7 +131,7 @@ The operation fails closed when:
 - The sidecar exits, times out, or returns invalid protocol data.
 - No supported balanced image model exists.
 - The model attempts any action outside image reasoning.
-- The saved Claude API key is rejected, rate-limited, or cannot access Sonnet 5.
+- The saved Claude API key is rejected, rate-limited, or cannot access the selected model.
 
 Errors are recoverable and do not include account email, auth URLs, tokens,
 screen bytes, prompts, sidecar stderr, or local paths.
@@ -139,7 +142,8 @@ Automated tests cover:
 
 - Question normalization and limits.
 - Official OAuth host validation.
-- Terra-first model selection with Luna-only fallback and mini rejection.
+- Account-reported OpenAI model selection and backend revalidation without silent fallback.
+- Claude subscription alias and API model-list validation.
 - Claude stream parsing, model/duration metadata, and tool-use rejection.
 - Claude API payload boundaries, HTTP error sanitization, and tool-use rejection.
 - Claude API-key format limits and explicit subscription/API billing labels.
@@ -150,6 +154,8 @@ Automated tests cover:
 - Reselection and display reconfiguration invalidation.
 - Webview permission denial for shell and opener plugins.
 - In-memory frame storage policy.
+- Typed Watch intent matching, confidence validation, and unmatched-result suppression.
+- Ephemeral Apple Vision OCR with prompt-injection-resistant boundaries.
 
 The manual smoke checklist covers OAuth completion and one real selected-region
 question on macOS.

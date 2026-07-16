@@ -191,8 +191,9 @@ Never store:
 
 ### OcrEngine
 
-Future optional adapter. It must be local and run only after local change
-detection or explicit user action.
+The macOS adapter uses Apple Vision locally after a stable Watch change
+candidate. Recognized text is ephemeral, bounded, and treated as untrusted
+supporting evidence; it is never persisted or used as an instruction source.
 
 ### AiRuntime
 
@@ -209,7 +210,8 @@ Responsibilities:
 - Complete official provider login without browser cookie access.
 - Capture the backend-selected region once per visible **Send** action.
 - Encode the crop to an in-memory PNG data URL.
-- Select an image-capable balanced provider model at medium reasoning effort.
+- Let the user select an available image-capable provider model, then validate
+  that choice again in Rust before each medium-effort request.
 - Create an ephemeral read-only thread and reject all tool activity.
 - Return a bounded text answer without persistence.
 

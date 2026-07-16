@@ -28,6 +28,10 @@ fn ocr_is_disabled_by_default() {
     assert!(outcome.text.is_none());
     assert_eq!(call_count.get(), 0);
     assert!(!local_ocr_status().enabled_by_default);
+    assert_eq!(
+        local_ocr_status().local_adapter_available,
+        cfg!(target_os = "macos")
+    );
 }
 
 #[test]

@@ -11,7 +11,7 @@ use crate::{
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
     },
-    smart_watch::{SmartWatchState, SMART_WATCH_CONSENT_VERSION},
+    smart_watch::{SetSmartWatchRequest, SmartWatchState, SMART_WATCH_CONSENT_VERSION},
 };
 use tauri::webview::PageLoadEvent;
 
@@ -82,13 +82,16 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
     let watch = SmartWatchState::default();
     watch
         .configure(
-            true,
             opened.revision,
-            SMART_WATCH_CONSENT_VERSION,
-            AiProvider::OpenAi,
-            "gpt-5.6-terra".into(),
-            "ko-KR".into(),
-            5,
+            SetSmartWatchRequest {
+                enabled: true,
+                consent_version: SMART_WATCH_CONSENT_VERSION,
+                provider: AiProvider::OpenAi,
+                model: "gpt-5.6-terra".into(),
+                intent: "Alert me when the build fails".into(),
+                locale: "ko-KR".into(),
+                analysis_interval_minutes: 5,
+            },
         )
         .expect("enabled watch");
 

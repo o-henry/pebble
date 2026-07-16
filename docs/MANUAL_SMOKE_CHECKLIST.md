@@ -76,17 +76,21 @@ npm run tauri:build
   removes it and restores the CLI subscription path.
 - An invalid or unauthorized saved key shows a generic recoverable error and
   never silently falls back to subscription billing or another model.
-- Claude subscription mode uses Pro/Max login, Sonnet 5 medium effort, no tools,
-  no MCP, one turn, and no image temp file.
+- Claude subscription mode uses the selected Sonnet or Opus alias at medium
+  effort, no tools, no MCP, one turn, and no image temp file.
 - Claude API mode calls only fixed Anthropic HTTPS endpoints, follows no
   redirects, defines no tools, and rejects tool-use responses.
 - One question sends one selected crop; no full-screen or temporary image file
   is created.
 - Privacy blank, reselection, or display reconfiguration before upload cancels
   the request.
-- OpenAI prefers Terra at medium effort, falls back only to Luna, and rejects
-  mini-class fallback.
-- OCR remains disabled by default.
+- OpenAI lists only supported image-capable Sol, Terra, and Luna models reported
+  by the connected account; selecting a different model never silently falls back.
+- Watch runs Apple Vision OCR only after a stable material-change candidate and
+  keeps OCR text ephemeral.
+- Watch respects each 1, 5, 30, and 60 minute interval without a fixed session cap.
+- A custom composer intent suppresses notifications and journal entries when
+  the typed Watch result is unmatched.
 - Core monitoring adds no network requirement.
 
 ## Demo GIF Checks

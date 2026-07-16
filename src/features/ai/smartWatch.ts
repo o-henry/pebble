@@ -1,4 +1,4 @@
-export const SMART_WATCH_CONSENT_VERSION = 5;
+export const SMART_WATCH_CONSENT_VERSION = 6;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -13,6 +13,7 @@ export interface SmartWatchStatus {
   analysesCompleted: number;
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
   model: string;
+  customIntent: boolean;
 }
 
 interface ConsentStorage {

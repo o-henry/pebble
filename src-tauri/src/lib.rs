@@ -58,7 +58,7 @@ use capture_backend::{
 };
 use claude_credentials::ClaudeCredentialStatus;
 use live_tile::{LiveTileCaptureRequest, LiveTileCaptureResponse, LiveTileState};
-use ocr_engine::OcrStatus;
+use ocr_engine::{LocalOcrAdapter, OcrEngine, OcrStatus};
 use pebble_session::{PebbleSessionError, PebbleSessionSnapshot, PebbleSessionState};
 use pebble_store::{PebbleStore, PebbleStoreDocument, PebbleStoreError};
 use performance_limits::{PerformanceLimitRequest, PerformanceLimits, PerformanceValidation};
@@ -301,22 +301,9 @@ async fn ask_selected_region(
     window: tauri::WebviewWindow,
     runtime: tauri::State<'_, AiRuntimeState>,
     session: tauri::State<'_, PebbleSessionState>,
-    provider: AiProvider,
-    model: String,
-    question: String,
-    locale: String,
+    request: ai_runtime::AskSelectedRegionRequest,
 ) -> Result<AiAnswer, AiRuntimeError> {
-    ai_runtime::ask_selected_region(
-        &app,
-        &window,
-        runtime.inner(),
-        session.inner(),
-        provider,
-        model,
-        question,
-        locale,
-    )
-    .await
+    ai_runtime::ask_selected_region(&app, &window, runtime.inner(), session.inner(), request).await
 }
 
 #[tauri::command]
@@ -367,23 +354,17 @@ fn set_smart_watch(
 
     let enabled = request.enabled;
     let provider = request.provider;
+    let model = request.model.clone();
+    let custom_intent = !request.intent.trim().is_empty();
     let analysis_interval_minutes = request.analysis_interval_minutes;
-    let status = state.configure(
-        request.enabled,
-        snapshot.revision,
-        request.consent_version,
-        request.provider,
-        request.model,
-        request.locale,
-        analysis_interval_minutes,
-    )?;
+    let status = state.configure(snapshot.revision, request)?;
     monitoring.reset();
     smart_watch::emit_status(&app, status.clone());
     if enabled {
         activity_feed::record_watch(
             &app,
             activity_feed.inner(),
-            &watch_started_log(provider, analysis_interval_minutes),
+            &watch_started_log(provider, &model, custom_intent, analysis_interval_minutes),
         );
     }
     Ok(status)
@@ -544,17 +525,17 @@ fn start_background_watch(app: AppHandle) {
                             let pending = pending_analysis
                                 .take()
                                 .expect("pending analysis was checked above");
-                            schedule_watch_analysis(
-                                app.clone(),
-                                app.state::<AiRuntimeState>().inner().clone(),
-                                app.state::<PebbleSessionState>().inner().clone(),
-                                watch.clone(),
+                            schedule_watch_analysis(WatchAnalysisJob {
+                                app: app.clone(),
+                                runtime: app.state::<AiRuntimeState>().inner().clone(),
+                                session: app.state::<PebbleSessionState>().inner().clone(),
+                                watch: watch.clone(),
                                 revision,
                                 context,
-                                pending.kind,
-                                pending.previous_frame,
-                                pending.current_frame,
-                            );
+                                kind: pending.kind,
+                                previous_frame: pending.previous_frame,
+                                current_frame: pending.current_frame,
+                            });
                             smart_watch::emit_status(&app, watch.status());
                         }
                     }
@@ -614,13 +595,24 @@ async fn capture_background_watch_frame(
     Ok((revision, frame))
 }
 
-fn watch_started_log(provider: AiProvider, analysis_interval_minutes: u16) -> String {
+fn watch_started_log(
+    provider: AiProvider,
+    model: &str,
+    custom_intent: bool,
+    analysis_interval_minutes: u16,
+) -> String {
     let provider = match provider {
         AiProvider::OpenAi => "OPENAI",
         AiProvider::Claude => "CLAUDE",
     };
+    let intent = if custom_intent {
+        "CUSTOM INTENT"
+    } else {
+        "GENERAL MEANINGFUL CHANGE"
+    };
     format!(
-        "WATCH STARTED · {provider} · LOCAL CHECK EVERY 5S · AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
+        "WATCH STARTED · {provider} · {} · {intent} · LOCAL CHECK EVERY 5S · APPLE VISION OCR + AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
+        model.to_ascii_uppercase(),
         watch_interval_label(analysis_interval_minutes)
     )
 }
@@ -640,8 +632,7 @@ fn watch_interval_label(minutes: u16) -> String {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn schedule_watch_analysis(
+struct WatchAnalysisJob {
     app: tauri::AppHandle,
     runtime: AiRuntimeState,
     session: PebbleSessionState,
@@ -651,8 +642,38 @@ fn schedule_watch_analysis(
     kind: monitoring::VisualChangeKind,
     previous_frame: capture_backend::CroppedFramePayload,
     current_frame: capture_backend::CroppedFramePayload,
-) {
+}
+
+fn schedule_watch_analysis(job: WatchAnalysisJob) {
     tauri::async_runtime::spawn(async move {
+        let WatchAnalysisJob {
+            app,
+            runtime,
+            session,
+            watch,
+            revision,
+            context,
+            kind,
+            previous_frame,
+            current_frame,
+        } = job;
+        let previous_ocr_frame = previous_frame.clone();
+        let current_ocr_frame = current_frame.clone();
+        let (previous_text, current_text) = tauri::async_runtime::spawn_blocking(move || {
+            let engine = LocalOcrAdapter;
+            (
+                engine
+                    .recognize_text(&previous_ocr_frame)
+                    .ok()
+                    .filter(|text| !text.trim().is_empty()),
+                engine
+                    .recognize_text(&current_ocr_frame)
+                    .ok()
+                    .filter(|text| !text.trim().is_empty()),
+            )
+        })
+        .await
+        .unwrap_or((None, None));
         let result = ai_runtime::analyze_watch_change(
             &app,
             &runtime,
@@ -661,8 +682,11 @@ fn schedule_watch_analysis(
                 revision,
                 provider: context.provider,
                 model: context.model,
+                intent: context.intent,
                 locale: context.locale,
                 local_signal: kind.summary(),
+                previous_text,
+                current_text,
                 previous_frame,
                 current_frame,
             },
@@ -675,10 +699,14 @@ fn schedule_watch_analysis(
                 if !accepted {
                     return;
                 }
+                if !analysis.matched {
+                    return;
+                }
                 menu_bar::set_attention(&app, true);
                 let title = format!(
-                    "PEBBLE WATCH · {} · {:.1}S",
+                    "PEBBLE WATCH · {} · {} · {:.1}S",
                     analysis.model.to_ascii_uppercase(),
+                    analysis.confidence.to_ascii_uppercase(),
                     analysis.duration_ms as f64 / 1_000.0
                 );
                 let _ = app
@@ -688,8 +716,9 @@ fn schedule_watch_analysis(
                     .body(&analysis.summary)
                     .show();
                 let log = compact_watch_log(format!(
-                    "{} · {:.1}S · {}",
+                    "{} · {} · {:.1}S · {}",
                     analysis.model.to_ascii_uppercase(),
+                    analysis.confidence.to_ascii_uppercase(),
                     analysis.duration_ms as f64 / 1_000.0,
                     analysis.summary
                 ));
@@ -863,11 +892,12 @@ mod tests {
 
     #[test]
     fn watch_start_log_explains_local_cadence_and_ai_gate() {
-        let log = watch_started_log(AiProvider::OpenAi, 30);
+        let log = watch_started_log(AiProvider::OpenAi, "gpt-5.6-terra", true, 30);
 
         assert!(log.contains("OPENAI"));
         assert!(log.contains("LOCAL CHECK EVERY 5S"));
-        assert!(log.contains("AI AFTER A MATERIAL CHANGE"));
+        assert!(log.contains("APPLE VISION OCR + AI AFTER A MATERIAL CHANGE"));
+        assert!(log.contains("CUSTOM INTENT"));
         assert!(log.contains("30 MIN"));
         assert_eq!(WATCH_CAPTURE_INTERVAL, std::time::Duration::from_secs(5));
     }

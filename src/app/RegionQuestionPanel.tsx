@@ -146,6 +146,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         connection={connection}
         provider={provider}
         model={model}
+        watchIntent={normalizedQuestion ?? ""}
         disabled={disabled || asking || connecting}
         privacyBlankActive={privacyBlankActive}
         onProviderChange={setProvider}

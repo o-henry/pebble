@@ -1,9 +1,10 @@
 # Pebble
 
-> Select anywhere on your desktop. Keep it visible. Get local change alerts.
-> Ask AI only when you choose.
+> A free, open-source AI watch for anything visible on your Mac.
+> Point at a region, say what matters, and let Pebble tell you when it happens.
 
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
+[![Price](https://img.shields.io/badge/price-free%20forever-15803d)](#free-and-open)
 [![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
 [![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-ai)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -11,6 +12,13 @@
 Pebble is a local-first desktop utility for the tiny parts of your screen you
 keep checking: build logs, queues, upload progress, render jobs, dashboards,
 timers, status rows, and other small visual states.
+
+## Free And Open
+
+Pebble is free forever, MIT licensed, and has no paid tier, account, telemetry,
+or Pebble cloud. The source is public so its capture, storage, and AI boundaries
+can be inspected. Connected AI providers may count usage against their own
+subscription or API billing; Pebble itself does not charge for that access.
 
 **Pebble is not a browser extension.** It works at the desktop layer, so the
 region can come from a browser, terminal, IDE, native app, game, simulator,
@@ -59,8 +67,12 @@ Implemented:
   closed, deleted.
 - Local visual diff engine with cooldown and one small in-memory sample per
   tile.
-- Explicit **Watch** mode with local prefiltering, a five-minute change
-  cooldown, and at most six semantic analyses per app session.
+- Explicit **Watch** mode with local prefiltering and a user-selected maximum AI
+  cadence of 1, 5, 30, or 60 minutes. There is no fixed session analysis cap.
+- Intent Watch: text in the AI composer becomes the condition Watch evaluates;
+  an empty composer uses a general meaningful-change intent.
+- Production Apple Vision OCR runs only after a stable material-change candidate
+  and remains ephemeral in memory.
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
 - Collapsible Updates feed whose semantic Watch summaries are appended to one
@@ -68,18 +80,18 @@ Implemented:
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
-- Optional local OCR service boundary, disabled by default.
 - API-key-free OpenAI account connection through the bundled Codex app-server.
 - Claude access through either an installed official Claude CLI subscription or
   an optional Anthropic API key stored only in macOS Keychain, without bundling
   another large runtime.
-- Explicit selected-region image questions using balanced image models at
-  medium reasoning effort, with model and generation-time metadata.
+- User-selectable image models: OpenAI Sol, Terra, or Luna when available to the
+  connected account; Claude Sonnet or Opus through the active access path.
+- Explicit selected-region image questions at medium reasoning effort, with
+  model and generation-time metadata.
 
 Not shipped yet:
 
 - Signed installer or Homebrew formula.
-- Production local OCR adapter.
 - Telemetry, cloud sync, browser automation, or website session automation.
 
 ## Principles
@@ -90,7 +102,7 @@ Not shipped yet:
 | Visible by design | Active capture must have a visible tile or visible status. |
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
-| Local first | Diff runs locally now; future OCR and AI handoff must stay behind local gates. |
+| Local first | Visual filtering and Apple Vision OCR run locally; AI handoff stays behind those gates. |
 | Watch is opt-in | Startup explains the scope; every new region starts with Watch off. |
 | AI is bounded | Manual AI uses **Send**; Watch AI requires opt-in and only runs after a local material-change gate. |
 | Instant privacy | Privacy blank stops capture loops, not just the UI. |
@@ -100,7 +112,8 @@ Not shipped yet:
 Pebble should be safe to explain in one sentence:
 
 > It watches only the small region you pin, filters changes locally, and sends
-> before/after crops only when you explicitly enable semantic Watch.
+> before/after crops only after you explicitly enable Watch and a stable change
+> reaches the selected analysis interval.
 
 Never persisted:
 
@@ -131,7 +144,7 @@ After selecting a region:
 
 1. Toggle the **AI** button in the Pebble toolbar.
 2. Choose **OpenAI** or **Claude**.
-3. Connect the provider. Claude uses its CLI subscription by default, or you can
+3. Choose an available model, then connect the provider. Claude uses its CLI subscription by default, or you can
    add an Anthropic API key from the Claude access row.
 4. Enter a question and press **Send**.
 5. Pebble captures the backend-authorized crop once, encodes it in memory,
@@ -148,9 +161,10 @@ the UI labels the path **API Billing**; API usage is billed separately by
 Anthropic. An invalid saved key fails visibly instead of silently switching to
 the subscription. Removing it returns Claude to subscription mode.
 
-Pebble prefers `gpt-5.6-terra` at medium effort, permits `gpt-5.6-luna` only as
-its OpenAI fallback, and uses Claude Sonnet 5 at medium effort. It never falls
-back to mini or Haiku automatically.
+Pebble defaults to `gpt-5.6-terra` and Claude Sonnet at medium effort. Users can
+choose Sol, Terra, or Luna when the connected OpenAI account exposes them, and
+Sonnet or Opus when the active Claude access path exposes them. Pebble never
+falls back to mini or Haiku automatically.
 
 Pebble does not read browser cookies, automate an AI website, reuse another
 app's tokens, use MCP, or stream screen images continuously.
@@ -164,15 +178,18 @@ launch, a native notification discloses that:
 - Watch cannot follow URLs, browser sessions, other windows, or the full screen.
 - A material change sends only the previous and current selected-region crops
   to the chosen provider.
-- Analyses are capped at six per app session and have a five-minute cooldown.
+- Apple Vision OCR reads text locally only after a stable material change. OCR
+  output is never written to disk.
+- AI runs no more often than the selected 1, 5, 30, or 60 minute interval. There
+  is no fixed session count cap.
 - Pause, Hide, privacy blank, close, and reselection stop monitoring; a newly
   selected region requires Watch to be enabled again.
 
-OpenAI Watch requires gpt-5.6-terra at medium effort and never falls back to a
-lower model. Claude Watch uses Sonnet 5. Tools, MCP, shell, files, and
-web search remain disabled. The AI compares before/after crops, describes the
-visible change and uncertainty, and writes the model and generation time. It
-uses the same explicit Claude API-key or subscription path shown in the UI.
+Watch freezes the selected provider, model, and current composer text when it
+starts. The model returns a typed match decision, compact summary, and
+low/medium/high confidence. Pebble notifies only matched changes. Tools, MCP,
+shell, files, and web search remain disabled. Watch uses the same explicit
+Claude API-key or subscription path shown in the UI.
 
 ## Adaptive Background
 
@@ -191,9 +208,10 @@ is never persisted, included in Updates, or sent to AI.
 4. Drag over a small region in any visible browser or native desktop app.
 5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
 6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
-7. Toggle **AI**, then press **Watch** for local change alerts. Watch never
-   uploads the region.
-8. Choose a provider, type a question, and press **Send** when cloud analysis is
+7. Toggle **AI**, type what matters, choose a model and interval, then press
+   **Watch**. Stable candidate changes may send one before/after pair to the
+   selected provider; unchanged frames stay local.
+8. Choose a provider, type a question, and press **Send** when one-shot analysis is
    wanted. This sends one fresh crop only for that request.
 
 Pebble captures only the selected crop and does not save frame history. Live
@@ -259,9 +277,9 @@ Key Rust boundaries:
 - `CaptureScheduler`: task/buffer ownership.
 - `DiffEngine`: local visual change scoring.
 - `PebbleStore`: config-only persistence.
-- `OcrEngine`: optional local OCR boundary.
-- `AiRuntime`: isolated AI auth, balanced-model selection, one-shot image
-  questions, and response limits.
+- `OcrEngine`: ephemeral Apple Vision text recognition behind the Watch gate.
+- `AiRuntime`: isolated AI auth, account-validated model selection, one-shot
+  image questions, intent matching, and response limits.
 
 ## Contributing
 

@@ -24,7 +24,7 @@ Default behavior:
 
 - Capture selected regions locally.
 - Run diff locally.
-- Run OCR locally when OCR exists.
+- Run Apple Vision OCR locally after a stable Watch candidate.
 - Notify locally.
 - Store config locally.
 
@@ -96,9 +96,10 @@ AI access is explicit, narrow in scope, and cheap by design:
   rejects any tool-use response block.
 - A configured key takes precedence; authentication failures are shown and do
   not silently switch to a subscription or another model.
-- Pebble prefers `gpt-5.6-terra`, permits only `gpt-5.6-luna` as an OpenAI
-  fallback, and uses Claude Sonnet 5. All run at medium effort; mini and Haiku
-  are rejected as automatic fallbacks.
+- Pebble lets the user choose an image-capable model reported by the connected
+  account: OpenAI Sol, Terra, or Luna, and Claude Sonnet or Opus. Rust validates
+  the selected model again before every request; there is no silent model
+  fallback. All supported choices run at medium effort.
 - Unexpected tool, shell, file, web, plugin, or MCP activity aborts the response.
 - Questions are limited to 1,000 characters and answers to 4,000 characters.
 
@@ -106,7 +107,7 @@ Disallowed behavior:
 
 - AI watching the whole screen.
 - Continuous image streaming to AI.
-- Automatic or hidden background AI calls.
+- AI calls outside a manual **Send** or an explicitly enabled Watch session.
 - Browser cookie scraping.
 - AI website automation using a user's logged-in browser session.
 - API key exposure, token reuse, or reading unrelated app credentials.
@@ -116,15 +117,17 @@ Disallowed behavior:
 Every frame is filtered locally before bounded AI analysis:
 
 ```text
-selected crop -> local diff gate -> bounded before/after AI comparison -> local notification
+selected crop -> local diff gate -> Apple Vision OCR -> intent match -> local notification
 ```
 
 Watch is off by default. App startup displays its scope before region
 selection, pressing Watch records explicit activation, and every new region
-requires a fresh opt-in. It is limited by
-the diff engine's five-minute material-change cooldown and a maximum of six
-completed analyses per app session. It keeps one previous crop in memory and
-drops it on session reset; no crop is written to disk.
+requires a fresh opt-in. Local visual checks run every five seconds. Apple
+Vision OCR and semantic analysis run only after a stable material-change
+candidate and no more often than the user-selected interval of 1, 5, 30, or 60
+minutes. There is no fixed per-session analysis cap. Watch keeps only the
+comparison crops and OCR text needed for the current in-memory decision and
+drops them on reset; no crop or OCR text is written to disk.
 
 After activation, Pebble appends semantic summaries, model names, and generation
 times to one local Markdown document at
@@ -136,8 +139,12 @@ targets are rejected, and the document stops accepting entries at 25 MB.
 
 Unchanged frames never reach AI. A locally detected material change sends the
 previous and current selected-region crops to the provider chosen at Watch
-activation. OpenAI and Claude run with tools, MCP, shell, files, and web search
-disabled. Manual AI still sends one fresh crop only after **Send**.
+activation. Ephemeral Apple Vision OCR may accompany those crops as untrusted
+supporting evidence; screen or OCR instructions are never executed. The model
+returns a typed match decision, short summary, and confidence, and unmatched
+candidates do not notify or enter the activity journal. OpenAI and Claude run
+with tools, MCP, shell, files, and web search disabled. Manual AI still sends
+one fresh crop only after **Send**.
 
 Adaptive window color is a separate local-only capture path. On macOS, Pebble
 uses the system's below-window capture option to sample a 96-physical-pixel
@@ -188,7 +195,7 @@ Check for:
 - New shell or filesystem access.
 - Capture continuing in inactive states.
 - Full-monitor frames crossing process or UI boundaries.
-- Automatic AI calls bypassing the local material-change gate or analysis cap.
+- Automatic AI calls bypassing the local material-change or selected-interval gates.
 - Watch bypassing its consent version, per-region opt-in, or selected-region boundary.
 - Logs, errors, tests, fixtures, or examples containing private screen content,
   OCR output, secrets, tokens, cookies, or local account data.

@@ -6,14 +6,16 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::ai_runtime::AiProvider;
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 5;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 6;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. AI RUNS ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN YOUR SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. APPLE VISION OCR AND AI RUN ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN YOUR SELECTED INTERVAL.";
+pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
+const MAX_WATCH_INTENT_CHARS: usize = 500;
 
 pub fn show_startup_notice(app: &tauri::AppHandle) {
     let _ = app
@@ -31,6 +33,7 @@ pub struct SmartWatchStatus {
     pub analyses_completed: u32,
     pub analysis_interval_minutes: u16,
     pub model: String,
+    pub custom_intent: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -48,6 +51,8 @@ struct SmartWatchData {
     last_analysis_tick: Option<u64>,
     provider: AiProvider,
     model: String,
+    intent: String,
+    custom_intent: bool,
     locale: String,
 }
 
@@ -55,6 +60,7 @@ struct SmartWatchData {
 pub struct WatchAnalysisContext {
     pub provider: AiProvider,
     pub model: String,
+    pub intent: String,
     pub locale: String,
 }
 
@@ -65,6 +71,7 @@ pub struct SetSmartWatchRequest {
     pub consent_version: u16,
     pub provider: AiProvider,
     pub model: String,
+    pub intent: String,
     pub locale: String,
     pub analysis_interval_minutes: u16,
 }
@@ -78,19 +85,24 @@ pub struct SetSmartWatchIntervalRequest {
 impl SmartWatchState {
     pub fn configure(
         &self,
-        enabled: bool,
         revision: u64,
-        consent_version: u16,
-        provider: AiProvider,
-        model: String,
-        locale: String,
-        analysis_interval_minutes: u16,
+        request: SetSmartWatchRequest,
     ) -> Result<SmartWatchStatus, SmartWatchError> {
+        let SetSmartWatchRequest {
+            enabled,
+            consent_version,
+            provider,
+            model,
+            intent,
+            locale,
+            analysis_interval_minutes,
+        } = request;
         if enabled && consent_version != SMART_WATCH_CONSENT_VERSION {
             return Err(SmartWatchError::consent_required());
         }
         validate_analysis_interval(analysis_interval_minutes)?;
         let model = normalized_model(provider, model)?;
+        let (intent, custom_intent) = normalized_intent(intent)?;
 
         let mut data = self
             .data
@@ -103,6 +115,8 @@ impl SmartWatchState {
         data.analysis_interval_minutes = analysis_interval_minutes;
         data.provider = provider;
         data.model = model;
+        data.intent = intent;
+        data.custom_intent = custom_intent;
         data.locale = normalized_locale(locale);
         Ok(data.status())
     }
@@ -154,6 +168,7 @@ impl SmartWatchState {
         Some(WatchAnalysisContext {
             provider: data.provider,
             model: data.model.clone(),
+            intent: data.intent.clone(),
             locale: data.locale.clone(),
         })
     }
@@ -182,6 +197,8 @@ impl Default for SmartWatchData {
             last_analysis_tick: None,
             provider: AiProvider::OpenAi,
             model: "gpt-5.6-terra".to_string(),
+            intent: DEFAULT_WATCH_INTENT.to_string(),
+            custom_intent: false,
             locale: "und".to_string(),
         }
     }
@@ -207,6 +224,7 @@ impl SmartWatchData {
             analyses_completed: self.analyses_completed,
             analysis_interval_minutes: self.analysis_interval_minutes,
             model: self.model.clone(),
+            custom_intent: self.custom_intent,
         }
     }
 
@@ -218,6 +236,22 @@ impl SmartWatchData {
             })
             .unwrap_or(true)
     }
+}
+
+fn normalized_intent(intent: String) -> Result<(String, bool), SmartWatchError> {
+    let intent = intent.trim();
+    if intent.is_empty() {
+        return Ok((DEFAULT_WATCH_INTENT.to_string(), false));
+    }
+    if intent.chars().count() > MAX_WATCH_INTENT_CHARS
+        || intent.chars().any(|character| {
+            let code = character as u32;
+            (code < 32 && !matches!(code, 9 | 10 | 13)) || code == 127
+        })
+    {
+        return Err(SmartWatchError::invalid_intent());
+    }
+    Ok((intent.to_string(), true))
 }
 
 fn normalized_model(provider: AiProvider, model: String) -> Result<String, SmartWatchError> {
@@ -267,6 +301,7 @@ pub fn emit_status(app: &tauri::AppHandle, status: SmartWatchStatus) {
 pub enum SmartWatchErrorCode {
     ConsentRequired,
     InvalidInterval,
+    InvalidIntent,
     InvalidSession,
     Unavailable,
 }
@@ -300,6 +335,13 @@ impl SmartWatchError {
         }
     }
 
+    fn invalid_intent() -> Self {
+        Self {
+            code: SmartWatchErrorCode::InvalidIntent,
+            message: "WATCH INTENT MUST BE BETWEEN 1 AND 500 SAFE CHARACTERS.",
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
             code: SmartWatchErrorCode::Unavailable,
@@ -311,8 +353,9 @@ impl SmartWatchError {
 #[cfg(test)]
 mod tests {
     use super::{
-        SmartWatchErrorCode, SmartWatchState, DEFAULT_ANALYSIS_INTERVAL_MINUTES,
-        SMART_WATCH_CONSENT_VERSION, STARTUP_NOTICE_BODY,
+        SetSmartWatchRequest, SmartWatchErrorCode, SmartWatchState,
+        DEFAULT_ANALYSIS_INTERVAL_MINUTES, DEFAULT_WATCH_INTENT, SMART_WATCH_CONSENT_VERSION,
+        STARTUP_NOTICE_BODY,
     };
     use crate::ai_runtime::AiProvider;
 
@@ -332,13 +375,12 @@ mod tests {
         assert_eq!(
             state
                 .configure(
-                    true,
                     7,
-                    0,
-                    AiProvider::OpenAi,
-                    "gpt-5.6-terra".into(),
-                    "ko-KR".into(),
-                    DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                    watch_request(
+                        0,
+                        "Alert me when the build fails",
+                        DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                    ),
                 )
                 .unwrap_err()
                 .code,
@@ -347,13 +389,12 @@ mod tests {
         assert!(
             state
                 .configure(
-                    true,
                     7,
-                    SMART_WATCH_CONSENT_VERSION,
-                    AiProvider::OpenAi,
-                    "gpt-5.6-terra".into(),
-                    "ko-KR".into(),
-                    DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                    watch_request(
+                        SMART_WATCH_CONSENT_VERSION,
+                        "Alert me when the build fails",
+                        DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                    ),
                 )
                 .unwrap()
                 .enabled
@@ -365,13 +406,12 @@ mod tests {
         let state = SmartWatchState::default();
         state
             .configure(
-                true,
                 7,
-                SMART_WATCH_CONSENT_VERSION,
-                AiProvider::OpenAi,
-                "gpt-5.6-terra".into(),
-                "ko-KR".into(),
-                DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Alert me when the build fails",
+                    DEFAULT_ANALYSIS_INTERVAL_MINUTES,
+                ),
             )
             .unwrap();
 
@@ -401,6 +441,48 @@ mod tests {
             state.set_analysis_interval(2).unwrap_err().code,
             SmartWatchErrorCode::InvalidInterval
         );
+    }
+
+    #[test]
+    fn watch_freezes_a_safe_intent_without_persisting_it_in_status() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                4,
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "  Alert me when the build fails  ",
+                    5,
+                ),
+            )
+            .unwrap();
+        let context = state.begin_analysis(4, 1).expect("analysis context");
+        assert_eq!(context.intent, "Alert me when the build fails");
+        assert!(state.status().custom_intent);
+
+        let default_state = SmartWatchState::default();
+        default_state
+            .configure(5, watch_request(SMART_WATCH_CONSENT_VERSION, "", 5))
+            .unwrap();
+        assert_eq!(
+            default_state.begin_analysis(5, 1).unwrap().intent,
+            DEFAULT_WATCH_INTENT
+        );
+        assert!(!default_state.status().custom_intent);
+    }
+
+    #[test]
+    fn watch_rejects_unsafe_or_oversized_intents() {
+        let state = SmartWatchState::default();
+        for intent in ["unsafe\0intent".to_string(), "x".repeat(501)] {
+            assert_eq!(
+                state
+                    .configure(4, watch_request(SMART_WATCH_CONSENT_VERSION, intent, 5),)
+                    .unwrap_err()
+                    .code,
+                SmartWatchErrorCode::InvalidIntent
+            );
+        }
     }
 
     #[test]
@@ -464,15 +546,30 @@ mod tests {
         let state = SmartWatchState::default();
         state
             .configure(
-                true,
                 2,
-                SMART_WATCH_CONSENT_VERSION,
-                AiProvider::OpenAi,
-                "gpt-5.6-terra".into(),
-                "ko-KR".into(),
-                interval_minutes,
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Alert me when the build fails",
+                    interval_minutes,
+                ),
             )
             .unwrap();
         state
+    }
+
+    fn watch_request(
+        consent_version: u16,
+        intent: impl Into<String>,
+        analysis_interval_minutes: u16,
+    ) -> SetSmartWatchRequest {
+        SetSmartWatchRequest {
+            enabled: true,
+            consent_version,
+            provider: AiProvider::OpenAi,
+            model: "gpt-5.6-terra".into(),
+            intent: intent.into(),
+            locale: "ko-KR".into(),
+            analysis_interval_minutes,
+        }
     }
 }
