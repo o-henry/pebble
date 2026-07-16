@@ -513,7 +513,11 @@ fn start_background_watch(app: AppHandle) {
                             match prepared.decision {
                                 watch_intent::LocalWatchDecision::Matched(event) => {
                                     pending_analysis = None;
-                                    let (status, accepted) = watch.finish_local_match(revision);
+                                    let (status, accepted) = watch.finish_local_match(
+                                        revision,
+                                        &event.fingerprint,
+                                        tick,
+                                    );
                                     smart_watch::emit_status(&app, status);
                                     if accepted {
                                         emit_watch_event(
@@ -563,6 +567,7 @@ fn start_background_watch(app: AppHandle) {
                                 session: app.state::<PebbleSessionState>().inner().clone(),
                                 watch: watch.clone(),
                                 revision,
+                                tick,
                                 context,
                                 kind: pending.kind,
                                 previous_frame: pending.previous_frame,
@@ -720,6 +725,7 @@ struct WatchAnalysisJob {
     session: PebbleSessionState,
     watch: SmartWatchState,
     revision: u64,
+    tick: u64,
     context: smart_watch::WatchAnalysisContext,
     kind: monitoring::VisualChangeKind,
     previous_frame: capture_backend::CroppedFramePayload,
@@ -736,6 +742,7 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
             session,
             watch,
             revision,
+            tick,
             context,
             kind,
             previous_frame,
@@ -769,6 +776,11 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                     return;
                 }
                 if !analysis.matched {
+                    return;
+                }
+                let (status, accepted) = watch.accept_ai_event(revision, &analysis.summary, tick);
+                smart_watch::emit_status(&app, status);
+                if !accepted {
                     return;
                 }
                 emit_watch_event(

@@ -12,6 +12,7 @@ export interface SmartWatchStatus {
   enabled: boolean;
   analysesCompleted: number;
   localMatchesCompleted: number;
+  suppressedEvents: number;
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
   model: string;
   customIntent: boolean;

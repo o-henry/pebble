@@ -53,6 +53,7 @@ struct MonitoringData {
     revision: Option<u64>,
     baseline: Option<VisualBaseline>,
     candidate_tiles: Option<Vec<bool>>,
+    candidate_sample: Option<VisualSample>,
 }
 
 #[derive(Debug)]
@@ -62,7 +63,7 @@ struct VisualBaseline {
     frame: CroppedFramePayload,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct VisualSample {
     width: usize,
     height: usize,
@@ -122,15 +123,22 @@ impl MonitoringState {
         let evidence = compare_samples(&baseline.sample, &current_sample)?;
         if !evidence.meaningful {
             data.candidate_tiles = None;
+            data.candidate_sample = None;
             return None;
         }
 
-        let persistent = data
+        let stable_candidate = data
+            .candidate_sample
+            .as_ref()
+            .and_then(|candidate| compare_samples(candidate, &current_sample))
+            .is_some_and(|candidate_change| !candidate_change.meaningful);
+        let same_area = data
             .candidate_tiles
             .as_ref()
             .is_some_and(|candidate| tiles_overlap(candidate, &evidence.changed_tiles));
-        if !persistent {
+        if !stable_candidate || !same_area {
             data.candidate_tiles = Some(evidence.changed_tiles);
+            data.candidate_sample = Some(current_sample);
             return None;
         }
 
@@ -142,6 +150,7 @@ impl MonitoringState {
             frame: frame.clone(),
         });
         data.candidate_tiles = None;
+        data.candidate_sample = None;
         Some(MonitoringDecision::Changed {
             score: evidence.score,
             kind,
@@ -156,6 +165,7 @@ impl MonitoringData {
             revision: None,
             baseline: None,
             candidate_tiles: None,
+            candidate_sample: None,
         }
     }
 }
@@ -386,8 +396,28 @@ mod tests {
         state.observe(1, &baseline, 1);
 
         assert_eq!(state.observe(1, &small_change, 2), None);
+        assert_eq!(state.observe(1, &larger_change, 3), None);
         assert!(matches!(
-            state.observe(1, &larger_change, 3),
+            state.observe(1, &larger_change, 4),
+            Some(MonitoringDecision::Changed { previous_frame, .. })
+                if previous_frame == baseline
+        ));
+    }
+
+    #[test]
+    fn moving_animation_is_ignored_until_the_new_content_settles() {
+        let state = MonitoringState::default();
+        let baseline = frame(0);
+        let first = frame_with_patch(0, 255, 8, 16, 8, 8);
+        let second = frame_with_patch(0, 255, 16, 16, 8, 8);
+        let third = frame_with_patch(0, 255, 24, 16, 8, 8);
+        state.observe(1, &baseline, 1);
+
+        assert_eq!(state.observe(1, &first, 2), None);
+        assert_eq!(state.observe(1, &second, 3), None);
+        assert_eq!(state.observe(1, &third, 4), None);
+        assert!(matches!(
+            state.observe(1, &third, 5),
             Some(MonitoringDecision::Changed { previous_frame, .. })
                 if previous_frame == baseline
         ));

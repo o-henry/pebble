@@ -43,6 +43,7 @@ describe("smart watch consent", () => {
         enabled: true,
         analysesCompleted: 12,
         localMatchesCompleted: 0,
+        suppressedEvents: 0,
         analysisIntervalMinutes: 60,
         model: "gpt-5.6-terra",
         customIntent: true,

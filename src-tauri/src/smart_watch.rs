@@ -35,6 +35,7 @@ pub struct SmartWatchStatus {
     pub enabled: bool,
     pub analyses_completed: u32,
     pub local_matches_completed: u32,
+    pub suppressed_events: u32,
     pub analysis_interval_minutes: u16,
     pub model: String,
     pub custom_intent: bool,
@@ -53,9 +54,11 @@ struct SmartWatchData {
     revision: Option<u64>,
     analyses_completed: u32,
     local_matches_completed: u32,
+    suppressed_events: u32,
     analysis_in_flight: bool,
     analysis_interval_minutes: u16,
     last_analysis_tick: Option<u64>,
+    last_event: Option<WatchEventFingerprint>,
     provider: AiProvider,
     model: String,
     plan: CompiledWatchIntent,
@@ -70,6 +73,12 @@ pub struct WatchAnalysisContext {
     pub intent: String,
     pub locale: String,
     pub plan: CompiledWatchIntent,
+}
+
+#[derive(Debug, Clone)]
+struct WatchEventFingerprint {
+    value: String,
+    tick: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -121,6 +130,7 @@ impl SmartWatchState {
         data.revision = enabled.then_some(revision);
         data.analysis_in_flight = false;
         data.last_analysis_tick = None;
+        data.last_event = None;
         data.analysis_interval_minutes = analysis_interval_minutes;
         data.provider = provider;
         data.model = model;
@@ -197,9 +207,15 @@ impl SmartWatchState {
         })
     }
 
-    pub fn finish_local_match(&self, revision: u64) -> (SmartWatchStatus, bool) {
+    pub fn finish_local_match(
+        &self,
+        revision: u64,
+        fingerprint: &str,
+        tick: u64,
+    ) -> (SmartWatchStatus, bool) {
         let mut data = self.data.lock().expect("smart watch state lock");
-        let accepted = data.enabled && data.revision == Some(revision);
+        let accepted =
+            data.enabled && data.revision == Some(revision) && data.accept_event(fingerprint, tick);
         if accepted {
             data.local_matches_completed = data.local_matches_completed.saturating_add(1);
         }
@@ -217,6 +233,20 @@ impl SmartWatchState {
         }
         (data.status(), accepted)
     }
+
+    pub fn accept_ai_event(
+        &self,
+        revision: u64,
+        summary: &str,
+        tick: u64,
+    ) -> (SmartWatchStatus, bool) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let fingerprint = semantic_fingerprint(summary);
+        let accepted = data.enabled
+            && data.revision == Some(revision)
+            && data.accept_event(&fingerprint, tick);
+        (data.status(), accepted)
+    }
 }
 
 impl Default for SmartWatchData {
@@ -226,9 +256,11 @@ impl Default for SmartWatchData {
             revision: None,
             analyses_completed: 0,
             local_matches_completed: 0,
+            suppressed_events: 0,
             analysis_in_flight: false,
             analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             last_analysis_tick: None,
+            last_event: None,
             provider: AiProvider::OpenAi,
             model: "gpt-5.6-terra".to_string(),
             plan: CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string()),
@@ -257,6 +289,7 @@ impl SmartWatchData {
             enabled: self.enabled,
             analyses_completed: self.analyses_completed,
             local_matches_completed: self.local_matches_completed,
+            suppressed_events: self.suppressed_events,
             analysis_interval_minutes: self.analysis_interval_minutes,
             model: self.model.clone(),
             custom_intent: self.custom_intent,
@@ -273,6 +306,40 @@ impl SmartWatchData {
             })
             .unwrap_or(true)
     }
+
+    fn accept_event(&mut self, fingerprint: &str, tick: u64) -> bool {
+        let duplicate = self.last_event.as_ref().is_some_and(|last| {
+            last.value == fingerprint
+                && tick.saturating_sub(last.tick)
+                    < analysis_interval_ticks(self.analysis_interval_minutes)
+        });
+        if duplicate {
+            self.suppressed_events = self.suppressed_events.saturating_add(1);
+            return false;
+        }
+        self.last_event = Some(WatchEventFingerprint {
+            value: fingerprint.to_string(),
+            tick,
+        });
+        true
+    }
+}
+
+fn semantic_fingerprint(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .take(80)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn normalized_intent(intent: String) -> Result<(String, bool), SmartWatchError> {
@@ -577,6 +644,30 @@ mod tests {
         state.disable();
 
         assert!(state.begin_analysis(2, 1).is_none());
+    }
+
+    #[test]
+    fn duplicate_events_are_suppressed_within_the_selected_interval() {
+        let state = enabled_watch(1);
+        let (_, accepted) = state.finish_local_match(2, "local:error", 1);
+        assert!(accepted);
+        let (status, accepted) = state.finish_local_match(2, "local:error", 2);
+        assert!(!accepted);
+        assert_eq!(status.suppressed_events, 1);
+        assert_eq!(status.local_matches_completed, 1);
+
+        let (_, accepted) = state.finish_local_match(2, "local:error", 13);
+        assert!(accepted);
+    }
+
+    #[test]
+    fn semantic_dedupe_ignores_case_and_punctuation() {
+        let state = enabled_watch(5);
+        let (_, accepted) = state.accept_ai_event(2, "Build failed: lint.", 1);
+        assert!(accepted);
+        let (status, accepted) = state.accept_ai_event(2, "BUILD FAILED - LINT", 2);
+        assert!(!accepted);
+        assert_eq!(status.suppressed_events, 1);
     }
 
     fn enabled_watch(interval_minutes: u16) -> SmartWatchState {
