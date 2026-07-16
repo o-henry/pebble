@@ -25,6 +25,8 @@ import { AiResponseArea } from "./AiResponseArea";
 import { AiPanelHeader } from "./AiPanelHeader";
 import { ClaudeCredentialControl } from "./ClaudeCredentialControl";
 import { AiModelSwitch } from "./AiModelSwitch";
+import { WatchRecipeBar } from "./WatchRecipeBar";
+import { smartWatchInterval } from "../features/ai/smartWatch";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -171,6 +173,15 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         connecting={connecting}
         onConnect={() => void connect()}
       />
+
+      {connection === "connected" ? (
+        <WatchRecipeBar
+          intent={question}
+          disabled={disabled || asking || connecting}
+          intervalMinutes={smartWatchInterval(globalThis.localStorage)}
+          onApply={(recipe) => setQuestion(recipe.intent)}
+        />
+      ) : null}
 
       {connection === "connected" ? (
         <form className="region-question__form" onSubmit={(event) => void ask(event)}>
