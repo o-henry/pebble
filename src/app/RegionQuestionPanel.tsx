@@ -3,7 +3,9 @@ import sendIcon from "../assets/icons/up-arrow.svg";
 import {
   MAX_REGION_QUESTION_LENGTH,
   aiAccessLabel,
-  defaultAiModelLabel,
+  defaultAiModelId,
+  rememberAiModel,
+  selectedAiModel,
   normalizedRegionQuestion,
   type AiAnswer,
   type AiConnectionStatus,
@@ -22,6 +24,7 @@ import {
 import { AiResponseArea } from "./AiResponseArea";
 import { AiPanelHeader } from "./AiPanelHeader";
 import { ClaudeCredentialControl } from "./ClaudeCredentialControl";
+import { AiModelSwitch } from "./AiModelSwitch";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -45,6 +48,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   const [connecting, setConnecting] = useState(false);
   const [asking, setAsking] = useState(false);
   const [credentialRevision, setCredentialRevision] = useState(0);
+  const [model, setModel] = useState(() => defaultAiModelId("openAi"));
   const normalizedQuestion = useMemo(
     () => normalizedRegionQuestion(question),
     [question]
@@ -63,6 +67,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
       .then((nextStatus) => {
         if (!active) return;
         setStatus(nextStatus);
+        setModel(selectedAiModel(provider, nextStatus.models, globalThis.localStorage));
         setConnection(
           !nextStatus.available
             ? "unavailable"
@@ -117,7 +122,7 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
       setPanelError(null);
       setAnswer(null);
       setAnswer(
-        await askSelectedRegion(provider, normalizedQuestion, navigator.language)
+        await askSelectedRegion(provider, model, normalizedQuestion, navigator.language)
       );
     } catch (reason) {
       setPanelError(errorMessage(reason, "THE SELECTED REGION COULD NOT BE ANALYZED."));
@@ -125,16 +130,22 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
       setAsking(false);
       onBusyChange(false);
     }
-  }, [normalizedQuestion, onBusyChange, provider]);
+  }, [model, normalizedQuestion, onBusyChange, provider]);
 
-  const modelLabel = status?.model ?? defaultAiModelLabel(provider);
+  const models = status?.models ?? [];
   const accessLabel = aiAccessLabel(status?.connectionMode);
+
+  const selectModel = useCallback((nextModel: string) => {
+    setModel(nextModel);
+    rememberAiModel(provider, nextModel, globalThis.localStorage);
+  }, [provider]);
   return (
     <section className="region-question" aria-label="AI">
       <AiPanelHeader
         browserPreview={browserPreview}
         connection={connection}
         provider={provider}
+        model={model}
         disabled={disabled || asking || connecting}
         privacyBlankActive={privacyBlankActive}
         onProviderChange={setProvider}
@@ -167,15 +178,21 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             value={question}
             maxLength={MAX_REGION_QUESTION_LENGTH}
             rows={3}
-            placeholder="ASK ABOUT THIS REGION"
+            placeholder="ASK OR TELL PEBBLE WHAT TO WATCH FOR"
             autoFocus
             disabled={disabled || asking || privacyBlankActive}
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
           <div className="region-question__composer-footer">
-            <span className="region-question__model">
-              {modelLabel} · MEDIUM{accessLabel ? ` · ${accessLabel}` : ""}
-            </span>
+            <div className="region-question__model-choice">
+              <AiModelSwitch
+                models={models}
+                selectedModel={model}
+                disabled={disabled || asking}
+                onChange={selectModel}
+              />
+              {accessLabel ? <span>{accessLabel}</span> : null}
+            </div>
             <button
               type="submit"
               className="region-question__send"

@@ -108,7 +108,7 @@ export interface BackendCommandMap {
     result: ClaudeCredentialStatus;
   };
   ask_selected_region: {
-    args: { provider: AiProvider; question: string; locale: string };
+    args: { provider: AiProvider; model: string; question: string; locale: string };
     result: AiAnswer;
   };
   get_smart_watch_status: {
@@ -119,6 +119,7 @@ export interface BackendCommandMap {
       enabled: boolean;
       consentVersion: number;
       provider: AiProvider;
+      model: string;
       locale: string;
       analysisIntervalMinutes: SmartWatchIntervalMinutes;
     } };
@@ -295,10 +296,11 @@ export function deleteClaudeApiKey(): Promise<ClaudeCredentialStatus> {
 
 export function askSelectedRegion(
   provider: AiProvider,
+  model: string,
   question: string,
   locale: string
 ): Promise<AiAnswer> {
-  return invokeBackend("ask_selected_region", { provider, question, locale });
+  return invokeBackend("ask_selected_region", { provider, model, question, locale });
 }
 
 export function getSmartWatchStatus(): Promise<SmartWatchStatus> {
@@ -308,6 +310,7 @@ export function getSmartWatchStatus(): Promise<SmartWatchStatus> {
 export function setSmartWatch(
   enabled: boolean,
   provider: AiProvider,
+  model: string,
   locale: string,
   analysisIntervalMinutes: SmartWatchIntervalMinutes
 ): Promise<SmartWatchStatus> {
@@ -316,6 +319,7 @@ export function setSmartWatch(
       enabled,
       consentVersion: SMART_WATCH_CONSENT_VERSION,
       provider,
+      model,
       locale,
       analysisIntervalMinutes
     }

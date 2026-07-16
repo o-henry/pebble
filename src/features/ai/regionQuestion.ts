@@ -3,8 +3,27 @@ export const MAX_REGION_QUESTION_LENGTH = 1_000;
 export type AiProvider = "openAi" | "claude";
 export type AiConnectionMode = "account" | "apiKey" | "subscription";
 
+export interface AiModelOption {
+  id: string;
+  label: string;
+}
+
+const DEFAULT_MODEL_IDS: Record<AiProvider, string> = {
+  openAi: "gpt-5.6-terra",
+  claude: "sonnet"
+};
+
+const MODEL_STORAGE_KEYS: Record<AiProvider, string> = {
+  openAi: "pebble.ai-model.openai",
+  claude: "pebble.ai-model.claude"
+};
+
 export function defaultAiModelLabel(provider: AiProvider) {
   return provider === "openAi" ? "GPT-5.6-TERRA" : "CLAUDE SONNET 5";
+}
+
+export function defaultAiModelId(provider: AiProvider): string {
+  return DEFAULT_MODEL_IDS[provider];
 }
 
 export interface AiConnectionStatus {
@@ -12,8 +31,35 @@ export interface AiConnectionStatus {
   available: boolean;
   connected: boolean;
   model: string;
+  models: AiModelOption[];
   installUrl: string | null;
   connectionMode: AiConnectionMode | null;
+}
+
+interface ModelStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export function selectedAiModel(
+  provider: AiProvider,
+  models: readonly AiModelOption[],
+  storage: ModelStorage
+): string {
+  const remembered = storage.getItem(MODEL_STORAGE_KEYS[provider]);
+  if (remembered && models.some((model) => model.id === remembered)) {
+    return remembered;
+  }
+  const preferred = defaultAiModelId(provider);
+  return models.find((model) => model.id === preferred)?.id ?? models[0]?.id ?? preferred;
+}
+
+export function rememberAiModel(
+  provider: AiProvider,
+  model: string,
+  storage: ModelStorage
+): void {
+  storage.setItem(MODEL_STORAGE_KEYS[provider], model);
 }
 
 export function aiAccessLabel(mode: AiConnectionMode | null | undefined) {

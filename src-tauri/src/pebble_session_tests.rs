@@ -86,6 +86,7 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
             opened.revision,
             SMART_WATCH_CONSENT_VERSION,
             AiProvider::OpenAi,
+            "gpt-5.6-terra".into(),
             "ko-KR".into(),
             5,
         )

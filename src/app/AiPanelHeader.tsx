@@ -7,6 +7,7 @@ export function AiPanelHeader({
   browserPreview,
   connection,
   provider,
+  model,
   disabled,
   privacyBlankActive,
   onProviderChange,
@@ -16,6 +17,7 @@ export function AiPanelHeader({
   browserPreview: boolean;
   connection: AiConnectionState;
   provider: AiProvider;
+  model: string;
   disabled: boolean;
   privacyBlankActive: boolean;
   onProviderChange: (provider: AiProvider) => void;
@@ -29,6 +31,7 @@ export function AiPanelHeader({
         {!browserPreview ? (
           <SmartWatchControl
             provider={provider}
+            model={model}
             disabled={disabled || connection !== "connected"}
             privacyBlankActive={privacyBlankActive}
             onBusyChange={onBusyChange}

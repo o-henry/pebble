@@ -12,6 +12,7 @@ export interface SmartWatchStatus {
   enabled: boolean;
   analysesCompleted: number;
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
+  model: string;
 }
 
 interface ConsentStorage {

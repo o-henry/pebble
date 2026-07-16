@@ -36,12 +36,9 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 const TURN_TIMEOUT: Duration = Duration::from_secs(120);
-const OPENAI_MODEL_PREFERENCES: [&str; 2] = ["gpt-5.6-terra", "gpt-5.6-luna"];
-const OPENAI_WATCH_MODEL_PREFERENCES: [&str; 1] = ["gpt-5.6-terra"];
-const OPENAI_MODEL_LABEL: &str = "GPT-5.6-TERRA";
+const OPENAI_MODEL_PREFERENCES: [&str; 3] = ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"];
 const OPENAI_REASONING_EFFORT: &str = "medium";
-const CLAUDE_MODEL_ID: &str = "claude-sonnet-5";
-const CLAUDE_MODEL_LABEL: &str = "CLAUDE SONNET 5";
+const CLAUDE_MODEL_ID: &str = "sonnet";
 const CLAUDE_REASONING_EFFORT: &str = "medium";
 const CLAUDE_INSTALL_URL: &str = "https://code.claude.com/docs/en/quickstart";
 const CLAUDE_ASK_MAX_TOKENS: u32 = 2_048;
@@ -74,8 +71,16 @@ pub struct AiConnectionStatus {
     pub available: bool,
     pub connected: bool,
     pub model: String,
+    pub models: Vec<AiModelOption>,
     pub install_url: Option<&'static str>,
     pub connection_mode: Option<AiConnectionMode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiModelOption {
+    pub id: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -98,6 +103,7 @@ pub struct WatchAnalysis {
 pub struct WatchAnalysisRequest {
     pub revision: u64,
     pub provider: AiProvider,
+    pub model: String,
     pub locale: String,
     pub local_signal: &'static str,
     pub previous_frame: CroppedFramePayload,
@@ -257,6 +263,7 @@ pub async fn ask_selected_region(
     runtime: &AiRuntimeState,
     session: &PebbleSessionState,
     provider: AiProvider,
+    model: String,
     question: String,
     locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
@@ -293,6 +300,7 @@ pub async fn ask_selected_region(
                 session,
                 &authorized,
                 image_data_url,
+                model,
                 question,
                 locale,
             )
@@ -305,6 +313,7 @@ pub async fn ask_selected_region(
                 session,
                 &authorized,
                 image_data_url,
+                model,
                 question,
                 locale,
             )
@@ -331,6 +340,7 @@ pub async fn analyze_watch_change(
                 session,
                 request.revision,
                 request.locale,
+                request.model,
                 request.local_signal,
                 previous_image,
                 current_image,
@@ -343,6 +353,7 @@ pub async fn analyze_watch_change(
                 session,
                 request.revision,
                 request.locale,
+                request.model,
                 request.local_signal,
                 previous_image,
                 current_image,
@@ -357,6 +368,7 @@ async fn analyze_watch_openai(
     session: &PebbleSessionState,
     revision: u64,
     locale: String,
+    model: String,
     local_signal: &'static str,
     previous_image: String,
     current_image: String,
@@ -369,7 +381,7 @@ async fn analyze_watch_openai(
             true,
         ));
     }
-    let model = watch_image_model(&mut server).await?;
+    let model = requested_openai_image_model(&mut server, &model).await?;
     let thread = server
         .request(
             "thread/start",
@@ -426,6 +438,7 @@ async fn ask_openai(
     session: &PebbleSessionState,
     authorized: &AuthorizedAiCapture,
     image_data_url: String,
+    model: String,
     question: String,
     locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
@@ -439,7 +452,7 @@ async fn ask_openai(
         ));
     }
 
-    let model = balanced_image_model(&mut server).await?;
+    let model = requested_openai_image_model(&mut server, &model).await?;
     let thread = server
         .request(
             "thread/start",
@@ -497,13 +510,29 @@ async fn ask_openai(
 
 async fn claude_connection_status(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntimeError> {
     if let Some(api_key) = load_claude_api_key()? {
-        claude_api::validate_api_key(&api_key)
+        let models = claude_api::list_models(&api_key)
             .await
             .map_err(claude_api_runtime_error)?;
-        return Ok(claude_status(true, true, Some(AiConnectionMode::ApiKey)));
+        return Ok(claude_status(
+            true,
+            true,
+            Some(AiConnectionMode::ApiKey),
+            models
+                .into_iter()
+                .map(|model| AiModelOption {
+                    id: model.id,
+                    label: compact_claude_label(&model.label),
+                })
+                .collect(),
+        ));
     }
     let Some(binary) = claude_binary(app) else {
-        return Ok(claude_status(false, false, None));
+        return Ok(claude_status(
+            false,
+            false,
+            None,
+            claude_subscription_models(),
+        ));
     };
     let output = timeout(
         REQUEST_TIMEOUT,
@@ -519,6 +548,7 @@ async fn claude_connection_status(app: &AppHandle) -> Result<AiConnectionStatus,
         true,
         connected,
         connected.then_some(AiConnectionMode::Subscription),
+        claude_subscription_models(),
     ))
 }
 
@@ -530,7 +560,12 @@ async fn connect_claude(app: &AppHandle) -> Result<AiConnectionStatus, AiRuntime
         app.opener()
             .open_url(CLAUDE_INSTALL_URL, None::<&str>)
             .map_err(|_| sidecar_error_for(AiProvider::Claude))?;
-        return Ok(claude_status(false, false, None));
+        return Ok(claude_status(
+            false,
+            false,
+            None,
+            claude_subscription_models(),
+        ));
     };
     let current = claude_connection_status(app).await?;
     if current.connected {
@@ -562,14 +597,17 @@ async fn ask_claude(
     session: &PebbleSessionState,
     authorized: &AuthorizedAiCapture,
     image_data_url: String,
+    model: String,
     question: String,
     locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
     if let Some(api_key) = load_claude_api_key()? {
+        let model = requested_claude_api_model(&api_key, &model).await?;
         ensure_capture_is_current(app, window, session, authorized)?;
         let response = claude_api::create_message(
             &api_key,
             ClaudeApiRequest {
+                model: &model,
                 system: BASE_INSTRUCTIONS,
                 prompt: question_prompt(&question, &locale),
                 image_data_urls: vec![image_data_url],
@@ -592,6 +630,7 @@ async fn ask_claude(
         session,
         authorized,
         image_data_url,
+        model,
         question,
         locale,
     )
@@ -604,6 +643,7 @@ async fn ask_claude_subscription(
     session: &PebbleSessionState,
     authorized: &AuthorizedAiCapture,
     image_data_url: String,
+    model: String,
     question: String,
     locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
@@ -617,6 +657,7 @@ async fn ask_claude_subscription(
         ));
     }
     ensure_capture_is_current(app, window, session, authorized)?;
+    let model = requested_claude_subscription_model(&model)?;
 
     let mut command = claude_command(app, &binary)?;
     command.args([
@@ -634,7 +675,7 @@ async fn ask_claude_subscription(
         "--disallowedTools",
         "*",
         "--model",
-        CLAUDE_MODEL_ID,
+        model,
         "--effort",
         CLAUDE_REASONING_EFFORT,
         "--max-turns",
@@ -686,15 +727,18 @@ async fn analyze_watch_claude(
     session: &PebbleSessionState,
     revision: u64,
     locale: String,
+    model: String,
     local_signal: &'static str,
     previous_image: String,
     current_image: String,
 ) -> Result<WatchAnalysis, AiRuntimeError> {
     if let Some(api_key) = load_claude_api_key()? {
+        let model = requested_claude_api_model(&api_key, &model).await?;
         ensure_watch_session_current(app, session, revision)?;
         let response = claude_api::create_message(
             &api_key,
             ClaudeApiRequest {
+                model: &model,
                 system: WATCH_INSTRUCTIONS,
                 prompt: watch_prompt(&locale, local_signal),
                 image_data_urls: vec![previous_image, current_image],
@@ -715,6 +759,7 @@ async fn analyze_watch_claude(
         session,
         revision,
         locale,
+        model,
         local_signal,
         previous_image,
         current_image,
@@ -727,6 +772,7 @@ async fn analyze_watch_claude_subscription(
     session: &PebbleSessionState,
     revision: u64,
     locale: String,
+    model: String,
     local_signal: &'static str,
     previous_image: String,
     current_image: String,
@@ -740,6 +786,7 @@ async fn analyze_watch_claude_subscription(
         ));
     }
     ensure_watch_session_current(app, session, revision)?;
+    let model = requested_claude_subscription_model(&model)?;
     let mut command = claude_command(app, &binary)?;
     command.args([
         "-p",
@@ -756,7 +803,7 @@ async fn analyze_watch_claude_subscription(
         "--disallowedTools",
         "*",
         "--model",
-        CLAUDE_MODEL_ID,
+        model,
         "--effort",
         CLAUDE_REASONING_EFFORT,
         "--max-turns",
@@ -861,7 +908,12 @@ async fn read_openai_connection_status(
 ) -> Result<AiConnectionStatus, AiRuntimeError> {
     let mut status = read_chatgpt_account(server).await?;
     if status.connected {
-        status.model = balanced_image_model(server).await?.to_ascii_uppercase();
+        status.models = available_openai_models(server).await?;
+        status.model = status
+            .models
+            .first()
+            .map(|model| model.id.clone())
+            .ok_or_else(model_unavailable)?;
     }
     Ok(status)
 }
@@ -871,7 +923,8 @@ fn openai_status(connected: bool) -> AiConnectionStatus {
         provider: AiProvider::OpenAi,
         available: true,
         connected,
-        model: OPENAI_MODEL_LABEL.to_string(),
+        model: "gpt-5.6-terra".to_string(),
+        models: default_openai_models(),
         install_url: None,
         connection_mode: connected.then_some(AiConnectionMode::Account),
     }
@@ -881,18 +934,62 @@ fn claude_status(
     available: bool,
     connected: bool,
     connection_mode: Option<AiConnectionMode>,
+    models: Vec<AiModelOption>,
 ) -> AiConnectionStatus {
+    let model = models
+        .first()
+        .map(|model| model.id.clone())
+        .unwrap_or_else(|| CLAUDE_MODEL_ID.to_string());
     AiConnectionStatus {
         provider: AiProvider::Claude,
         available,
         connected: available && connected,
-        model: CLAUDE_MODEL_LABEL.to_string(),
+        model,
+        models,
         install_url: (!available).then_some(CLAUDE_INSTALL_URL),
         connection_mode,
     }
 }
 
-async fn balanced_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
+fn default_openai_models() -> Vec<AiModelOption> {
+    OPENAI_MODEL_PREFERENCES
+        .iter()
+        .map(|model| AiModelOption {
+            id: (*model).to_string(),
+            label: openai_model_label(model).to_string(),
+        })
+        .collect()
+}
+
+fn claude_subscription_models() -> Vec<AiModelOption> {
+    [("sonnet", "SONNET"), ("opus", "OPUS")]
+        .into_iter()
+        .map(|(id, label)| AiModelOption {
+            id: id.to_string(),
+            label: label.to_string(),
+        })
+        .collect()
+}
+
+fn openai_model_label(model: &str) -> &str {
+    match model {
+        "gpt-5.6-sol" => "SOL",
+        "gpt-5.6-luna" => "LUNA",
+        _ => "TERRA",
+    }
+}
+
+fn compact_claude_label(label: &str) -> String {
+    if label.to_ascii_lowercase().contains("opus") {
+        "OPUS".to_string()
+    } else {
+        "SONNET".to_string()
+    }
+}
+
+async fn available_openai_models(
+    server: &mut AppServerProcess,
+) -> Result<Vec<AiModelOption>, AiRuntimeError> {
     let response = server
         .request(
             "model/list",
@@ -900,45 +997,68 @@ async fn balanced_image_model(server: &mut AppServerProcess) -> Result<String, A
             REQUEST_TIMEOUT,
         )
         .await?;
-    select_balanced_model(
-        response
-            .get("data")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice),
-    )
-    .ok_or_else(|| {
-        runtime_error(
-            AiRuntimeErrorCode::ModelUnavailable,
-            "This OpenAI account does not currently offer a supported balanced image model.",
-            true,
-        )
-    })
+    let models = response
+        .get("data")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice);
+    let available = OPENAI_MODEL_PREFERENCES
+        .iter()
+        .filter_map(|model| {
+            select_image_model(models, &[*model]).map(|id| AiModelOption {
+                label: openai_model_label(&id).to_string(),
+                id,
+            })
+        })
+        .collect::<Vec<_>>();
+    if available.is_empty() {
+        Err(model_unavailable())
+    } else {
+        Ok(available)
+    }
 }
 
-async fn watch_image_model(server: &mut AppServerProcess) -> Result<String, AiRuntimeError> {
-    let response = server
-        .request(
-            "model/list",
-            json!({ "limit": 100, "includeHidden": false }),
-            REQUEST_TIMEOUT,
-        )
-        .await?;
-    select_image_model(
-        response
-            .get("data")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice),
-        &OPENAI_WATCH_MODEL_PREFERENCES,
-    )
-    .ok_or_else(|| {
-        runtime_error(
-            AiRuntimeErrorCode::ModelUnavailable,
-            "This OpenAI account does not offer a supported Watch image model.",
-            true,
-        )
-    })
+async fn requested_openai_image_model(
+    server: &mut AppServerProcess,
+    requested: &str,
+) -> Result<String, AiRuntimeError> {
+    available_openai_models(server)
+        .await?
+        .into_iter()
+        .find(|model| model.id == requested)
+        .map(|model| model.id)
+        .ok_or_else(model_unavailable)
 }
 
+async fn requested_claude_api_model(
+    api_key: &StoredSecret,
+    requested: &str,
+) -> Result<String, AiRuntimeError> {
+    claude_api::list_models(api_key)
+        .await
+        .map_err(claude_api_runtime_error)?
+        .into_iter()
+        .find(|model| model.id == requested)
+        .map(|model| model.id)
+        .ok_or_else(model_unavailable)
+}
+
+fn requested_claude_subscription_model(requested: &str) -> Result<&'static str, AiRuntimeError> {
+    match requested {
+        "sonnet" => Ok("sonnet"),
+        "opus" => Ok("opus"),
+        _ => Err(model_unavailable()),
+    }
+}
+
+fn model_unavailable() -> AiRuntimeError {
+    runtime_error(
+        AiRuntimeErrorCode::ModelUnavailable,
+        "The selected image model is not available for this connected account.",
+        true,
+    )
+}
+
+#[cfg(test)]
 fn select_balanced_model(models: Option<&[Value]>) -> Option<String> {
     select_image_model(models, &OPENAI_MODEL_PREFERENCES)
 }
@@ -1738,9 +1858,9 @@ mod tests {
 
     use super::{
         chatgpt_login_params, claude_api_runtime_error, claude_image_input, claude_status,
-        encode_frame_data_url, login_failure_message, normalize_question, normalized_locale,
-        parse_claude_answer, select_balanced_model, select_image_model, validate_auth_url,
-        AiConnectionMode, AiRuntimeErrorCode,
+        claude_subscription_models, encode_frame_data_url, login_failure_message,
+        normalize_question, normalized_locale, parse_claude_answer, select_balanced_model,
+        validate_auth_url, AiConnectionMode, AiRuntimeErrorCode,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
@@ -1777,14 +1897,24 @@ mod tests {
 
     #[test]
     fn exposes_the_active_claude_access_path_without_credentials() {
-        let subscription = claude_status(true, true, Some(AiConnectionMode::Subscription));
+        let subscription = claude_status(
+            true,
+            true,
+            Some(AiConnectionMode::Subscription),
+            claude_subscription_models(),
+        );
         assert!(subscription.connected);
         assert_eq!(
             subscription.connection_mode,
             Some(AiConnectionMode::Subscription)
         );
 
-        let api_key = claude_status(true, true, Some(AiConnectionMode::ApiKey));
+        let api_key = claude_status(
+            true,
+            true,
+            Some(AiConnectionMode::ApiKey),
+            claude_subscription_models(),
+        );
         assert!(api_key.connected);
         assert_eq!(api_key.connection_mode, Some(AiConnectionMode::ApiKey));
     }
@@ -1902,14 +2032,6 @@ mod tests {
             "supportedReasoningEfforts": [{ "reasoningEffort": "medium" }]
         })];
         assert_eq!(select_balanced_model(Some(&mini_only)), None);
-        assert_eq!(
-            select_image_model(Some(&models), &super::OPENAI_WATCH_MODEL_PREFERENCES).as_deref(),
-            Some("gpt-5.6-terra")
-        );
-        assert_eq!(
-            select_image_model(Some(&models[..1]), &super::OPENAI_WATCH_MODEL_PREFERENCES),
-            None
-        );
     }
 
     #[test]

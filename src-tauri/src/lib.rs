@@ -302,6 +302,7 @@ async fn ask_selected_region(
     runtime: tauri::State<'_, AiRuntimeState>,
     session: tauri::State<'_, PebbleSessionState>,
     provider: AiProvider,
+    model: String,
     question: String,
     locale: String,
 ) -> Result<AiAnswer, AiRuntimeError> {
@@ -311,6 +312,7 @@ async fn ask_selected_region(
         runtime.inner(),
         session.inner(),
         provider,
+        model,
         question,
         locale,
     )
@@ -371,6 +373,7 @@ fn set_smart_watch(
         snapshot.revision,
         request.consent_version,
         request.provider,
+        request.model,
         request.locale,
         analysis_interval_minutes,
     )?;
@@ -657,6 +660,7 @@ fn schedule_watch_analysis(
             ai_runtime::WatchAnalysisRequest {
                 revision,
                 provider: context.provider,
+                model: context.model,
                 locale: context.locale,
                 local_signal: kind.summary(),
                 previous_frame,

@@ -42,7 +42,8 @@ describe("smart watch consent", () => {
       smartWatchTitle({
         enabled: true,
         analysesCompleted: 12,
-        analysisIntervalMinutes: 60
+        analysisIntervalMinutes: 60,
+        model: "gpt-5.6-terra"
       })
     ).toContain("1 HOUR");
   });

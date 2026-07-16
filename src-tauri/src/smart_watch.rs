@@ -30,6 +30,7 @@ pub struct SmartWatchStatus {
     pub enabled: bool,
     pub analyses_completed: u32,
     pub analysis_interval_minutes: u16,
+    pub model: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -46,12 +47,14 @@ struct SmartWatchData {
     analysis_interval_minutes: u16,
     last_analysis_tick: Option<u64>,
     provider: AiProvider,
+    model: String,
     locale: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchAnalysisContext {
     pub provider: AiProvider,
+    pub model: String,
     pub locale: String,
 }
 
@@ -61,6 +64,7 @@ pub struct SetSmartWatchRequest {
     pub enabled: bool,
     pub consent_version: u16,
     pub provider: AiProvider,
+    pub model: String,
     pub locale: String,
     pub analysis_interval_minutes: u16,
 }
@@ -78,6 +82,7 @@ impl SmartWatchState {
         revision: u64,
         consent_version: u16,
         provider: AiProvider,
+        model: String,
         locale: String,
         analysis_interval_minutes: u16,
     ) -> Result<SmartWatchStatus, SmartWatchError> {
@@ -85,6 +90,7 @@ impl SmartWatchState {
             return Err(SmartWatchError::consent_required());
         }
         validate_analysis_interval(analysis_interval_minutes)?;
+        let model = normalized_model(provider, model)?;
 
         let mut data = self
             .data
@@ -96,6 +102,7 @@ impl SmartWatchState {
         data.last_analysis_tick = None;
         data.analysis_interval_minutes = analysis_interval_minutes;
         data.provider = provider;
+        data.model = model;
         data.locale = normalized_locale(locale);
         Ok(data.status())
     }
@@ -146,6 +153,7 @@ impl SmartWatchState {
         data.last_analysis_tick = Some(tick);
         Some(WatchAnalysisContext {
             provider: data.provider,
+            model: data.model.clone(),
             locale: data.locale.clone(),
         })
     }
@@ -173,6 +181,7 @@ impl Default for SmartWatchData {
             analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             last_analysis_tick: None,
             provider: AiProvider::OpenAi,
+            model: "gpt-5.6-terra".to_string(),
             locale: "und".to_string(),
         }
     }
@@ -197,6 +206,7 @@ impl SmartWatchData {
             enabled: self.enabled,
             analyses_completed: self.analyses_completed,
             analysis_interval_minutes: self.analysis_interval_minutes,
+            model: self.model.clone(),
         }
     }
 
@@ -207,6 +217,28 @@ impl SmartWatchData {
                     >= analysis_interval_ticks(self.analysis_interval_minutes)
             })
             .unwrap_or(true)
+    }
+}
+
+fn normalized_model(provider: AiProvider, model: String) -> Result<String, SmartWatchError> {
+    let valid = match provider {
+        AiProvider::OpenAi => matches!(
+            model.as_str(),
+            "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna"
+        ),
+        AiProvider::Claude => {
+            matches!(model.as_str(), "sonnet" | "opus")
+                || (model.starts_with("claude-")
+                    && model.len() <= 100
+                    && model
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))
+        }
+    };
+    if valid {
+        Ok(model)
+    } else {
+        Err(SmartWatchError::unavailable())
     }
 }
 
@@ -304,6 +336,7 @@ mod tests {
                     7,
                     0,
                     AiProvider::OpenAi,
+                    "gpt-5.6-terra".into(),
                     "ko-KR".into(),
                     DEFAULT_ANALYSIS_INTERVAL_MINUTES,
                 )
@@ -318,6 +351,7 @@ mod tests {
                     7,
                     SMART_WATCH_CONSENT_VERSION,
                     AiProvider::OpenAi,
+                    "gpt-5.6-terra".into(),
                     "ko-KR".into(),
                     DEFAULT_ANALYSIS_INTERVAL_MINUTES,
                 )
@@ -335,6 +369,7 @@ mod tests {
                 7,
                 SMART_WATCH_CONSENT_VERSION,
                 AiProvider::OpenAi,
+                "gpt-5.6-terra".into(),
                 "ko-KR".into(),
                 DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             )
@@ -433,6 +468,7 @@ mod tests {
                 2,
                 SMART_WATCH_CONSENT_VERSION,
                 AiProvider::OpenAi,
+                "gpt-5.6-terra".into(),
                 "ko-KR".into(),
                 interval_minutes,
             )

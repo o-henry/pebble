@@ -6,9 +6,8 @@ use serde_json::{json, Value};
 use crate::claude_credentials::StoredSecret;
 
 const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL_URL: &str = "https://api.anthropic.com/v1/models/claude-sonnet-5";
+const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=100";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-pub const CLAUDE_API_MODEL: &str = "claude-sonnet-5";
 const MAX_RESPONSE_BYTES: usize = 1_048_576;
 const MAX_ANSWER_CHARS: usize = 4_000;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -32,20 +31,35 @@ pub struct ClaudeApiAnswer {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeApiModel {
+    pub id: String,
+    pub label: String,
+}
+
 pub struct ClaudeApiRequest<'a> {
+    pub model: &'a str,
     pub system: &'a str,
     pub prompt: String,
     pub image_data_urls: Vec<String>,
     pub max_tokens: u32,
 }
 
-pub async fn validate_api_key(api_key: &StoredSecret) -> Result<(), ClaudeApiError> {
+pub async fn list_models(api_key: &StoredSecret) -> Result<Vec<ClaudeApiModel>, ClaudeApiError> {
     let client = client(STATUS_TIMEOUT)?;
-    let response = authenticated(client.get(ANTHROPIC_MODEL_URL), api_key)?
+    let mut response = authenticated(client.get(ANTHROPIC_MODELS_URL), api_key)?
         .send()
         .await
         .map_err(map_transport_error)?;
-    require_success(response.status(), true)
+    require_success(response.status(), true)?;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(map_transport_error)? {
+        if chunk.len() > MAX_RESPONSE_BYTES.saturating_sub(bytes.len()) {
+            return Err(ClaudeApiError::InvalidResponse);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    parse_models(&bytes)
 }
 
 pub async fn create_message(
@@ -53,8 +67,11 @@ pub async fn create_message(
     request: ClaudeApiRequest<'_>,
 ) -> Result<ClaudeApiAnswer, ClaudeApiError> {
     let content = message_content(request.image_data_urls, request.prompt)?;
+    if !valid_model_id(request.model) {
+        return Err(ClaudeApiError::ModelUnavailable);
+    }
     let body = json!({
-        "model": CLAUDE_API_MODEL,
+        "model": request.model,
         "max_tokens": request.max_tokens,
         "system": request.system,
         "messages": [{ "role": "user", "content": content }],
@@ -87,6 +104,48 @@ pub async fn create_message(
         model,
         duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
+}
+
+fn parse_models(bytes: &[u8]) -> Result<Vec<ClaudeApiModel>, ClaudeApiError> {
+    let value: Value =
+        serde_json::from_slice(bytes).map_err(|_| ClaudeApiError::InvalidResponse)?;
+    let data = value
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or(ClaudeApiError::InvalidResponse)?;
+    let mut models = data
+        .iter()
+        .filter_map(|model| {
+            let id = model.get("id")?.as_str()?;
+            if !valid_model_id(id) || !(id.contains("sonnet") || id.contains("opus")) {
+                return None;
+            }
+            let label = model
+                .get("display_name")
+                .and_then(Value::as_str)
+                .filter(|label| !label.is_empty() && label.len() <= 100)
+                .unwrap_or(id);
+            Some(ClaudeApiModel {
+                id: id.to_string(),
+                label: label.to_ascii_uppercase(),
+            })
+        })
+        .collect::<Vec<_>>();
+    models.sort_by_key(|model| if model.id.contains("sonnet") { 0 } else { 1 });
+    models.dedup_by(|left, right| left.id == right.id);
+    if models.is_empty() {
+        Err(ClaudeApiError::ModelUnavailable)
+    } else {
+        Ok(models)
+    }
+}
+
+fn valid_model_id(model: &str) -> bool {
+    model.starts_with("claude-")
+        && model.len() <= 100
+        && model
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
 fn client(timeout: Duration) -> Result<reqwest::Client, ClaudeApiError> {
@@ -203,7 +262,10 @@ fn append_text(answer: &mut String, text: &str) -> Result<(), ClaudeApiError> {
 mod tests {
     use reqwest::StatusCode;
 
-    use super::{message_content, parse_message, require_success, ClaudeApiError};
+    use super::{
+        message_content, parse_message, parse_models, require_success, valid_model_id,
+        ClaudeApiError,
+    };
 
     #[test]
     fn api_payload_keeps_images_memory_only_and_places_prompt_last() {
@@ -259,5 +321,22 @@ mod tests {
             parse_message(tool).unwrap_err(),
             ClaudeApiError::InvalidResponse
         );
+    }
+
+    #[test]
+    fn lists_only_bounded_sonnet_and_opus_models() {
+        let response = br#"{
+            "data":[
+                {"id":"claude-opus-5","display_name":"Claude Opus 5"},
+                {"id":"claude-haiku-5","display_name":"Claude Haiku 5"},
+                {"id":"claude-sonnet-5","display_name":"Claude Sonnet 5"}
+            ]
+        }"#;
+        let models = parse_models(response).expect("models");
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "claude-sonnet-5");
+        assert_eq!(models[1].id, "claude-opus-5");
+        assert!(valid_model_id("claude-sonnet-5"));
+        assert!(!valid_model_id("claude-sonnet-5;rm"));
     }
 }

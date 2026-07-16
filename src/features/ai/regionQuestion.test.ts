@@ -3,6 +3,8 @@ import {
   MAX_REGION_QUESTION_LENGTH,
   aiAccessLabel,
   defaultAiModelLabel,
+  selectedAiModel,
+  rememberAiModel,
   normalizedRegionQuestion
 } from "./regionQuestion";
 
@@ -33,5 +35,23 @@ describe("region questions", () => {
     expect(aiAccessLabel("subscription")).toBe("SUBSCRIPTION");
     expect(aiAccessLabel("account")).toBe("ACCOUNT");
     expect(aiAccessLabel(null)).toBe("");
+  });
+
+  it("remembers only an available model for each provider", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value)
+    };
+    const models = [
+      { id: "gpt-5.6-sol", label: "SOL" },
+      { id: "gpt-5.6-terra", label: "TERRA" }
+    ];
+
+    expect(selectedAiModel("openAi", models, storage)).toBe("gpt-5.6-terra");
+    rememberAiModel("openAi", "gpt-5.6-sol", storage);
+    expect(selectedAiModel("openAi", models, storage)).toBe("gpt-5.6-sol");
+    rememberAiModel("openAi", "not-available", storage);
+    expect(selectedAiModel("openAi", models, storage)).toBe("gpt-5.6-terra");
   });
 });
