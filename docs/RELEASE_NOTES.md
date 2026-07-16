@@ -1,6 +1,6 @@
 # Release Notes
 
-## 0.1.0-pre-alpha
+## 0.2.0-pre-alpha
 
 This is a contributor-facing pre-alpha demo build.
 
