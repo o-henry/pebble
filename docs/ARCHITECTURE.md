@@ -192,7 +192,8 @@ Never store:
 ### OcrEngine
 
 The macOS adapter uses Apple Vision locally after a stable Watch change
-candidate. A deterministic intent compiler evaluates common text, single-number
+candidate. Cross Check also performs one disclosed baseline read per enrolled
+region. A deterministic intent compiler evaluates common text, single-number
 threshold, progress, and state rules locally. Recognized text is ephemeral,
 bounded, and treated as untrusted evidence; it is never persisted or used as an
 instruction source. Unsupported or ambiguous rules may use the explicitly
@@ -207,6 +208,12 @@ it cannot retarget an existing Watch. Per-target authorization is atomically
 revoked on stop, privacy blank, Pebble removal, or app shutdown, so late AI
 results cannot notify. Coordinates, window IDs, pixels, and OCR text are never
 serialized through Watch status.
+
+For Cross Check targets, the registry stores only a positive, negative, or
+unknown state derived from ephemeral local OCR. It forms a conflict candidate
+only among explicitly enrolled Cross Check targets and emits after the same
+opposing state set survives two additional five-second checks. Raw OCR text and
+capture data never enter the registry.
 
 ### AiRuntime
 

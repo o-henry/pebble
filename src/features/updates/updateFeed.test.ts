@@ -43,4 +43,14 @@ describe("update feed", () => {
       confidence: "high"
     })).toBe("REGION 2 · STUCK · LOCAL VISUAL · HIGH");
   });
+
+  it("labels every region participating in a local conflict", () => {
+    expect(updateSignalLabel({
+      kind: "conflict",
+      region: "REGION 1",
+      relatedRegions: ["REGION 2"],
+      engine: "localCrossCheck",
+      confidence: "high"
+    })).toBe("REGION 1 + REGION 2 · CONFLICT · LOCAL CROSS-CHECK · HIGH");
+  });
 });

@@ -1,5 +1,6 @@
 use crate::watch_intent::{
-    CompiledWatchIntent, LocalWatchDecision, WatchEvaluationMode, WatchLocalEngine,
+    CompiledWatchIntent, CrossRegionState, LocalWatchDecision, WatchEvaluationMode,
+    WatchLocalEngine,
 };
 
 #[test]
@@ -143,4 +144,66 @@ fn compiles_stuck_intents_as_zero_token_visual_rules() {
 fn ordinary_stop_language_does_not_accidentally_enable_stuck_watch() {
     let compiled = CompiledWatchIntent::compile("Tell me when the service stops failing".into());
     assert!(!compiled.detects_stuck_after_activity());
+}
+
+#[test]
+fn compiles_cross_region_conflicts_as_local_ocr_state_rules() {
+    for intent in [
+        "Tell me when watched regions show opposing success and error states",
+        "Notify me when regions disagree",
+        "영역 상태 불일치가 생기면 알려줘",
+    ] {
+        let compiled = CompiledWatchIntent::compile(intent.into());
+        assert_eq!(compiled.mode(), WatchEvaluationMode::Local);
+        assert_eq!(
+            compiled.local_engine(),
+            Some(WatchLocalEngine::CrossRegionOcr)
+        );
+        assert!(compiled.detects_cross_region_conflict());
+        assert_eq!(compiled.rule_summary(), "CROSS-REGION STATUS CONFLICT");
+    }
+}
+
+#[test]
+fn cross_region_state_classifier_is_high_precision_and_local() {
+    let compiled = CompiledWatchIntent::compile(
+        "Tell me when watched regions show opposing success and error states".into(),
+    );
+    for text in [
+        "DEPLOY SUCCESS",
+        "ALL SYSTEMS HEALTHY",
+        "작업 완료",
+        "서비스 정상",
+    ] {
+        assert_eq!(
+            compiled.classify_cross_region_state(text),
+            Some(CrossRegionState::Positive)
+        );
+    }
+    for text in [
+        "BUILD FAILED",
+        "SERVICE OFFLINE",
+        "NOT HEALTHY",
+        "NOT READY",
+        "NOT COMPLETE",
+        "NOT PASSED",
+        "배포 오류",
+        "서비스 비정상",
+        "작업 미완료",
+    ] {
+        assert_eq!(
+            compiled.classify_cross_region_state(text),
+            Some(CrossRegionState::Negative)
+        );
+    }
+    for text in ["STILL RUNNING", "ALREADY CHECKED", "WARNING", "42%"] {
+        assert_eq!(compiled.classify_cross_region_state(text), None);
+    }
+}
+
+#[test]
+fn ordinary_semantic_intents_do_not_join_cross_region_watch() {
+    let compiled = CompiledWatchIntent::compile("Tell me whether these screens agree".into());
+    assert!(!compiled.detects_cross_region_conflict());
+    assert_eq!(compiled.classify_cross_region_state("SUCCESS"), None);
 }

@@ -545,6 +545,7 @@ fn start_background_watch(app: AppHandle) {
                         .await;
                     }
                     Err(error) => {
+                        watch.update_cross_region_state(&target.id, None);
                         if last_capture_errors.get(&target.id) != Some(&error.code) {
                             let signal = WatchSignal::new(
                                 WatchSignalKind::Waiting,
@@ -591,6 +592,25 @@ fn start_background_watch(app: AppHandle) {
                     }
                 }
             }
+            let (status, conflict) = watch.observe_cross_region_conflict(tick);
+            if let Some(conflict) = conflict {
+                smart_watch::emit_status(&app, status);
+                if let Some(target_name) = conflict.regions.first() {
+                    emit_watch_event(
+                        &app,
+                        WatchEventNotice {
+                            target_name,
+                            related_regions: &conflict.regions[1..],
+                            kind: WatchSignalKind::Conflict,
+                            engine: WatchSignalEngine::LocalCrossCheck,
+                            model: None,
+                            confidence: "HIGH",
+                            duration_ms: None,
+                            summary: &conflict.summary,
+                        },
+                    );
+                }
+            }
         }
     });
 }
@@ -610,6 +630,13 @@ async fn evaluate_watch_target(
         monitoring::MonitoringDecision::Baseline => {
             pending.remove(&target.id);
             watch.reset_visual_activity(&target.id);
+            if let Some(context) = watch
+                .current_context(&target.id)
+                .filter(|context| context.plan.detects_cross_region_conflict())
+            {
+                let state = classify_cross_region_frame(&context.plan, &frame).await;
+                watch.update_cross_region_state(&target.id, state);
+            }
             return;
         }
         monitoring::MonitoringDecision::Stable => {
@@ -620,6 +647,7 @@ async fn evaluate_watch_target(
                     app,
                     WatchEventNotice {
                         target_name: &target.name,
+                        related_regions: &[],
                         kind: WatchSignalKind::Stuck,
                         engine: WatchSignalEngine::LocalVisual,
                         model: None,
@@ -649,6 +677,12 @@ async fn evaluate_watch_target(
         watch.note_visual_activity(&target.id, tick, true);
         return;
     }
+    if context.plan.detects_cross_region_conflict() {
+        pending.remove(&target.id);
+        let state = classify_cross_region_frame(&context.plan, &frame).await;
+        watch.update_cross_region_state(&target.id, state);
+        return;
+    }
     let prepared = prepare_watch_candidate(&context, &previous_frame, &frame).await;
     match prepared.decision {
         watch_intent::LocalWatchDecision::Matched(event) => {
@@ -660,6 +694,7 @@ async fn evaluate_watch_target(
                     app,
                     WatchEventNotice {
                         target_name: &target.name,
+                        related_regions: &[],
                         kind: WatchSignalKind::Match,
                         engine: WatchSignalEngine::LocalOcr,
                         model: None,
@@ -758,6 +793,23 @@ async fn prepare_watch_candidate(
     }
 }
 
+async fn classify_cross_region_frame(
+    plan: &watch_intent::CompiledWatchIntent,
+    frame: &CroppedFramePayload,
+) -> Option<watch_intent::CrossRegionState> {
+    let frame = frame.clone();
+    let text = tauri::async_runtime::spawn_blocking(move || {
+        LocalOcrAdapter
+            .recognize_text(&frame)
+            .ok()
+            .filter(|text| !text.trim().is_empty())
+    })
+    .await
+    .ok()
+    .flatten()?;
+    plan.classify_cross_region_state(&text)
+}
+
 async fn capture_watch_target_frame(
     app: &AppHandle,
     target: &smart_watch::WatchCaptureTarget,
@@ -798,6 +850,11 @@ fn watch_started_log(
     } else {
         "GENERAL MEANINGFUL CHANGE"
     };
+    if local_engine == Some(WatchLocalEngine::CrossRegionOcr) {
+        return format!(
+            "WATCH STARTED · {intent} · CROSS CHECK · USE ON 2+ REGIONS · LOCAL OCR ON BASELINE + STABLE CHANGES · FIXED 10S CONFIRMATION · NO AI USAGE"
+        );
+    }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
             "WATCH STARTED · {intent} · LOCAL CHECK EVERY 5S · ALERT AFTER {} WITHOUT PROGRESS · NO OCR · NO AI USAGE",
@@ -821,6 +878,9 @@ fn watch_interval_log(
     local_engine: Option<WatchLocalEngine>,
     analysis_interval_minutes: u16,
 ) -> String {
+    if local_engine == Some(WatchLocalEngine::CrossRegionOcr) {
+        return "CROSS CHECK USES A FIXED 10S CONFIRMATION".to_string();
+    }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
             "STUCK THRESHOLD UPDATED · {} WITHOUT PROGRESS",
@@ -909,6 +969,7 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                     &app,
                     WatchEventNotice {
                         target_name: &target_name,
+                        related_regions: &[],
                         kind: WatchSignalKind::Match,
                         engine: signal_engine,
                         model: Some(&analysis.model),
@@ -947,6 +1008,7 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
 
 struct WatchEventNotice<'a> {
     target_name: &'a str,
+    related_regions: &'a [String],
     kind: WatchSignalKind,
     engine: WatchSignalEngine,
     model: Option<&'a str>,
@@ -958,6 +1020,7 @@ struct WatchEventNotice<'a> {
 fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
     let WatchEventNotice {
         target_name,
+        related_regions,
         kind,
         engine,
         model,
@@ -968,7 +1031,11 @@ fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
     menu_bar::set_attention(app, true);
     let display_model = model.unwrap_or(engine.label()).to_ascii_uppercase();
     let confidence = confidence.to_ascii_uppercase();
-    let mut title = format!("PEBBLE WATCH · {target_name} · {display_model} · {confidence}");
+    let region_label = std::iter::once(target_name)
+        .chain(related_regions.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let mut title = format!("PEBBLE WATCH · {region_label} · {display_model} · {confidence}");
     if let Some(duration_ms) = duration_ms {
         title.push_str(&format!(" · {:.1}S", duration_ms as f64 / 1_000.0));
     }
@@ -985,7 +1052,8 @@ fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
         model,
         WatchSignalConfidence::parse(&confidence),
         duration_ms,
-    );
+    )
+    .and_then(|signal| signal.with_related_regions(related_regions));
     record_signal_or_watch(app, &compact_watch_log(summary.to_string()), signal);
 }
 
@@ -1192,6 +1260,28 @@ mod tests {
         assert!(
             watch_interval_log(Some(WatchLocalEngine::VisualStability), 30)
                 .contains("30 MIN WITHOUT PROGRESS")
+        );
+    }
+
+    #[test]
+    fn cross_watch_log_explains_scope_confirmation_and_no_ai() {
+        let log = watch_started_log(
+            Some(WatchLocalEngine::CrossRegionOcr),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            30,
+            true,
+        );
+
+        assert!(log.contains("USE ON 2+ REGIONS"));
+        assert!(log.contains("LOCAL OCR ON BASELINE + STABLE CHANGES"));
+        assert!(log.contains("FIXED 10S CONFIRMATION"));
+        assert!(log.contains("NO AI USAGE"));
+        assert!(!log.contains("GPT-5.6"));
+        assert_eq!(
+            watch_interval_log(Some(WatchLocalEngine::CrossRegionOcr), 30),
+            "CROSS CHECK USES A FIXED 10S CONFIRMATION"
         );
     }
 

@@ -48,6 +48,7 @@ pub struct UpdateEntry {
 pub enum WatchSignalKind {
     Match,
     Stuck,
+    Conflict,
     Waiting,
     AnalysisSkipped,
 }
@@ -57,6 +58,7 @@ impl WatchSignalKind {
         match self {
             Self::Match => "MATCH",
             Self::Stuck => "STUCK",
+            Self::Conflict => "CONFLICT",
             Self::Waiting => "WAITING",
             Self::AnalysisSkipped => "ANALYSIS SKIPPED",
         }
@@ -69,6 +71,7 @@ pub enum WatchSignalEngine {
     System,
     LocalOcr,
     LocalVisual,
+    LocalCrossCheck,
     OpenAi,
     Claude,
 }
@@ -79,6 +82,7 @@ impl WatchSignalEngine {
             Self::System => "SYSTEM",
             Self::LocalOcr => "LOCAL OCR",
             Self::LocalVisual => "LOCAL VISUAL",
+            Self::LocalCrossCheck => "LOCAL CROSS-CHECK",
             Self::OpenAi => "OPENAI",
             Self::Claude => "CLAUDE",
         }
@@ -117,6 +121,8 @@ impl WatchSignalConfidence {
 pub struct WatchSignal {
     pub kind: WatchSignalKind,
     pub region: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related_regions: Vec<String>,
     pub engine: WatchSignalEngine,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -143,6 +149,7 @@ impl WatchSignal {
         Some(Self {
             kind,
             region,
+            related_regions: Vec::new(),
             engine,
             model,
             confidence,
@@ -150,9 +157,29 @@ impl WatchSignal {
         })
     }
 
+    pub fn with_related_regions(mut self, regions: &[String]) -> Option<Self> {
+        if regions.len() > 2 {
+            return None;
+        }
+        let mut related = Vec::with_capacity(regions.len());
+        for region in regions {
+            let region = sanitized_metadata(region, 80)?;
+            if region != self.region && !related.contains(&region) {
+                related.push(region);
+            }
+        }
+        self.related_regions = related;
+        Some(self)
+    }
+
     fn journal_fields(&self) -> Vec<String> {
+        let region_label = std::iter::once(&self.region)
+            .chain(self.related_regions.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" + ");
         let mut fields = vec![
-            self.region.clone(),
+            region_label,
             self.kind.label().to_string(),
             self.engine.label().to_string(),
         ];

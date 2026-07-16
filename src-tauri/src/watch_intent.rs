@@ -17,6 +17,7 @@ pub enum WatchEvaluationMode {
 pub enum WatchLocalEngine {
     Ocr,
     VisualStability,
+    CrossRegionOcr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +30,7 @@ pub struct CompiledWatchIntent {
 enum WatchRule {
     Semantic,
     StuckAfterActivity,
+    CrossRegionConflict,
     TextAppears(String),
     TextDisappears(String),
     TextChanges,
@@ -65,6 +67,12 @@ pub enum LocalWatchDecision {
     NeedsAi,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrossRegionState {
+    Positive,
+    Negative,
+}
+
 impl CompiledWatchIntent {
     pub fn compile(intent: String) -> Self {
         let normalized = normalize(&intent);
@@ -87,6 +95,7 @@ impl CompiledWatchIntent {
         match self.rule {
             WatchRule::Semantic => None,
             WatchRule::StuckAfterActivity => Some(WatchLocalEngine::VisualStability),
+            WatchRule::CrossRegionConflict => Some(WatchLocalEngine::CrossRegionOcr),
             _ => Some(WatchLocalEngine::Ocr),
         }
     }
@@ -95,10 +104,90 @@ impl CompiledWatchIntent {
         matches!(self.rule, WatchRule::StuckAfterActivity)
     }
 
+    pub fn detects_cross_region_conflict(&self) -> bool {
+        matches!(self.rule, WatchRule::CrossRegionConflict)
+    }
+
+    pub fn classify_cross_region_state(&self, text: &str) -> Option<CrossRegionState> {
+        if !self.detects_cross_region_conflict() {
+            return None;
+        }
+        let normalized = normalize(text);
+        if contains_negated_ascii_status(
+            &normalized,
+            &[
+                "success",
+                "succeeded",
+                "successful",
+                "passed",
+                "complete",
+                "completed",
+                "ready",
+                "healthy",
+                "online",
+                "operational",
+                "up",
+            ],
+        ) || contains_any(
+            &normalized,
+            &["성공하지 않", "완료되지 않", "정상 아님", "정상이 아님"],
+        ) || contains_status_any(
+            &normalized,
+            &[
+                "error",
+                "errors",
+                "failed",
+                "failure",
+                "fail",
+                "offline",
+                "unhealthy",
+                "blocked",
+                "rejected",
+                "down",
+                "unsuccessful",
+                "오류",
+                "에러",
+                "실패",
+                "비정상",
+                "오프라인",
+                "중단",
+                "거부",
+                "차단",
+                "미완료",
+            ],
+        ) {
+            return Some(CrossRegionState::Negative);
+        }
+        contains_status_any(
+            &normalized,
+            &[
+                "success",
+                "succeeded",
+                "successful",
+                "passed",
+                "complete",
+                "completed",
+                "ready",
+                "healthy",
+                "online",
+                "operational",
+                "up",
+                "성공",
+                "완료",
+                "정상",
+                "온라인",
+                "통과",
+                "준비",
+            ],
+        )
+        .then_some(CrossRegionState::Positive)
+    }
+
     pub fn rule_summary(&self) -> String {
         match &self.rule {
             WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
             WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
+            WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
             WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
             WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
             WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),
@@ -145,6 +234,30 @@ impl WatchState {
 
 fn contains_any(value: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| value.contains(needle))
+}
+
+fn contains_status_any(value: &str, terms: &[&str]) -> bool {
+    let words = value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    terms.iter().any(|term| {
+        if term.is_ascii() {
+            words.contains(term)
+        } else {
+            value.contains(term)
+        }
+    })
+}
+
+fn contains_negated_ascii_status(value: &str, terms: &[&str]) -> bool {
+    let words = value
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    words
+        .windows(2)
+        .any(|pair| matches!(pair[0], "not" | "no") && terms.contains(&pair[1]))
 }
 
 fn normalize(value: &str) -> String {

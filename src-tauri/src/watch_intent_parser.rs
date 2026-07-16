@@ -1,6 +1,9 @@
 use super::{contains_any, normalize, NumberOperator, WatchRule, WatchState};
 
 pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
+    if is_cross_region_conflict_intent(normalized) {
+        return WatchRule::CrossRegionConflict;
+    }
     if is_stuck_intent(normalized) {
         return WatchRule::StuckAfterActivity;
     }
@@ -24,6 +27,25 @@ pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
         return WatchRule::StateAppears(state);
     }
     WatchRule::Semantic
+}
+
+fn is_cross_region_conflict_intent(value: &str) -> bool {
+    contains_any(
+        value,
+        &[
+            "watched regions show opposing",
+            "regions show opposing",
+            "regions disagree",
+            "cross check regions",
+            "cross-check regions",
+            "cross region conflict",
+            "cross-region conflict",
+            "영역 상태 불일치",
+            "영역이 서로 모순",
+            "영역 상태가 서로 모순",
+            "영역 상태가 충돌",
+        ],
+    )
 }
 
 fn numeric_rule(value: &str) -> Option<(NumberOperator, f64)> {

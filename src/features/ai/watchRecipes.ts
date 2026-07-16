@@ -22,6 +22,11 @@ interface RecipeStorage {
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
   builtIn(
+    "cross-region-conflict",
+    "CROSS CHECK",
+    "Tell me when watched regions show opposing success and error states"
+  ),
+  builtIn(
     "stuck-after-activity",
     "NO PROGRESS",
     "Tell me when this region stops changing after activity"

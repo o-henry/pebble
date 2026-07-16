@@ -77,6 +77,10 @@ Implemented:
 - **No Progress** detects when a region that was visibly active becomes stuck
   for 1, 5, 30, or 60 minutes. A static starting screen and one-poll noise do
   not alert; the rule uses local visual samples with no OCR, AI, or network use.
+- **Cross Check** compares two or three explicitly enrolled regions across
+  browser and native apps. It alerts only when positive states such as success
+  or healthy and negative states such as error, failed, or offline remain
+  opposed for 10 seconds, using local OCR and no AI.
 - Stable-candidate gating ignores transient animation, while semantic
   fingerprints suppress repeated alerts within the selected interval.
 - Up to three independently bound Watch regions can stay active. Selecting a
@@ -84,8 +88,9 @@ Implemented:
   stopped separately.
 - Privacy-safe Watch recipes store only a name, intent, and recommended
   interval. They never store pixels, coordinates, OCR output, or credentials.
-- Production Apple Vision OCR runs only after a stable material-change candidate
-  and remains ephemeral in memory.
+- Production Apple Vision OCR runs only after a stable material-change candidate,
+  except for the one baseline read explicitly required by each Cross Check
+  region. OCR remains ephemeral in memory.
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
 - Collapsible Updates feed with structured region, signal, engine or model,
@@ -208,6 +213,15 @@ signal if that interval expires, suppresses repeats while the screen remains
 unchanged, and rearms only after renewed activity. This path does not run OCR,
 AI, browser access, tools, or network requests.
 
+The built-in **Cross Check** recipe is enrolled separately on each region that
+should participate. Pebble runs local Apple Vision OCR once on each enrolled
+baseline and after each stable change, immediately reduces the text to a
+positive, negative, or unknown state, and discards the text. A conflict requires
+at least two Cross Check regions, opposite positive and negative states, and a
+fixed 10-second confirmation. General warnings and in-progress states do not
+trigger it. The signal names all participating region labels but stores no OCR
+text, pixels, coordinates, or source-window IDs and never calls AI.
+
 Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed
 match decision, compact summary, and low/medium/high confidence. Pebble notifies
@@ -243,7 +257,9 @@ is never persisted, included in Updates, or sent to AI.
    without OCR or AI. Semantic rules ask you to connect a provider.
 8. Repeat selection and Watch activation for up to three independent regions.
    Their status rows remain visible in the AI panel and can be stopped one by
-   one.
+   one. To compare apps, choose **Cross Check** and enable Watch on at least two
+   regions; the interval control is disabled because conflict confirmation is a
+   fixed 10 seconds.
 9. Choose a provider, type a question, and press **Send** when one-shot analysis
    is wanted. This sends one fresh crop only for that request.
 

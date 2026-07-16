@@ -3,6 +3,7 @@ export type UpdateKind = "watch";
 export type WatchSignalKind =
   | "match"
   | "stuck"
+  | "conflict"
   | "waiting"
   | "analysisSkipped";
 
@@ -10,6 +11,7 @@ export type WatchSignalEngine =
   | "system"
   | "localOcr"
   | "localVisual"
+  | "localCrossCheck"
   | "openAi"
   | "claude";
 
@@ -18,6 +20,7 @@ export type WatchSignalConfidence = "low" | "medium" | "high";
 export interface WatchSignal {
   kind: WatchSignalKind;
   region: string;
+  relatedRegions?: string[];
   engine: WatchSignalEngine;
   model?: string;
   confidence?: WatchSignalConfidence;
@@ -63,6 +66,7 @@ export function updateSignalLabel(signal: WatchSignal): string {
   const kind: Record<WatchSignalKind, string> = {
     match: "MATCH",
     stuck: "STUCK",
+    conflict: "CONFLICT",
     waiting: "WAITING",
     analysisSkipped: "ANALYSIS SKIPPED"
   };
@@ -70,11 +74,13 @@ export function updateSignalLabel(signal: WatchSignal): string {
     system: "SYSTEM",
     localOcr: "LOCAL OCR",
     localVisual: "LOCAL VISUAL",
+    localCrossCheck: "LOCAL CROSS-CHECK",
     openAi: "OPENAI",
     claude: "CLAUDE"
   };
   const source = signal.model?.toUpperCase() ?? engine[signal.engine];
-  const segments = [signal.region, kind[signal.kind], source];
+  const regions = [signal.region, ...(signal.relatedRegions ?? [])].join(" + ");
+  const segments = [regions, kind[signal.kind], source];
   if (signal.confidence) segments.push(signal.confidence.toUpperCase());
   if (signal.durationMs !== undefined) {
     segments.push(`${(signal.durationMs / 1_000).toFixed(1)}S`);

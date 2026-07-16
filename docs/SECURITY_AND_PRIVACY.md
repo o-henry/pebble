@@ -27,7 +27,9 @@ Default behavior:
 
 - Capture selected regions locally.
 - Run diff locally.
-- Run Apple Vision OCR locally after a stable Watch candidate.
+- Run Apple Vision OCR locally after a stable Watch candidate. Cross Check
+  additionally performs one disclosed baseline read for each region explicitly
+  enrolled in that recipe.
 - Notify locally.
 - Store config locally.
 
@@ -128,6 +130,8 @@ Every frame is filtered locally before bounded AI analysis:
 
 ```text
 selected crop -> local diff gate -> activity/stability timer -> local stuck event
+              -> Cross Check baseline/stable change -> local OCR state enum
+              -> 10-second cross-region confirmation -> local conflict event
               -> stable candidate -> Apple Vision OCR -> deterministic rule
               -> local notification or bounded AI fallback -> deduplicated event
 ```
@@ -136,7 +140,8 @@ Watch is off by default. App startup displays its scope before region
 selection, pressing Watch records explicit activation, and every new region
 requires a fresh opt-in. At most three independent regions may be active. Local
 visual checks run every five seconds. Apple Vision OCR runs only after a stable
-material-change candidate. Deterministic text, single-number threshold,
+material-change candidate except for the disclosed one-time baseline read on
+each explicitly enrolled Cross Check region. Deterministic text, single-number threshold,
 progress, and state rules can notify locally with AI fallback disabled. Semantic
 analysis runs only when required, connected, explicitly allowed for that
 region, and no more often than the user-selected interval of 1, 5, 30, or 60
@@ -150,6 +155,17 @@ minute stability timer. A static initial region and one-poll transient cannot
 alert. One stuck event is emitted per activity cycle and the rule rearms only
 after renewed activity. It does not run Apple Vision OCR, AI, tools, browser
 access, or network requests.
+
+Cross Check is local OCR state comparison. Only regions explicitly configured
+with that recipe participate, and at least two are required. Each participating
+region runs ephemeral Apple Vision OCR on its baseline and after a stable
+change. The recognized text is immediately reduced to positive, negative, or
+unknown and discarded. Only opposing positive and negative states that remain
+unchanged for 10 seconds emit one conflict event. Capture failure, target
+removal, or an unclassified state clears the pending conflict. Pebble retains
+only the enum state and generated region labels; it does not persist or send
+OCR text, frames, coordinates, or source-window IDs, and it never calls AI for
+Cross Check.
 
 After activation, Pebble appends safe Watch lifecycle and result summaries plus
 structured region label, signal type, engine or model name, confidence, and

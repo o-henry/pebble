@@ -120,6 +120,72 @@ fn structured_signal_rejects_untrusted_metadata() {
     .is_none());
 }
 
+#[test]
+fn cross_region_signal_records_only_safe_region_labels() {
+    let path = test_path("cross-region");
+    let state = ActivityFeedState::default();
+    let related = vec!["REGION 2".to_string()];
+    let signal = WatchSignal::new(
+        WatchSignalKind::Conflict,
+        "REGION 1",
+        WatchSignalEngine::LocalCrossCheck,
+        None,
+        Some(WatchSignalConfidence::High),
+        None,
+    )
+    .and_then(|signal| signal.with_related_regions(&related))
+    .expect("safe cross-region signal");
+    let entry = state
+        .record_signal(
+            "Opposing states remain visible.",
+            "2026-07-16T10:00:00Z".into(),
+            Some(&path),
+            signal,
+        )
+        .expect("cross-region entry");
+
+    assert_eq!(
+        entry
+            .signal
+            .as_ref()
+            .map(|signal| signal.related_regions.as_slice()),
+        Some(related.as_slice())
+    );
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(document.contains(
+        "REGION 1 + REGION 2 | CONFLICT | LOCAL CROSS-CHECK | HIGH | Opposing states remain visible."
+    ));
+    let serialized = serde_json::to_string(&entry).expect("entry json");
+    for private_field in ["frame", "bytes", "ocrText", "monitorId", "sourceWindow"] {
+        assert!(!serialized.contains(private_field));
+    }
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
+#[test]
+fn cross_region_signal_rejects_unsafe_or_excessive_related_regions() {
+    let signal = WatchSignal::new(
+        WatchSignalKind::Conflict,
+        "REGION 1",
+        WatchSignalEngine::LocalCrossCheck,
+        None,
+        None,
+        None,
+    )
+    .expect("base signal");
+    assert!(signal
+        .clone()
+        .with_related_regions(&["REGION 2\nINJECTED".to_string()])
+        .is_none());
+    assert!(signal
+        .with_related_regions(&[
+            "REGION 2".to_string(),
+            "REGION 3".to_string(),
+            "REGION 4".to_string(),
+        ])
+        .is_none());
+}
+
 #[cfg(unix)]
 #[test]
 fn journal_refuses_a_symlink_target() {

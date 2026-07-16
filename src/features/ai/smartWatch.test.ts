@@ -26,7 +26,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("8");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("9");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -131,6 +131,28 @@ describe("smart watch consent", () => {
     })).toEqual([
       "REGION 1 · NO PROGRESS AFTER ACTIVITY",
       "LOCAL VISUAL ONLY · ALERT AFTER 5 MIN WITHOUT PROGRESS · NO OCR · NO AI USAGE",
+      "1 MATCHES"
+    ]);
+  });
+
+  it("describes cross-region checks as local OCR state comparison", () => {
+    expect(smartWatchTargetSegments({
+      id: "watch-1",
+      name: "REGION 1",
+      current: true,
+      analysesCompleted: 0,
+      localMatchesCompleted: 1,
+      suppressedEvents: 0,
+      analysisIntervalMinutes: 5,
+      provider: "openAi",
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: false,
+      evaluationMode: "local",
+      localEngine: "crossRegionOcr",
+      ruleSummary: "CROSS-REGION STATUS CONFLICT"
+    })).toEqual([
+      "REGION 1 · CROSS-REGION STATUS CONFLICT",
+      "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE",
       "1 MATCHES"
     ]);
   });

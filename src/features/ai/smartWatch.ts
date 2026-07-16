@@ -1,6 +1,6 @@
 import type { AiProvider } from "./regionQuestion";
 
-export const SMART_WATCH_CONSENT_VERSION = 8;
+export const SMART_WATCH_CONSENT_VERSION = 9;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -24,7 +24,7 @@ export interface SmartWatchStatus {
   customIntent: boolean;
   watchingFor: string | null;
   evaluationMode: "local" | "ai";
-  localEngine: "ocr" | "visualStability" | null;
+  localEngine: "ocr" | "visualStability" | "crossRegionOcr" | null;
   ruleSummary: string;
   captureScope: "selectedRegionOnly";
   storagePolicy: "memoryOnly";
@@ -44,7 +44,7 @@ export interface SmartWatchTargetStatus {
   model: string;
   aiFallbackEnabled: boolean;
   evaluationMode: "local" | "ai";
-  localEngine: "ocr" | "visualStability" | null;
+  localEngine: "ocr" | "visualStability" | "crossRegionOcr" | null;
   ruleSummary: string;
 }
 
@@ -112,7 +112,9 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
 }
 
 export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
-  const engine = target.localEngine === "visualStability"
+  const engine = target.localEngine === "crossRegionOcr"
+    ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
+    : target.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : target.evaluationMode === "local"
     ? target.aiFallbackEnabled
@@ -134,7 +136,9 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
 
 export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
-  const engine = status.localEngine === "visualStability"
+  const engine = status.localEngine === "crossRegionOcr"
+    ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
+    : status.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : status.evaluationMode === "local"
     ? status.aiFallbackEnabled

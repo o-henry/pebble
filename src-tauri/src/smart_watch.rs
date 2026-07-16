@@ -6,22 +6,27 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     ai_runtime::AiProvider,
-    watch_intent::{CompiledWatchIntent, LocalWatchMatch, WatchEvaluationMode, WatchLocalEngine},
+    watch_intent::{
+        CompiledWatchIntent, CrossRegionState, LocalWatchMatch, WatchEvaluationMode,
+        WatchLocalEngine,
+    },
 };
 
 #[path = "watch_target_registry.rs"]
 mod registry;
-pub(crate) use registry::{WatchAuthorization, WatchCaptureTarget, WatchRegionAuthorization};
+pub(crate) use registry::{
+    CrossRegionMatch, WatchAuthorization, WatchCaptureTarget, WatchRegionAuthorization,
+};
 use registry::{WatchTargetConfig, WatchTargetRegistry};
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 8;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 9;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL VISUAL STABILITY CHECKS USE NO OCR OR AI. OTHER RULES USE APPLE VISION OCR, WITH AI ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN EACH REGION'S SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL VISUAL STABILITY CHECKS USE NO OCR OR AI. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
 
@@ -135,7 +140,10 @@ impl SmartWatchState {
         let model = normalized_model(provider, model)?;
         let (intent, custom_intent) = normalized_intent(intent)?;
         let plan = CompiledWatchIntent::compile(intent);
-        if plan.local_engine() == Some(WatchLocalEngine::VisualStability) {
+        if matches!(
+            plan.local_engine(),
+            Some(WatchLocalEngine::VisualStability | WatchLocalEngine::CrossRegionOcr)
+        ) {
             ai_fallback_enabled = false;
         }
         if enabled && plan.mode() == WatchEvaluationMode::Ai && !ai_fallback_enabled {
@@ -260,6 +268,25 @@ impl SmartWatchState {
     ) -> (SmartWatchStatus, Option<LocalWatchMatch>) {
         let mut data = self.data.lock().expect("smart watch state lock");
         let matched = data.observe_visual_stability(id, tick);
+        (data.status(), matched)
+    }
+
+    pub fn update_cross_region_state(
+        &self,
+        id: &str,
+        state: Option<CrossRegionState>,
+    ) -> SmartWatchStatus {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        data.update_cross_region_state(id, state);
+        data.status()
+    }
+
+    pub fn observe_cross_region_conflict(
+        &self,
+        tick: u64,
+    ) -> (SmartWatchStatus, Option<CrossRegionMatch>) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let matched = data.observe_cross_region_conflict(tick);
         (data.status(), matched)
     }
 
@@ -473,6 +500,7 @@ mod tests {
     use crate::{
         ai_runtime::AiProvider,
         region_selection_types::{PhysicalRegion, WindowCaptureTarget},
+        watch_intent::CrossRegionState,
     };
 
     #[test]
@@ -483,6 +511,7 @@ mod tests {
         assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
         assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
         assert!(STARTUP_NOTICE_BODY.contains("NO OCR OR AI"));
+        assert!(STARTUP_NOTICE_BODY.contains("CROSS CHECK RUNS EPHEMERAL LOCAL OCR"));
         assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
 
@@ -594,6 +623,27 @@ mod tests {
         assert_eq!(
             status.local_engine,
             Some(crate::watch_intent::WatchLocalEngine::VisualStability)
+        );
+    }
+
+    #[test]
+    fn cross_region_rules_force_local_ocr_without_ai_fallback() {
+        let state = SmartWatchState::default();
+        let status = state
+            .configure(
+                authorization(1, 0),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Tell me when watched regions show opposing success and error states",
+                    5,
+                ),
+            )
+            .unwrap();
+
+        assert!(!status.ai_fallback_enabled);
+        assert_eq!(
+            status.local_engine,
+            Some(crate::watch_intent::WatchLocalEngine::CrossRegionOcr)
         );
     }
 
@@ -856,6 +906,79 @@ mod tests {
         state.note_visual_activity(&id, 10, true);
         assert!(state.observe_visual_stability(&id, 21).1.is_none());
         assert!(state.observe_visual_stability(&id, 22).1.is_some());
+    }
+
+    #[test]
+    fn cross_region_conflict_requires_two_targets_and_ten_seconds_of_consistency() {
+        let state = SmartWatchState::default();
+        for revision in 1..=2 {
+            state
+                .configure(
+                    authorization(revision, revision as i32 * 10),
+                    watch_request(
+                        SMART_WATCH_CONSENT_VERSION,
+                        "Tell me when watched regions show opposing success and error states",
+                        5,
+                    ),
+                )
+                .unwrap();
+        }
+        let ids = state
+            .status()
+            .targets
+            .iter()
+            .map(|target| target.id.clone())
+            .collect::<Vec<_>>();
+
+        state.update_cross_region_state(&ids[0], Some(CrossRegionState::Positive));
+        assert!(state.observe_cross_region_conflict(10).1.is_none());
+        state.update_cross_region_state(&ids[1], Some(CrossRegionState::Negative));
+        assert!(state.observe_cross_region_conflict(11).1.is_none());
+        assert!(state.observe_cross_region_conflict(12).1.is_none());
+        let (status, matched) = state.observe_cross_region_conflict(13);
+        let matched = matched.expect("confirmed cross-region conflict");
+        assert_eq!(matched.regions, ["REGION 1", "REGION 2"]);
+        assert!(matched.summary.contains("동시에 유지"));
+        assert!(status
+            .targets
+            .iter()
+            .all(|target| target.local_matches_completed == 1));
+        assert!(state.observe_cross_region_conflict(14).1.is_none());
+
+        state.update_cross_region_state(&ids[1], None);
+        assert!(state.observe_cross_region_conflict(20).1.is_none());
+        state.update_cross_region_state(&ids[1], Some(CrossRegionState::Negative));
+        assert!(state.observe_cross_region_conflict(21).1.is_none());
+        assert!(state.observe_cross_region_conflict(22).1.is_none());
+        assert!(state.observe_cross_region_conflict(23).1.is_some());
+    }
+
+    #[test]
+    fn non_cross_watch_regions_never_join_a_conflict_group() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                authorization(1, 10),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Tell me when watched regions show opposing success and error states",
+                    5,
+                ),
+            )
+            .unwrap();
+        let cross_id = current_target_id(&state);
+        state
+            .configure(
+                authorization(2, 20),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "Tell me when ERROR appears", 5),
+            )
+            .unwrap();
+        let regular_id = current_target_id(&state);
+
+        state.update_cross_region_state(&cross_id, Some(CrossRegionState::Positive));
+        state.update_cross_region_state(&regular_id, Some(CrossRegionState::Negative));
+        assert!(state.observe_cross_region_conflict(1).1.is_none());
+        assert!(state.observe_cross_region_conflict(3).1.is_none());
     }
 
     #[test]

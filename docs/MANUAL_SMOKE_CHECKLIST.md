@@ -86,8 +86,11 @@ npm run tauri:build
   the request.
 - OpenAI lists only supported image-capable Sol, Terra, and Luna models reported
   by the connected account; selecting a different model never silently falls back.
-- Watch runs Apple Vision OCR only after a stable material-change candidate and
-  keeps OCR text ephemeral.
+- Watch runs Apple Vision OCR only after a stable material-change candidate,
+  except for each explicitly enrolled Cross Check baseline, and keeps OCR text
+  ephemeral.
+- Cross Check ignores one enrolled region, compares only other Cross Check
+  regions, waits 10 seconds before conflict notification, and never calls AI.
 - Watch respects each 1, 5, 30, and 60 minute interval without a fixed session cap.
 - A custom composer intent suppresses notifications and journal entries when
   the typed Watch result is unmatched.

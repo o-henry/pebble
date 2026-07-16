@@ -30,6 +30,9 @@ This is a contributor-facing pre-alpha demo build.
   run with no AI connection or token usage.
 - Local No Progress Watch that alerts once when a previously active region
   remains stable for the selected interval, without OCR, AI, or network use.
+- Local Cross Check Watch that compares coarse positive and negative states
+  across two or three explicitly enrolled browser or native-app regions, with a
+  fixed 10-second confirmation and no AI use.
 - Structured Watch signals with safe region, event, engine or model,
   confidence, and duration metadata separated from the human summary.
 - Stable-candidate animation suppression and per-region semantic event dedupe.

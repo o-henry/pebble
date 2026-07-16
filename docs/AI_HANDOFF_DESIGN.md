@@ -16,6 +16,10 @@ Watch may call the selected provider only after explicit per-region opt-in, a
 stable local material-change gate, Apple Vision OCR, and the selected 1, 5, 30,
 or 60 minute analysis interval.
 
+Cross Check is not an AI handoff path. It uses ephemeral local OCR on each
+explicitly enrolled baseline and stable change, stores only a coarse local
+state enum, and never sends frames or text to a provider.
+
 ## Runtime
 
 Pebble bundles the OpenAI Codex app-server as a Tauri sidecar. Claude uses a

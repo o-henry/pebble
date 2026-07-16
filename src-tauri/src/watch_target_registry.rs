@@ -7,7 +7,7 @@ use crate::{
     ai_runtime::AiProvider,
     monitoring::MonitoringState,
     region_selection_types::PhysicalRegion,
-    watch_intent::{CompiledWatchIntent, LocalWatchMatch},
+    watch_intent::{CompiledWatchIntent, CrossRegionState, LocalWatchMatch},
 };
 
 use super::{
@@ -16,6 +16,7 @@ use super::{
 };
 
 pub(super) const MAX_WATCH_TARGETS: usize = 3;
+const CROSS_CONFLICT_CONFIRMATION_TICKS: u64 = 2;
 
 #[derive(Debug, Clone)]
 pub(crate) struct WatchRegionAuthorization {
@@ -32,6 +33,12 @@ pub(crate) struct WatchCaptureTarget {
     pub region: PhysicalRegion,
     pub scale_factor: f64,
     pub monitoring: MonitoringState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CrossRegionMatch {
+    pub regions: Vec<String>,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +79,7 @@ pub(super) struct WatchTargetRegistry {
     next_id: u64,
     targets: Vec<WatchTarget>,
     fallback: WatchTargetConfig,
+    pending_cross_conflict: Option<CrossConflictCandidate>,
 }
 
 #[derive(Debug)]
@@ -94,12 +102,26 @@ struct WatchTarget {
     visual_activity_observed: bool,
     stability_started_tick: Option<u64>,
     stuck_notified: bool,
+    cross_region_state: Option<CrossRegionState>,
 }
 
 #[derive(Debug, Clone)]
 struct WatchEventFingerprint {
     value: String,
     tick: u64,
+}
+
+#[derive(Debug)]
+struct CrossConflictCandidate {
+    fingerprint: String,
+    first_tick: u64,
+    notified: bool,
+}
+
+struct CrossConflictSnapshot {
+    fingerprint: String,
+    regions: Vec<String>,
+    locale: String,
 }
 
 impl WatchTargetRegistry {
@@ -109,6 +131,7 @@ impl WatchTargetRegistry {
             next_id: 1,
             targets: Vec::new(),
             fallback,
+            pending_cross_conflict: None,
         }
     }
 
@@ -138,6 +161,8 @@ impl WatchTargetRegistry {
             target.last_analysis_tick = None;
             target.last_event = None;
             target.reset_visual_activity();
+            target.cross_region_state = None;
+            self.pending_cross_conflict = None;
             return Ok(());
         }
         if self.targets.len() >= MAX_WATCH_TARGETS {
@@ -165,7 +190,9 @@ impl WatchTargetRegistry {
             visual_activity_observed: false,
             stability_started_tick: None,
             stuck_notified: false,
+            cross_region_state: None,
         });
+        self.pending_cross_conflict = None;
         Ok(())
     }
 
@@ -185,6 +212,7 @@ impl WatchTargetRegistry {
             target.authorization.revoke();
         }
         self.targets.clear();
+        self.pending_cross_conflict = None;
     }
 
     pub(super) fn capture_targets(&self) -> Vec<WatchCaptureTarget> {
@@ -252,6 +280,65 @@ impl WatchTargetRegistry {
             .iter_mut()
             .find(|target| target.id == id)?
             .observe_visual_stability(tick)
+    }
+
+    pub(super) fn update_cross_region_state(
+        &mut self,
+        id: &str,
+        state: Option<CrossRegionState>,
+    ) -> bool {
+        let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
+            return false;
+        };
+        if !target.config.plan.detects_cross_region_conflict() {
+            return false;
+        }
+        if target.cross_region_state != state {
+            target.cross_region_state = state;
+            self.pending_cross_conflict = None;
+        }
+        true
+    }
+
+    pub(super) fn observe_cross_region_conflict(&mut self, tick: u64) -> Option<CrossRegionMatch> {
+        let Some(conflict) = self.current_cross_conflict() else {
+            self.pending_cross_conflict = None;
+            return None;
+        };
+        let should_emit = match self.pending_cross_conflict.as_mut() {
+            Some(candidate) if candidate.fingerprint == conflict.fingerprint => {
+                if candidate.notified
+                    || tick.saturating_sub(candidate.first_tick) < CROSS_CONFLICT_CONFIRMATION_TICKS
+                {
+                    false
+                } else {
+                    candidate.notified = true;
+                    true
+                }
+            }
+            _ => {
+                self.pending_cross_conflict = Some(CrossConflictCandidate {
+                    fingerprint: conflict.fingerprint,
+                    first_tick: tick,
+                    notified: false,
+                });
+                false
+            }
+        };
+        if !should_emit {
+            return None;
+        }
+        for target in self
+            .targets
+            .iter_mut()
+            .filter(|target| conflict.regions.contains(&target.name))
+        {
+            target.local_matches_completed = target.local_matches_completed.saturating_add(1);
+        }
+        Some(CrossRegionMatch {
+            summary: cross_conflict_summary(&conflict.locale, &conflict.regions),
+            regions: conflict.regions,
+        })
     }
 
     pub(super) fn finish_analysis(&mut self, id: &str, completed: bool) -> bool {
@@ -325,6 +412,47 @@ impl WatchTargetRegistry {
             target.authorization.revoke();
         }
         self.targets.retain(|target| !predicate(target));
+        self.pending_cross_conflict = None;
+    }
+
+    fn current_cross_conflict(&self) -> Option<CrossConflictSnapshot> {
+        let mut states = self
+            .targets
+            .iter()
+            .filter(|target| target.config.plan.detects_cross_region_conflict())
+            .filter_map(|target| target.cross_region_state.map(|state| (target, state)))
+            .collect::<Vec<_>>();
+        let has_positive = states
+            .iter()
+            .any(|(_, state)| *state == CrossRegionState::Positive);
+        let has_negative = states
+            .iter()
+            .any(|(_, state)| *state == CrossRegionState::Negative);
+        if !has_positive || !has_negative {
+            return None;
+        }
+        states.sort_by(|(left, _), (right, _)| left.name.cmp(&right.name));
+        let fingerprint = states
+            .iter()
+            .map(|(target, state)| {
+                let state = match state {
+                    CrossRegionState::Positive => "positive",
+                    CrossRegionState::Negative => "negative",
+                };
+                format!("{}:{state}", target.id)
+            })
+            .collect::<Vec<_>>()
+            .join("|");
+        let regions = states
+            .iter()
+            .map(|(target, _)| target.name.clone())
+            .collect();
+        let locale = states[0].0.config.locale.clone();
+        Some(CrossConflictSnapshot {
+            fingerprint,
+            regions,
+            locale,
+        })
     }
 }
 
@@ -463,6 +591,17 @@ fn stuck_summary(locale: &str, minutes: u16) -> String {
         };
         format!(
             "The region stopped changing after visible activity and stayed unchanged for {duration}."
+        )
+    }
+}
+
+fn cross_conflict_summary(locale: &str, regions: &[String]) -> String {
+    let regions = regions.join(", ");
+    if locale.to_ascii_lowercase().starts_with("ko") {
+        format!("{regions}에 성공·정상 상태와 오류·실패 상태가 동시에 유지되고 있습니다.")
+    } else {
+        format!(
+            "Opposing success or healthy and error or failed states remain visible across {regions}."
         )
     }
 }
