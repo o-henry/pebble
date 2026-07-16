@@ -3,6 +3,7 @@ import downIcon from "../assets/icons/down.svg";
 import {
   formatUpdateTime,
   mergeUpdateEntry,
+  updateSignalLabel,
   type UpdateFeedSnapshot
 } from "../features/updates/updateFeed";
 import { listenToUpdateFeed } from "../lib/events";
@@ -63,8 +64,13 @@ export function UpdateFeedPanel() {
           <ol>
             {feed.entries.map((entry) => (
               <li key={entry.id}>
+                {entry.signal ? (
+                  <span className="update-feed__signal">
+                    {updateSignalLabel(entry.signal)}
+                  </span>
+                ) : null}
                 <p>{entry.summary}</p>
-                <span>
+                <span className="update-feed__time">
                   {entry.kind} · {formatUpdateTime(entry.occurredAt)}
                   {entry.saved ? "" : " · NOT SAVED"}
                 </span>

@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use crate::activity_feed::{ActivityFeedState, UpdateKind};
+use crate::activity_feed::{
+    ActivityFeedState, UpdateKind, WatchSignal, WatchSignalConfidence, WatchSignalEngine,
+    WatchSignalKind,
+};
 
 #[test]
 fn journal_appends_entries_to_one_markdown_document() {
@@ -55,6 +58,66 @@ fn snapshot_keeps_newest_entries_first_without_private_frames() {
     let serialized = serde_json::to_string(&snapshot).expect("snapshot json");
     assert!(!serialized.contains("frame"));
     assert!(!serialized.contains("bytes"));
+}
+
+#[test]
+fn structured_signal_keeps_safe_metadata_separate_from_the_summary() {
+    let path = test_path("signal");
+    let state = ActivityFeedState::default();
+    let signal = WatchSignal::new(
+        WatchSignalKind::Match,
+        "REGION 1",
+        WatchSignalEngine::OpenAi,
+        Some("gpt-5.6-terra"),
+        Some(WatchSignalConfidence::High),
+        Some(1_240),
+    )
+    .expect("valid signal");
+    let entry = state
+        .record_signal(
+            "The visible status changed to failed.",
+            "2026-07-11T10:00:00Z".into(),
+            Some(&path),
+            signal,
+        )
+        .expect("signal entry");
+
+    assert_eq!(entry.summary, "The visible status changed to failed.");
+    assert_eq!(
+        entry.signal.as_ref().map(|signal| signal.region.as_str()),
+        Some("REGION 1")
+    );
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(document.contains(
+        "WATCH | REGION 1 | MATCH | OPENAI | GPT-5.6-TERRA | HIGH | 1240MS | The visible status changed to failed."
+    ));
+    let serialized = serde_json::to_string(&entry).expect("signal json");
+    for private_field in ["frame", "bytes", "sourceWindow", "monitorId", "ocrText"] {
+        assert!(!serialized.contains(private_field));
+    }
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
+#[test]
+fn structured_signal_rejects_untrusted_metadata() {
+    assert!(WatchSignal::new(
+        WatchSignalKind::Waiting,
+        "REGION 1\nINJECTED",
+        WatchSignalEngine::System,
+        None,
+        None,
+        None,
+    )
+    .is_none());
+    assert!(WatchSignal::new(
+        WatchSignalKind::Match,
+        "REGION 1",
+        WatchSignalEngine::Claude,
+        Some("model | injected"),
+        None,
+        None,
+    )
+    .is_none());
 }
 
 #[cfg(unix)]

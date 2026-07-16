@@ -1,11 +1,34 @@
 export type UpdateKind = "watch";
 
+export type WatchSignalKind =
+  | "match"
+  | "waiting"
+  | "analysisSkipped";
+
+export type WatchSignalEngine =
+  | "system"
+  | "localOcr"
+  | "openAi"
+  | "claude";
+
+export type WatchSignalConfidence = "low" | "medium" | "high";
+
+export interface WatchSignal {
+  kind: WatchSignalKind;
+  region: string;
+  engine: WatchSignalEngine;
+  model?: string;
+  confidence?: WatchSignalConfidence;
+  durationMs?: number;
+}
+
 export interface UpdateEntry {
   id: number;
   kind: UpdateKind;
   summary: string;
   occurredAt: string;
   saved: boolean;
+  signal?: WatchSignal;
 }
 
 export interface UpdateFeedSnapshot {
@@ -32,4 +55,25 @@ export function formatUpdateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+export function updateSignalLabel(signal: WatchSignal): string {
+  const kind: Record<WatchSignalKind, string> = {
+    match: "MATCH",
+    waiting: "WAITING",
+    analysisSkipped: "ANALYSIS SKIPPED"
+  };
+  const engine: Record<WatchSignalEngine, string> = {
+    system: "SYSTEM",
+    localOcr: "LOCAL OCR",
+    openAi: "OPENAI",
+    claude: "CLAUDE"
+  };
+  const source = signal.model?.toUpperCase() ?? engine[signal.engine];
+  const segments = [signal.region, kind[signal.kind], source];
+  if (signal.confidence) segments.push(signal.confidence.toUpperCase());
+  if (signal.durationMs !== undefined) {
+    segments.push(`${(signal.durationMs / 1_000).toFixed(1)}S`);
+  }
+  return segments.join(" · ");
 }

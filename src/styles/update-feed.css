@@ -19,9 +19,16 @@
 }
 
 .update-feed__header > span,
-.update-feed li span {
+.update-feed li .update-feed__time {
   color: var(--ink-muted);
   font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.update-feed li .update-feed__signal {
+  color: var(--ink-muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
   text-transform: uppercase;
 }
 

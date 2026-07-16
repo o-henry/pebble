@@ -55,7 +55,10 @@ mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
 
-use activity_feed::{ActivityFeedState, UpdateFeedSnapshot};
+use activity_feed::{
+    ActivityFeedState, UpdateFeedSnapshot, WatchSignal, WatchSignalConfidence, WatchSignalEngine,
+    WatchSignalKind,
+};
 use ai_runtime::{AiAnswer, AiConnectionStatus, AiProvider, AiRuntimeError, AiRuntimeState};
 use app_status::AppStatus;
 use capture_backend::{
@@ -541,14 +544,18 @@ fn start_background_watch(app: AppHandle) {
                     }
                     Err(error) => {
                         if last_capture_errors.get(&target.id) != Some(&error.code) {
-                            let log = compact_watch_log(format!(
-                                "WATCH WAITING · {} · {}",
-                                target.name, error.message
-                            ));
-                            activity_feed::record_watch(
+                            let signal = WatchSignal::new(
+                                WatchSignalKind::Waiting,
+                                &target.name,
+                                WatchSignalEngine::System,
+                                None,
+                                None,
+                                None,
+                            );
+                            record_signal_or_watch(
                                 &app,
-                                app.state::<ActivityFeedState>().inner(),
-                                &log,
+                                &compact_watch_log(error.message.clone()),
+                                signal,
                             );
                             last_capture_errors.insert(target.id.clone(), error.code);
                         }
@@ -612,7 +619,15 @@ async fn evaluate_watch_target(
             let (status, accepted) = watch.finish_local_match(&target.id, &event.fingerprint, tick);
             smart_watch::emit_status(app, status);
             if accepted {
-                emit_watch_event(app, &target.name, "LOCAL OCR", "HIGH", 0, &event.summary);
+                emit_watch_event(
+                    app,
+                    &target.name,
+                    WatchSignalEngine::LocalOcr,
+                    None,
+                    "HIGH",
+                    0,
+                    &event.summary,
+                );
             }
         }
         watch_intent::LocalWatchDecision::NotMatched => {
@@ -800,6 +815,8 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
             current_text,
         } = job;
         let target_name = context.target_name.clone();
+        let signal_engine = watch_signal_engine(context.provider);
+        let requested_model = context.model.clone();
         let result = ai_runtime::analyze_watch_change(
             &app,
             &runtime,
@@ -835,7 +852,8 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 emit_watch_event(
                     &app,
                     &target_name,
-                    &analysis.model,
+                    signal_engine,
+                    Some(&analysis.model),
                     &analysis.confidence,
                     analysis.duration_ms,
                     &analysis.summary,
@@ -853,11 +871,16 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                     .title(format!("PEBBLE WATCH · {} · ANALYSIS SKIPPED", target_name))
                     .body(&error.message)
                     .show();
-                let log = compact_watch_log(format!(
-                    "WATCH ANALYSIS SKIPPED · {} · {}",
-                    target_name, error.message
-                ));
-                activity_feed::record_watch(&app, app.state::<ActivityFeedState>().inner(), &log);
+                let log = compact_watch_log(error.message);
+                let signal = WatchSignal::new(
+                    WatchSignalKind::AnalysisSkipped,
+                    &target_name,
+                    signal_engine,
+                    Some(&requested_model),
+                    None,
+                    None,
+                );
+                record_signal_or_watch(&app, &log, signal);
             }
         }
     });
@@ -866,26 +889,48 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
 fn emit_watch_event(
     app: &tauri::AppHandle,
     target_name: &str,
-    model: &str,
+    engine: WatchSignalEngine,
+    model: Option<&str>,
     confidence: &str,
     duration_ms: u64,
     summary: &str,
 ) {
     menu_bar::set_attention(app, true);
-    let model = model.to_ascii_uppercase();
+    let display_model = model.unwrap_or(engine.label()).to_ascii_uppercase();
     let confidence = confidence.to_ascii_uppercase();
     let duration = duration_ms as f64 / 1_000.0;
-    let title = format!("PEBBLE WATCH · {target_name} · {model} · {confidence} · {duration:.1}S");
+    let title =
+        format!("PEBBLE WATCH · {target_name} · {display_model} · {confidence} · {duration:.1}S");
     let _ = app
         .notification()
         .builder()
         .title(&title)
         .body(summary)
         .show();
-    let log = compact_watch_log(format!(
-        "{target_name} · {model} · {confidence} · {duration:.1}S · {summary}"
-    ));
-    activity_feed::record_watch(app, app.state::<ActivityFeedState>().inner(), &log);
+    let signal = WatchSignal::new(
+        WatchSignalKind::Match,
+        target_name,
+        engine,
+        model,
+        WatchSignalConfidence::parse(&confidence),
+        Some(duration_ms),
+    );
+    record_signal_or_watch(app, &compact_watch_log(summary.to_string()), signal);
+}
+
+fn record_signal_or_watch(app: &tauri::AppHandle, summary: &str, signal: Option<WatchSignal>) {
+    let state = app.state::<ActivityFeedState>();
+    match signal {
+        Some(signal) => activity_feed::record_watch_signal(app, state.inner(), summary, signal),
+        None => activity_feed::record_watch(app, state.inner(), summary),
+    }
+}
+
+fn watch_signal_engine(provider: AiProvider) -> WatchSignalEngine {
+    match provider {
+        AiProvider::OpenAi => WatchSignalEngine::OpenAi,
+        AiProvider::Claude => WatchSignalEngine::Claude,
+    }
 }
 
 fn compact_watch_log(value: String) -> String {

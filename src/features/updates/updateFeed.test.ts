@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mergeUpdateEntry, type UpdateFeedSnapshot } from "./updateFeed";
+import {
+  mergeUpdateEntry,
+  updateSignalLabel,
+  type UpdateFeedSnapshot
+} from "./updateFeed";
 
 describe("update feed", () => {
   it("keeps the newest unique entry first", () => {
@@ -18,5 +22,16 @@ describe("update feed", () => {
     });
     expect(next.entries).toHaveLength(1);
     expect(next.entries[0].summary).toBe("NEW");
+  });
+
+  it("formats structured Watch metadata separately from its summary", () => {
+    expect(updateSignalLabel({
+      kind: "match",
+      region: "REGION 1",
+      engine: "openAi",
+      model: "gpt-5.6-terra",
+      confidence: "high",
+      durationMs: 1_240
+    })).toBe("REGION 1 · MATCH · GPT-5.6-TERRA · HIGH · 1.2S");
   });
 });
