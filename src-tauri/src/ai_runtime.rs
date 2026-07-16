@@ -28,6 +28,7 @@ use crate::{
     claude_credentials::{self, ClaudeCredentialError, ClaudeCredentialStatus, StoredSecret},
     pebble_session::{AuthorizedAiCapture, PebbleSessionState, PEBBLE_TILE_LABEL},
     platform_capture::PlatformCaptureBackend,
+    smart_watch::WatchAuthorization,
 };
 
 const MAX_QUESTION_CHARS: usize = 1_000;
@@ -112,7 +113,6 @@ pub struct WatchAnalysis {
 
 #[derive(Debug, Clone)]
 pub struct WatchAnalysisRequest {
-    pub revision: u64,
     pub provider: AiProvider,
     pub model: String,
     pub intent: String,
@@ -122,6 +122,7 @@ pub struct WatchAnalysisRequest {
     pub current_text: Option<String>,
     pub previous_frame: CroppedFramePayload,
     pub current_frame: CroppedFramePayload,
+    pub authorization: WatchAuthorization,
 }
 
 struct AiCallContext<'a> {
@@ -140,11 +141,10 @@ struct PreparedQuestion {
 
 struct WatchCallContext<'a> {
     app: &'a AppHandle,
-    session: &'a PebbleSessionState,
+    authorization: &'a WatchAuthorization,
 }
 
 struct PreparedWatchAnalysis {
-    revision: u64,
     model: String,
     intent: String,
     locale: String,
@@ -192,6 +192,10 @@ pub struct AiRuntimeState {
 }
 
 impl AiRuntimeState {
+    pub fn is_busy(&self) -> bool {
+        self.request_in_flight.load(Ordering::Acquire)
+    }
+
     fn begin_request(&self) -> Result<AiRequestGuard, AiRuntimeError> {
         self.request_in_flight
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -363,18 +367,19 @@ pub async fn ask_selected_region(
 pub async fn analyze_watch_change(
     app: &AppHandle,
     runtime: &AiRuntimeState,
-    session: &PebbleSessionState,
     request: WatchAnalysisRequest,
 ) -> Result<WatchAnalysis, AiRuntimeError> {
     let _guard = runtime.begin_request()?;
-    ensure_watch_session_current(app, session, request.revision)?;
+    ensure_watch_target_active(&request.authorization)?;
     let previous_image = encode_frame_data_url(&request.previous_frame)?;
     let current_image = encode_frame_data_url(&request.current_frame)?;
 
     let provider = request.provider;
-    let context = WatchCallContext { app, session };
+    let context = WatchCallContext {
+        app,
+        authorization: &request.authorization,
+    };
     let analysis = PreparedWatchAnalysis {
-        revision: request.revision,
         model: request.model,
         intent: request.intent,
         locale: request.locale,
@@ -396,7 +401,6 @@ async fn analyze_watch_openai(
     request: PreparedWatchAnalysis,
 ) -> Result<WatchAnalysis, AiRuntimeError> {
     let PreparedWatchAnalysis {
-        revision,
         locale,
         model,
         intent,
@@ -407,7 +411,6 @@ async fn analyze_watch_openai(
         current_image,
     } = request;
     let app = context.app;
-    let session = context.session;
     let mut server = AppServerProcess::start(app).await?;
     if !read_chatgpt_account(&mut server).await?.connected {
         return Err(runtime_error(
@@ -438,7 +441,7 @@ async fn analyze_watch_openai(
         "The private Watch analysis session did not start.",
     )?
     .to_string();
-    ensure_watch_session_current(app, session, revision)?;
+    ensure_watch_target_active(context.authorization)?;
     let started = Instant::now();
     server
         .request(
@@ -459,7 +462,7 @@ async fn analyze_watch_openai(
         )
         .await?;
     let payload = parse_watch_analysis(&collect_answer(&mut server, &thread_id).await?)?;
-    ensure_watch_session_current(app, session, revision)?;
+    ensure_watch_target_active(context.authorization)?;
     Ok(WatchAnalysis {
         matched: payload.matched,
         summary: payload.summary,
@@ -773,7 +776,6 @@ async fn analyze_watch_claude(
 ) -> Result<WatchAnalysis, AiRuntimeError> {
     if let Some(api_key) = load_claude_api_key()? {
         let PreparedWatchAnalysis {
-            revision,
             locale,
             model,
             intent,
@@ -784,7 +786,7 @@ async fn analyze_watch_claude(
             current_image,
         } = request;
         let model = requested_claude_api_model(&api_key, &model).await?;
-        ensure_watch_session_current(context.app, context.session, revision)?;
+        ensure_watch_target_active(context.authorization)?;
         let response = claude_api::create_message(
             &api_key,
             ClaudeApiRequest {
@@ -803,7 +805,7 @@ async fn analyze_watch_claude(
         )
         .await
         .map_err(claude_api_runtime_error)?;
-        ensure_watch_session_current(context.app, context.session, revision)?;
+        ensure_watch_target_active(context.authorization)?;
         let payload = parse_watch_analysis(&response.text)?;
         return Ok(WatchAnalysis {
             matched: payload.matched,
@@ -821,7 +823,6 @@ async fn analyze_watch_claude_subscription(
     request: PreparedWatchAnalysis,
 ) -> Result<WatchAnalysis, AiRuntimeError> {
     let PreparedWatchAnalysis {
-        revision,
         locale,
         model,
         intent,
@@ -832,7 +833,6 @@ async fn analyze_watch_claude_subscription(
         current_image,
     } = request;
     let app = context.app;
-    let session = context.session;
     let binary = claude_binary(app).ok_or_else(|| sidecar_error_for(AiProvider::Claude))?;
     if !claude_connection_status(app).await?.connected {
         return Err(runtime_error(
@@ -841,7 +841,7 @@ async fn analyze_watch_claude_subscription(
             true,
         ));
     }
-    ensure_watch_session_current(app, session, revision)?;
+    ensure_watch_target_active(context.authorization)?;
     let model = requested_claude_subscription_model(&model)?;
     let mut command = claude_command(app, &binary)?;
     command.args([
@@ -904,7 +904,7 @@ async fn analyze_watch_claude_subscription(
     }
     let (raw_summary, model, reported_duration) = parse_claude_answer(&output.stdout)?;
     let payload = parse_watch_analysis(&raw_summary)?;
-    ensure_watch_session_current(app, session, revision)?;
+    ensure_watch_target_active(context.authorization)?;
     Ok(WatchAnalysis {
         matched: payload.matched,
         summary: payload.summary,
@@ -1224,20 +1224,11 @@ fn watch_response_error() -> AiRuntimeError {
     )
 }
 
-fn ensure_watch_session_current(
-    app: &AppHandle,
-    session: &PebbleSessionState,
-    revision: u64,
-) -> Result<(), AiRuntimeError> {
-    let monitors = crate::current_monitor_geometries(app).map_err(capture_runtime_error)?;
-    if session
-        .frame_delivery_is_current(revision, &monitors)
-        .map_err(|_| session_changed_error())?
-    {
-        Ok(())
-    } else {
-        Err(session_changed_error())
-    }
+fn ensure_watch_target_active(authorization: &WatchAuthorization) -> Result<(), AiRuntimeError> {
+    authorization
+        .is_active()
+        .then_some(())
+        .ok_or_else(session_changed_error)
 }
 
 async fn collect_answer(

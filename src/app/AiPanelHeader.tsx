@@ -5,6 +5,8 @@ import { AiProviderSwitch } from "./AiProviderSwitch";
 import type { AiConnectionState } from "./AiConnectionPrompt";
 import { SmartWatchControl } from "./SmartWatchControl";
 import { SmartWatchStatusLine } from "./SmartWatchStatusLine";
+import { removeSmartWatchTarget } from "../lib/invoke";
+import { errorMessage } from "./usePebbleSession";
 
 export function AiPanelHeader({
   browserPreview,
@@ -30,9 +32,24 @@ export function AiPanelHeader({
   onError: (message: string | null) => void;
 }) {
   const [watchStatus, setWatchStatus] = useState<SmartWatchStatus | null>(null);
+  const [removingWatch, setRemovingWatch] = useState(false);
   const acceptWatchStatus = useCallback((status: SmartWatchStatus | null) => {
     setWatchStatus(status);
   }, []);
+
+  const removeWatch = useCallback(async (targetId: string) => {
+    try {
+      setRemovingWatch(true);
+      onBusyChange(true);
+      onError(null);
+      setWatchStatus(await removeSmartWatchTarget(targetId));
+    } catch (reason) {
+      onError(errorMessage(reason, "WATCH REGION COULD NOT BE STOPPED."));
+    } finally {
+      setRemovingWatch(false);
+      onBusyChange(false);
+    }
+  }, [onBusyChange, onError]);
 
   return (
     <div className="region-question__header-group">
@@ -58,7 +75,11 @@ export function AiPanelHeader({
           />
         </div>
       </div>
-      <SmartWatchStatusLine status={watchStatus} />
+      <SmartWatchStatusLine
+        status={watchStatus}
+        disabled={disabled || removingWatch}
+        onRemove={(targetId) => void removeWatch(targetId)}
+      />
     </div>
   );
 }

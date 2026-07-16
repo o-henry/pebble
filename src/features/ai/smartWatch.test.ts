@@ -8,7 +8,9 @@ import {
   smartWatchInterval,
   smartWatchIntervalAtOffset,
   smartWatchStatusSegments,
-  smartWatchTitle
+  smartWatchTargetSegments,
+  smartWatchTitle,
+  type SmartWatchStatus
 } from "./smartWatch";
 
 function memoryStorage() {
@@ -24,7 +26,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("6");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("7");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -39,8 +41,22 @@ describe("smart watch consent", () => {
   });
 
   it("reports the selected semantic analysis interval", () => {
-    const status = {
+    const status: SmartWatchStatus = {
         enabled: true,
+        targetCount: 1,
+        targets: [{
+          id: "watch-1",
+          name: "REGION 1",
+          current: true,
+          analysesCompleted: 12,
+          localMatchesCompleted: 0,
+          suppressedEvents: 0,
+          analysisIntervalMinutes: 60,
+          provider: "openAi",
+          model: "gpt-5.6-terra",
+          evaluationMode: "ai",
+          ruleSummary: "AI SEMANTIC MATCH"
+        }],
         analysesCompleted: 12,
         localMatchesCompleted: 0,
         suppressedEvents: 0,
@@ -55,13 +71,18 @@ describe("smart watch consent", () => {
         storagePolicy: "memoryOnly",
         imagesSaved: false,
         ocrSaved: false
-      } as const;
+      };
     expect(smartWatchTitle(status)).toContain("1 HOUR");
     expect(smartWatchStatusSegments(status)).toEqual([
       "WATCHING FOR · AI SEMANTIC MATCH",
       "OPENAI · GPT-5.6-TERRA · AI MAX 1 HOUR",
       "12 AI RUNS",
       "SELECTED REGION ONLY · MEMORY ONLY · NOTHING SAVED"
+    ]);
+    expect(smartWatchTargetSegments(status.targets[0])).toEqual([
+      "REGION 1 · AI SEMANTIC MATCH",
+      "OPENAI · GPT-5.6-TERRA · AI MAX 1 HOUR",
+      "12 AI RUNS"
     ]);
   });
 

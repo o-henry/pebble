@@ -132,6 +132,10 @@ export interface BackendCommandMap {
     args: { request: { analysisIntervalMinutes: SmartWatchIntervalMinutes } };
     result: SmartWatchStatus;
   };
+  remove_smart_watch_target: {
+    args: { targetId: string };
+    result: SmartWatchStatus;
+  };
   get_update_feed: {
     result: UpdateFeedSnapshot;
   };
@@ -339,6 +343,10 @@ export function setSmartWatchInterval(
   return invokeBackend("set_smart_watch_interval", {
     request: { analysisIntervalMinutes }
   });
+}
+
+export function removeSmartWatchTarget(targetId: string): Promise<SmartWatchStatus> {
+  return invokeBackend("remove_smart_watch_target", { targetId });
 }
 
 export function getUpdateFeed(): Promise<UpdateFeedSnapshot> {

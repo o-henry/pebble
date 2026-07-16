@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 mod activity_feed;
 #[cfg(test)]
 mod activity_feed_tests;
@@ -70,7 +72,7 @@ use region_selection_types::{RegionSelection, RegionSelectionIssue, RegionSelect
 use region_selector_window::RegionSelectorWindowShell;
 use smart_watch::{
     SetSmartWatchIntervalRequest, SetSmartWatchRequest, SmartWatchError, SmartWatchState,
-    SmartWatchStatus,
+    SmartWatchStatus, WatchRegionAuthorization,
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
@@ -141,7 +143,7 @@ fn confirm_pebble_region(
     request: RegionSelectionRequest,
 ) -> Result<PebbleSessionSnapshot, PebbleSessionError> {
     let snapshot = pebble_session::confirm_region_selection(&app, &window, state.inner(), request)?;
-    smart_watch::emit_status(&app, smart_watch.disable());
+    smart_watch::emit_status(&app, smart_watch.select_current(snapshot.revision));
     Ok(snapshot)
 }
 
@@ -339,29 +341,29 @@ fn set_smart_watch(
     window: tauri::WebviewWindow,
     session: tauri::State<'_, PebbleSessionState>,
     state: tauri::State<'_, SmartWatchState>,
-    monitoring: tauri::State<'_, monitoring::MonitoringState>,
     activity_feed: tauri::State<'_, ActivityFeedState>,
     request: SetSmartWatchRequest,
 ) -> Result<SmartWatchStatus, SmartWatchError> {
     if !pebble_window_allows_ai(&window) {
         return Err(SmartWatchError::unavailable());
     }
-    let snapshot = session
-        .snapshot()
+    let monitors =
+        current_monitor_geometries(&app).map_err(|_| SmartWatchError::invalid_session())?;
+    let authorized = session
+        .authorize_ai_capture(&monitors)
         .map_err(|_| SmartWatchError::invalid_session())?;
-    if request.enabled
-        && (snapshot.region.is_none() || !snapshot.window_open || snapshot.privacy_blank_active)
-    {
-        return Err(SmartWatchError::invalid_session());
-    }
 
     let enabled = request.enabled;
     let provider = request.provider;
     let model = request.model.clone();
     let custom_intent = !request.intent.trim().is_empty();
     let analysis_interval_minutes = request.analysis_interval_minutes;
-    let status = state.configure(snapshot.revision, request)?;
-    monitoring.reset();
+    let authorization = WatchRegionAuthorization {
+        revision: authorized.session_revision(),
+        region: authorized.region().clone(),
+        scale_factor: authorized.scale_factor(),
+    };
+    let status = state.configure(authorization, request)?;
     smart_watch::emit_status(&app, status.clone());
     if enabled {
         activity_feed::record_watch(
@@ -370,6 +372,21 @@ fn set_smart_watch(
             &watch_started_log(provider, &model, custom_intent, analysis_interval_minutes),
         );
     }
+    Ok(status)
+}
+
+#[tauri::command]
+fn remove_smart_watch_target(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, SmartWatchState>,
+    target_id: String,
+) -> Result<SmartWatchStatus, SmartWatchError> {
+    if !pebble_window_allows_ai(&window) {
+        return Err(SmartWatchError::unavailable());
+    }
+    let status = state.remove_target(&target_id)?;
+    smart_watch::emit_status(&app, status.clone());
     Ok(status)
 }
 
@@ -478,121 +495,139 @@ fn start_background_watch(app: AppHandle) {
         let mut interval = tokio::time::interval(WATCH_CAPTURE_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut tick = 0_u64;
-        let mut last_capture_error = None;
-        let mut pending_analysis: Option<PendingWatchAnalysis> = None;
+        let mut last_capture_errors = HashMap::<String, CaptureErrorCode>::new();
+        let mut pending_analyses = HashMap::<String, PendingWatchAnalysis>::new();
 
         loop {
             interval.tick().await;
             let watch = app.state::<SmartWatchState>().inner().clone();
-            if !watch.status().enabled {
-                last_capture_error = None;
-                pending_analysis = None;
+            let targets = watch.capture_targets();
+            if targets.is_empty() {
+                last_capture_errors.clear();
+                pending_analyses.clear();
                 continue;
             }
+            tick = tick.saturating_add(1);
+            pending_analyses.retain(|id, _| watch.contains_target(id));
+            last_capture_errors.retain(|id, _| watch.contains_target(id));
+            let mut analysis_scheduled = false;
 
-            match capture_background_watch_frame(&app).await {
-                Ok((revision, frame)) => {
-                    last_capture_error = None;
-                    tick = tick.saturating_add(1);
-                    if pending_analysis
-                        .as_ref()
-                        .is_some_and(|pending| pending.revision != revision)
-                    {
-                        pending_analysis = None;
+            for target in targets {
+                if pending_analyses
+                    .get(&target.id)
+                    .is_some_and(|pending| pending.revision != target.revision)
+                {
+                    pending_analyses.remove(&target.id);
+                }
+                match capture_watch_target_frame(&app, &target).await {
+                    Ok(frame) => {
+                        last_capture_errors.remove(&target.id);
+                        evaluate_watch_target(
+                            &app,
+                            &watch,
+                            &target,
+                            frame,
+                            tick,
+                            &mut pending_analyses,
+                        )
+                        .await;
                     }
-                    let monitoring = app.state::<monitoring::MonitoringState>();
-                    if let Some(monitoring::MonitoringDecision::Changed {
-                        kind,
-                        previous_frame,
-                        ..
-                    }) = monitoring.observe(revision, &frame, tick)
-                    {
-                        if let Some(context) = watch.current_context(revision) {
-                            let prepared =
-                                prepare_watch_candidate(&context, &previous_frame, &frame).await;
-                            match prepared.decision {
-                                watch_intent::LocalWatchDecision::Matched(event) => {
-                                    pending_analysis = None;
-                                    let (status, accepted) = watch.finish_local_match(
-                                        revision,
-                                        &event.fingerprint,
-                                        tick,
-                                    );
-                                    smart_watch::emit_status(&app, status);
-                                    if accepted {
-                                        emit_watch_event(
-                                            &app,
-                                            "LOCAL OCR",
-                                            "HIGH",
-                                            0,
-                                            &event.summary,
-                                        );
-                                    }
-                                }
-                                watch_intent::LocalWatchDecision::NotMatched => {
-                                    pending_analysis = None;
-                                }
-                                watch_intent::LocalWatchDecision::NeedsAi => {
-                                    match pending_analysis.as_mut() {
-                                        Some(pending) => {
-                                            pending.update(kind, frame, prepared.current_text)
-                                        }
-                                        None => {
-                                            pending_analysis = Some(PendingWatchAnalysis {
-                                                revision,
-                                                kind,
-                                                previous_frame,
-                                                current_frame: frame,
-                                                previous_text: prepared.previous_text,
-                                                current_text: prepared.current_text,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if pending_analysis
-                        .as_ref()
-                        .is_some_and(|pending| pending.revision == revision)
-                    {
-                        if let Some(context) = watch.begin_analysis(revision, tick) {
-                            let pending = pending_analysis
-                                .take()
-                                .expect("pending analysis was checked above");
-                            schedule_watch_analysis(WatchAnalysisJob {
-                                app: app.clone(),
-                                runtime: app.state::<AiRuntimeState>().inner().clone(),
-                                session: app.state::<PebbleSessionState>().inner().clone(),
-                                watch: watch.clone(),
-                                revision,
-                                tick,
-                                context,
-                                kind: pending.kind,
-                                previous_frame: pending.previous_frame,
-                                current_frame: pending.current_frame,
-                                previous_text: pending.previous_text,
-                                current_text: pending.current_text,
-                            });
-                            smart_watch::emit_status(&app, watch.status());
+                    Err(error) => {
+                        if last_capture_errors.get(&target.id) != Some(&error.code) {
+                            let log = compact_watch_log(format!(
+                                "WATCH WAITING · {} · {}",
+                                target.name, error.message
+                            ));
+                            activity_feed::record_watch(
+                                &app,
+                                app.state::<ActivityFeedState>().inner(),
+                                &log,
+                            );
+                            last_capture_errors.insert(target.id.clone(), error.code);
                         }
                     }
                 }
-                Err(error) => {
-                    if last_capture_error != Some(error.code) {
-                        let log = compact_watch_log(format!("WATCH WAITING · {}", error.message));
-                        activity_feed::record_watch(
-                            &app,
-                            app.state::<ActivityFeedState>().inner(),
-                            &log,
-                        );
-                        last_capture_error = Some(error.code);
+
+                let runtime = app.state::<AiRuntimeState>().inner().clone();
+                if !analysis_scheduled
+                    && !runtime.is_busy()
+                    && pending_analyses.contains_key(&target.id)
+                {
+                    if let Some(context) = watch.begin_analysis(&target.id, tick) {
+                        let pending = pending_analyses
+                            .remove(&target.id)
+                            .expect("pending analysis was checked above");
+                        schedule_watch_analysis(WatchAnalysisJob {
+                            app: app.clone(),
+                            runtime,
+                            watch: watch.clone(),
+                            target_id: target.id.clone(),
+                            tick,
+                            context,
+                            kind: pending.kind,
+                            previous_frame: pending.previous_frame,
+                            current_frame: pending.current_frame,
+                            previous_text: pending.previous_text,
+                            current_text: pending.current_text,
+                        });
+                        smart_watch::emit_status(&app, watch.status());
+                        analysis_scheduled = true;
                     }
                 }
             }
         }
     });
+}
+
+async fn evaluate_watch_target(
+    app: &AppHandle,
+    watch: &SmartWatchState,
+    target: &smart_watch::WatchCaptureTarget,
+    frame: CroppedFramePayload,
+    tick: u64,
+    pending: &mut HashMap<String, PendingWatchAnalysis>,
+) {
+    let Some(monitoring::MonitoringDecision::Changed {
+        kind,
+        previous_frame,
+        ..
+    }) = target.monitoring.observe(target.revision, &frame, tick)
+    else {
+        return;
+    };
+    let Some(context) = watch.current_context(&target.id) else {
+        return;
+    };
+    let prepared = prepare_watch_candidate(&context, &previous_frame, &frame).await;
+    match prepared.decision {
+        watch_intent::LocalWatchDecision::Matched(event) => {
+            pending.remove(&target.id);
+            let (status, accepted) = watch.finish_local_match(&target.id, &event.fingerprint, tick);
+            smart_watch::emit_status(app, status);
+            if accepted {
+                emit_watch_event(app, &target.name, "LOCAL OCR", "HIGH", 0, &event.summary);
+            }
+        }
+        watch_intent::LocalWatchDecision::NotMatched => {
+            pending.remove(&target.id);
+        }
+        watch_intent::LocalWatchDecision::NeedsAi => match pending.get_mut(&target.id) {
+            Some(existing) => existing.update(kind, frame, prepared.current_text),
+            None => {
+                pending.insert(
+                    target.id.clone(),
+                    PendingWatchAnalysis {
+                        revision: target.revision,
+                        kind,
+                        previous_frame,
+                        current_frame: frame,
+                        previous_text: prepared.previous_text,
+                        current_text: prepared.current_text,
+                    },
+                );
+            }
+        },
+    }
 }
 
 #[derive(Debug)]
@@ -658,16 +693,15 @@ async fn prepare_watch_candidate(
     }
 }
 
-async fn capture_background_watch_frame(
+async fn capture_watch_target_frame(
     app: &AppHandle,
-) -> Result<(u64, CroppedFramePayload), CaptureError> {
+    target: &smart_watch::WatchCaptureTarget,
+) -> Result<CroppedFramePayload, CaptureError> {
     let monitors = current_monitor_geometries(app)?;
-    let session = app.state::<PebbleSessionState>().inner().clone();
-    let authorized = session.authorize_ai_capture(&monitors)?;
-    let revision = authorized.session_revision();
-    let region = authorized.region().clone();
+    pebble_session::validate_current_monitor(&target.region, target.scale_factor, &monitors)?;
+    let region = target.region.clone();
     let monitor_id = region.monitor_id.clone();
-    let scale_factor = authorized.scale_factor();
+    let scale_factor = target.scale_factor;
     let frame = tauri::async_runtime::spawn_blocking(move || {
         PlatformCaptureBackend.capture_region_at_scale(&region, scale_factor)
     })
@@ -679,7 +713,7 @@ async fn capture_background_watch_frame(
             "The background Watch capture worker stopped unexpectedly.",
         )
     })??;
-    Ok((revision, frame))
+    Ok(frame)
 }
 
 fn watch_started_log(
@@ -722,9 +756,8 @@ fn watch_interval_label(minutes: u16) -> String {
 struct WatchAnalysisJob {
     app: tauri::AppHandle,
     runtime: AiRuntimeState,
-    session: PebbleSessionState,
     watch: SmartWatchState,
-    revision: u64,
+    target_id: String,
     tick: u64,
     context: smart_watch::WatchAnalysisContext,
     kind: monitoring::VisualChangeKind,
@@ -739,9 +772,8 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
         let WatchAnalysisJob {
             app,
             runtime,
-            session,
             watch,
-            revision,
+            target_id,
             tick,
             context,
             kind,
@@ -750,12 +782,11 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
             previous_text,
             current_text,
         } = job;
+        let target_name = context.target_name.clone();
         let result = ai_runtime::analyze_watch_change(
             &app,
             &runtime,
-            &session,
             ai_runtime::WatchAnalysisRequest {
-                revision,
                 provider: context.provider,
                 model: context.model,
                 intent: context.intent,
@@ -765,12 +796,13 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 current_text,
                 previous_frame,
                 current_frame,
+                authorization: context.authorization,
             },
         )
         .await;
         match result {
             Ok(analysis) => {
-                let (status, accepted) = watch.finish_analysis(revision, true);
+                let (status, accepted) = watch.finish_analysis(&target_id, true);
                 smart_watch::emit_status(&app, status);
                 if !accepted {
                     return;
@@ -778,13 +810,14 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 if !analysis.matched {
                     return;
                 }
-                let (status, accepted) = watch.accept_ai_event(revision, &analysis.summary, tick);
+                let (status, accepted) = watch.accept_ai_event(&target_id, &analysis.summary, tick);
                 smart_watch::emit_status(&app, status);
                 if !accepted {
                     return;
                 }
                 emit_watch_event(
                     &app,
+                    &target_name,
                     &analysis.model,
                     &analysis.confidence,
                     analysis.duration_ms,
@@ -792,7 +825,7 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 );
             }
             Err(error) => {
-                let (status, accepted) = watch.finish_analysis(revision, false);
+                let (status, accepted) = watch.finish_analysis(&target_id, false);
                 smart_watch::emit_status(&app, status);
                 if !accepted {
                     return;
@@ -800,10 +833,13 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 let _ = app
                     .notification()
                     .builder()
-                    .title("PEBBLE WATCH ANALYSIS SKIPPED")
+                    .title(format!("PEBBLE WATCH · {} · ANALYSIS SKIPPED", target_name))
                     .body(&error.message)
                     .show();
-                let log = compact_watch_log(format!("WATCH ANALYSIS SKIPPED · {}", error.message));
+                let log = compact_watch_log(format!(
+                    "WATCH ANALYSIS SKIPPED · {} · {}",
+                    target_name, error.message
+                ));
                 activity_feed::record_watch(&app, app.state::<ActivityFeedState>().inner(), &log);
             }
         }
@@ -812,6 +848,7 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
 
 fn emit_watch_event(
     app: &tauri::AppHandle,
+    target_name: &str,
     model: &str,
     confidence: &str,
     duration_ms: u64,
@@ -821,7 +858,7 @@ fn emit_watch_event(
     let model = model.to_ascii_uppercase();
     let confidence = confidence.to_ascii_uppercase();
     let duration = duration_ms as f64 / 1_000.0;
-    let title = format!("PEBBLE WATCH · {model} · {confidence} · {duration:.1}S");
+    let title = format!("PEBBLE WATCH · {target_name} · {model} · {confidence} · {duration:.1}S");
     let _ = app
         .notification()
         .builder()
@@ -829,7 +866,7 @@ fn emit_watch_event(
         .body(summary)
         .show();
     let log = compact_watch_log(format!(
-        "{model} · {confidence} · {duration:.1}S · {summary}"
+        "{target_name} · {model} · {confidence} · {duration:.1}S · {summary}"
     ));
     activity_feed::record_watch(app, app.state::<ActivityFeedState>().inner(), &log);
 }
@@ -912,7 +949,6 @@ pub fn run() -> tauri::Result<()> {
         .manage(AiRuntimeState::default())
         .manage(ActivityFeedState::default())
         .manage(LiveTileState::default())
-        .manage(monitoring::MonitoringState::default())
         .manage(SmartWatchState::default())
         .manage(PebbleSessionState::default())
         .setup(|app| {
@@ -949,6 +985,7 @@ pub fn run() -> tauri::Result<()> {
             get_smart_watch_status,
             set_smart_watch,
             set_smart_watch_interval,
+            remove_smart_watch_target,
             capture_live_tile_once,
             load_pebble_config,
             save_pebble_config,

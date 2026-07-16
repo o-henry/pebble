@@ -1,6 +1,6 @@
 import type { AiProvider } from "./regionQuestion";
 
-export const SMART_WATCH_CONSENT_VERSION = 6;
+export const SMART_WATCH_CONSENT_VERSION = 7;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -12,6 +12,8 @@ export type SmartWatchIntervalMinutes =
 
 export interface SmartWatchStatus {
   enabled: boolean;
+  targetCount: number;
+  targets: SmartWatchTargetStatus[];
   analysesCompleted: number;
   localMatchesCompleted: number;
   suppressedEvents: number;
@@ -26,6 +28,20 @@ export interface SmartWatchStatus {
   storagePolicy: "memoryOnly";
   imagesSaved: false;
   ocrSaved: false;
+}
+
+export interface SmartWatchTargetStatus {
+  id: string;
+  name: string;
+  current: boolean;
+  analysesCompleted: number;
+  localMatchesCompleted: number;
+  suppressedEvents: number;
+  analysisIntervalMinutes: SmartWatchIntervalMinutes;
+  provider: AiProvider;
+  model: string;
+  evaluationMode: "local" | "ai";
+  ruleSummary: string;
 }
 
 interface ConsentStorage {
@@ -81,16 +97,37 @@ export function smartWatchIntervalAtOffset(
 
 export function smartWatchTitle(status: SmartWatchStatus | null): string {
   if (!status) return "SMART WATCH";
-  if (!status.enabled) return "SMART WATCH OFF";
+  if (!status.enabled) {
+    return status.targetCount > 0
+      ? `${status.targetCount} WATCH REGIONS ACTIVE · CURRENT REGION OFF`
+      : "SMART WATCH OFF";
+  }
   return status.evaluationMode === "local"
     ? `LOCAL WATCH ON · ${status.ruleSummary}`
     : `AI WATCH ON · MAX ONCE EVERY ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
 }
 
+export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
+  const engine = target.evaluationMode === "local"
+    ? `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`
+    : `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`;
+  const completed = target.evaluationMode === "local"
+    ? `${target.localMatchesCompleted} MATCHES`
+    : `${target.analysesCompleted} AI RUNS`;
+  return [
+    `${target.name} · ${target.ruleSummary}`,
+    engine,
+    completed,
+    ...(target.suppressedEvents > 0
+      ? [`${target.suppressedEvents} REPEATS HIDDEN`]
+      : [])
+  ];
+}
+
 export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
   const engine = status.evaluationMode === "local"
-    ? "LOCAL OCR"
+    ? `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
     : `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
   const completed = status.evaluationMode === "local"
     ? `${status.localMatchesCompleted} MATCHES`

@@ -11,7 +11,10 @@ use crate::{
     region_selection_types::{
         LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
     },
-    smart_watch::{SetSmartWatchRequest, SmartWatchState, SMART_WATCH_CONSENT_VERSION},
+    smart_watch::{
+        SetSmartWatchRequest, SmartWatchState, WatchRegionAuthorization,
+        SMART_WATCH_CONSENT_VERSION,
+    },
 };
 use tauri::webview::PageLoadEvent;
 
@@ -82,7 +85,11 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
     let watch = SmartWatchState::default();
     watch
         .configure(
-            opened.revision,
+            WatchRegionAuthorization {
+                revision: opened.revision,
+                region: opened.region.clone().expect("selected region"),
+                scale_factor: 1.0,
+            },
             SetSmartWatchRequest {
                 enabled: true,
                 consent_version: SMART_WATCH_CONSENT_VERSION,
@@ -94,11 +101,12 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
             },
         )
         .expect("enabled watch");
+    let target_id = watch.status().targets[0].id.clone();
 
     let hidden = session.set_window_open(false).expect("hidden window");
 
     assert!(!hidden.window_open);
-    assert!(watch.begin_analysis(hidden.revision, 1).is_some());
+    assert!(watch.begin_analysis(&target_id, 1).is_some());
 }
 
 #[test]

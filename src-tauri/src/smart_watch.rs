@@ -9,14 +9,19 @@ use crate::{
     watch_intent::{CompiledWatchIntent, WatchEvaluationMode},
 };
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 6;
+#[path = "watch_target_registry.rs"]
+mod registry;
+pub(crate) use registry::{WatchAuthorization, WatchCaptureTarget, WatchRegionAuthorization};
+use registry::{WatchTargetConfig, WatchTargetRegistry};
+
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 7;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY THE SELECTED REGION EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. APPLE VISION OCR AND AI RUN ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN YOUR SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. APPLE VISION OCR AND AI RUN ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN EACH REGION'S SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
 
@@ -33,6 +38,8 @@ pub fn show_startup_notice(app: &tauri::AppHandle) {
 #[serde(rename_all = "camelCase")]
 pub struct SmartWatchStatus {
     pub enabled: bool,
+    pub target_count: u8,
+    pub targets: Vec<SmartWatchTargetStatus>,
     pub analyses_completed: u32,
     pub local_matches_completed: u32,
     pub suppressed_events: u32,
@@ -49,42 +56,36 @@ pub struct SmartWatchStatus {
     pub ocr_saved: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartWatchTargetStatus {
+    pub id: String,
+    pub name: String,
+    pub current: bool,
+    pub analyses_completed: u32,
+    pub local_matches_completed: u32,
+    pub suppressed_events: u32,
+    pub analysis_interval_minutes: u16,
+    pub provider: AiProvider,
+    pub model: String,
+    pub evaluation_mode: WatchEvaluationMode,
+    pub rule_summary: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SmartWatchState {
-    data: Arc<Mutex<SmartWatchData>>,
+    data: Arc<Mutex<WatchTargetRegistry>>,
 }
 
-#[derive(Debug)]
-struct SmartWatchData {
-    enabled: bool,
-    revision: Option<u64>,
-    analyses_completed: u32,
-    local_matches_completed: u32,
-    suppressed_events: u32,
-    analysis_in_flight: bool,
-    analysis_interval_minutes: u16,
-    last_analysis_tick: Option<u64>,
-    last_event: Option<WatchEventFingerprint>,
-    provider: AiProvider,
-    model: String,
-    plan: CompiledWatchIntent,
-    custom_intent: bool,
-    locale: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct WatchAnalysisContext {
+    pub target_name: String,
     pub provider: AiProvider,
     pub model: String,
     pub intent: String,
     pub locale: String,
     pub plan: CompiledWatchIntent,
-}
-
-#[derive(Debug, Clone)]
-struct WatchEventFingerprint {
-    value: String,
-    tick: u64,
+    pub authorization: WatchAuthorization,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -108,7 +109,7 @@ pub struct SetSmartWatchIntervalRequest {
 impl SmartWatchState {
     pub fn configure(
         &self,
-        revision: u64,
+        authorization: WatchRegionAuthorization,
         request: SetSmartWatchRequest,
     ) -> Result<SmartWatchStatus, SmartWatchError> {
         let SetSmartWatchRequest {
@@ -128,35 +129,52 @@ impl SmartWatchState {
         let (intent, custom_intent) = normalized_intent(intent)?;
         let plan = CompiledWatchIntent::compile(intent);
 
+        let config = WatchTargetConfig {
+            provider,
+            model,
+            plan,
+            custom_intent,
+            locale: normalized_locale(locale),
+            analysis_interval_minutes,
+        };
         let mut data = self
             .data
             .lock()
             .map_err(|_| SmartWatchError::unavailable())?;
-        data.enabled = enabled;
-        data.revision = enabled.then_some(revision);
-        data.analysis_in_flight = false;
-        data.last_analysis_tick = None;
-        data.last_event = None;
-        data.analysis_interval_minutes = analysis_interval_minutes;
-        data.provider = provider;
-        data.model = model;
-        data.plan = plan;
-        data.custom_intent = custom_intent;
-        data.locale = normalized_locale(locale);
+        if enabled {
+            data.upsert(authorization, config)
+                .map_err(|_| SmartWatchError::target_limit_reached())?;
+        } else {
+            data.select_current(authorization.revision);
+            data.remove_current();
+        }
         Ok(data.status())
+    }
+
+    pub fn select_current(&self, revision: u64) -> SmartWatchStatus {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        data.select_current(revision);
+        data.status()
     }
 
     pub fn disable(&self) -> SmartWatchStatus {
         let mut data = self.data.lock().expect("smart watch state lock");
-        data.enabled = false;
-        data.revision = None;
-        data.analysis_in_flight = false;
-        data.last_analysis_tick = None;
-        data.last_event = None;
-        data.plan = CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string());
-        data.custom_intent = false;
-        data.locale = "und".to_string();
+        data.remove_all();
         data.status()
+    }
+
+    pub fn remove_target(&self, id: &str) -> Result<SmartWatchStatus, SmartWatchError> {
+        if !valid_target_id(id) {
+            return Err(SmartWatchError::invalid_target());
+        }
+        let mut data = self
+            .data
+            .lock()
+            .map_err(|_| SmartWatchError::unavailable())?;
+        if !data.remove_target(id) {
+            return Err(SmartWatchError::invalid_target());
+        }
+        Ok(data.status())
     }
 
     pub fn status(&self) -> SmartWatchStatus {
@@ -173,110 +191,65 @@ impl SmartWatchState {
             .data
             .lock()
             .map_err(|_| SmartWatchError::unavailable())?;
-        data.analysis_interval_minutes = analysis_interval_minutes;
+        data.set_current_interval(analysis_interval_minutes);
         Ok(data.status())
     }
 
-    pub fn begin_analysis(&self, revision: u64, tick: u64) -> Option<WatchAnalysisContext> {
-        let mut data = self.data.lock().ok()?;
-        if !data.enabled {
-            return None;
-        }
-        if data.revision != Some(revision) {
-            data.enabled = false;
-            data.revision = None;
-            data.last_analysis_tick = None;
-            return None;
-        }
-        if data.analysis_in_flight || !data.analysis_interval_elapsed(tick) {
-            return None;
-        }
-
-        data.analysis_in_flight = true;
-        data.last_analysis_tick = Some(tick);
-        Some(WatchAnalysisContext {
-            provider: data.provider,
-            model: data.model.clone(),
-            intent: data.plan.intent().to_string(),
-            locale: data.locale.clone(),
-            plan: data.plan.clone(),
-        })
+    pub fn capture_targets(&self) -> Vec<WatchCaptureTarget> {
+        self.data
+            .lock()
+            .map(|data| data.capture_targets())
+            .unwrap_or_default()
     }
 
-    pub fn current_context(&self, revision: u64) -> Option<WatchAnalysisContext> {
+    pub fn contains_target(&self, id: &str) -> bool {
+        self.data.lock().is_ok_and(|data| data.contains(id))
+    }
+
+    pub fn begin_analysis(&self, id: &str, tick: u64) -> Option<WatchAnalysisContext> {
+        let mut data = self.data.lock().ok()?;
+        data.begin_analysis(id, tick)
+    }
+
+    pub fn current_context(&self, id: &str) -> Option<WatchAnalysisContext> {
         let data = self.data.lock().ok()?;
-        if !data.enabled || data.revision != Some(revision) || data.analysis_in_flight {
-            return None;
-        }
-        Some(WatchAnalysisContext {
-            provider: data.provider,
-            model: data.model.clone(),
-            intent: data.plan.intent().to_string(),
-            locale: data.locale.clone(),
-            plan: data.plan.clone(),
-        })
+        data.current_context(id)
     }
 
     pub fn finish_local_match(
         &self,
-        revision: u64,
+        id: &str,
         fingerprint: &str,
         tick: u64,
     ) -> (SmartWatchStatus, bool) {
         let mut data = self.data.lock().expect("smart watch state lock");
-        let accepted =
-            data.enabled && data.revision == Some(revision) && data.accept_event(fingerprint, tick);
-        if accepted {
-            data.local_matches_completed = data.local_matches_completed.saturating_add(1);
-        }
+        let accepted = data.finish_local_match(id, fingerprint, tick);
         (data.status(), accepted)
     }
 
-    pub fn finish_analysis(&self, revision: u64, completed: bool) -> (SmartWatchStatus, bool) {
+    pub fn finish_analysis(&self, id: &str, completed: bool) -> (SmartWatchStatus, bool) {
         let mut data = self.data.lock().expect("smart watch state lock");
-        let accepted = data.enabled && data.revision == Some(revision);
-        if accepted {
-            data.analysis_in_flight = false;
-            if completed {
-                data.analyses_completed = data.analyses_completed.saturating_add(1);
-            }
-        }
+        let accepted = data.finish_analysis(id, completed);
         (data.status(), accepted)
     }
 
-    pub fn accept_ai_event(
-        &self,
-        revision: u64,
-        summary: &str,
-        tick: u64,
-    ) -> (SmartWatchStatus, bool) {
+    pub fn accept_ai_event(&self, id: &str, summary: &str, tick: u64) -> (SmartWatchStatus, bool) {
         let mut data = self.data.lock().expect("smart watch state lock");
-        let fingerprint = semantic_fingerprint(summary);
-        let accepted = data.enabled
-            && data.revision == Some(revision)
-            && data.accept_event(&fingerprint, tick);
+        let accepted = data.accept_ai_event(id, summary, tick);
         (data.status(), accepted)
     }
 }
 
-impl Default for SmartWatchData {
+impl Default for WatchTargetRegistry {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            revision: None,
-            analyses_completed: 0,
-            local_matches_completed: 0,
-            suppressed_events: 0,
-            analysis_in_flight: false,
+        Self::new(WatchTargetConfig {
             analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
-            last_analysis_tick: None,
-            last_event: None,
             provider: AiProvider::OpenAi,
             model: "gpt-5.6-terra".to_string(),
             plan: CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string()),
             custom_intent: false,
             locale: "und".to_string(),
-        }
+        })
     }
 }
 
@@ -290,54 +263,6 @@ fn normalized_locale(locale: String) -> String {
         locale
     } else {
         "und".to_string()
-    }
-}
-
-impl SmartWatchData {
-    fn status(&self) -> SmartWatchStatus {
-        SmartWatchStatus {
-            enabled: self.enabled,
-            analyses_completed: self.analyses_completed,
-            local_matches_completed: self.local_matches_completed,
-            suppressed_events: self.suppressed_events,
-            analysis_interval_minutes: self.analysis_interval_minutes,
-            provider: self.provider,
-            model: self.model.clone(),
-            custom_intent: self.custom_intent,
-            watching_for: self.enabled.then(|| self.plan.intent().to_string()),
-            evaluation_mode: self.plan.mode(),
-            rule_summary: self.plan.rule_summary(),
-            capture_scope: "selectedRegionOnly",
-            storage_policy: "memoryOnly",
-            images_saved: false,
-            ocr_saved: false,
-        }
-    }
-
-    fn analysis_interval_elapsed(&self, tick: u64) -> bool {
-        self.last_analysis_tick
-            .map(|last_tick| {
-                tick.saturating_sub(last_tick)
-                    >= analysis_interval_ticks(self.analysis_interval_minutes)
-            })
-            .unwrap_or(true)
-    }
-
-    fn accept_event(&mut self, fingerprint: &str, tick: u64) -> bool {
-        let duplicate = self.last_event.as_ref().is_some_and(|last| {
-            last.value == fingerprint
-                && tick.saturating_sub(last.tick)
-                    < analysis_interval_ticks(self.analysis_interval_minutes)
-        });
-        if duplicate {
-            self.suppressed_events = self.suppressed_events.saturating_add(1);
-            return false;
-        }
-        self.last_event = Some(WatchEventFingerprint {
-            value: fingerprint.to_string(),
-            tick,
-        });
-        true
     }
 }
 
@@ -356,6 +281,13 @@ fn semantic_fingerprint(value: &str) -> String {
         .take(80)
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn valid_target_id(value: &str) -> bool {
+    value.len() <= 80
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
 fn normalized_intent(intent: String) -> Result<(String, bool), SmartWatchError> {
@@ -423,6 +355,8 @@ pub enum SmartWatchErrorCode {
     InvalidInterval,
     InvalidIntent,
     InvalidSession,
+    InvalidTarget,
+    TargetLimitReached,
     Unavailable,
 }
 
@@ -462,6 +396,20 @@ impl SmartWatchError {
         }
     }
 
+    fn invalid_target() -> Self {
+        Self {
+            code: SmartWatchErrorCode::InvalidTarget,
+            message: "THE WATCH REGION IS NO LONGER ACTIVE.",
+        }
+    }
+
+    fn target_limit_reached() -> Self {
+        Self {
+            code: SmartWatchErrorCode::TargetLimitReached,
+            message: "WATCH SUPPORTS UP TO 3 ACTIVE REGIONS. STOP ONE BEFORE ADDING ANOTHER.",
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
             code: SmartWatchErrorCode::Unavailable,
@@ -473,16 +421,20 @@ impl SmartWatchError {
 #[cfg(test)]
 mod tests {
     use super::{
-        SetSmartWatchRequest, SmartWatchErrorCode, SmartWatchState,
+        SetSmartWatchRequest, SmartWatchErrorCode, SmartWatchState, WatchRegionAuthorization,
         DEFAULT_ANALYSIS_INTERVAL_MINUTES, DEFAULT_WATCH_INTENT, SMART_WATCH_CONSENT_VERSION,
         STARTUP_NOTICE_BODY,
     };
-    use crate::ai_runtime::AiProvider;
+    use crate::{
+        ai_runtime::AiProvider,
+        region_selection_types::{PhysicalRegion, WindowCaptureTarget},
+    };
 
     #[test]
     fn startup_notice_explains_activation_and_local_privacy() {
         assert!(STARTUP_NOTICE_BODY.contains("EVERY 5S"));
-        assert!(STARTUP_NOTICE_BODY.contains("ONLY THE SELECTED REGION"));
+        assert!(STARTUP_NOTICE_BODY.contains("EXPLICITLY SELECTED REGIONS"));
+        assert!(STARTUP_NOTICE_BODY.contains("UP TO 3"));
         assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
         assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
         assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
@@ -495,7 +447,7 @@ mod tests {
         assert_eq!(
             state
                 .configure(
-                    7,
+                    authorization(7, 0),
                     watch_request(
                         0,
                         "Alert me when the build fails",
@@ -509,7 +461,7 @@ mod tests {
         assert!(
             state
                 .configure(
-                    7,
+                    authorization(7, 0),
                     watch_request(
                         SMART_WATCH_CONSENT_VERSION,
                         "Alert me when the build fails",
@@ -522,11 +474,11 @@ mod tests {
     }
 
     #[test]
-    fn region_change_disables_watch() {
+    fn selecting_another_region_keeps_the_existing_target_running() {
         let state = SmartWatchState::default();
         state
             .configure(
-                7,
+                authorization(7, 0),
                 watch_request(
                     SMART_WATCH_CONSENT_VERSION,
                     "Alert me when the build fails",
@@ -534,15 +486,69 @@ mod tests {
                 ),
             )
             .unwrap();
+        let id = current_target_id(&state);
 
-        assert!(state.begin_analysis(8, 1).is_none());
-        assert!(!state.status().enabled);
+        let status = state.select_current(8);
+        assert!(!status.enabled);
+        assert_eq!(status.target_count, 1);
+        assert!(state.begin_analysis(&id, 1).is_some());
+    }
+
+    #[test]
+    fn watch_accepts_three_independent_regions_and_rejects_a_fourth() {
+        let state = SmartWatchState::default();
+        for revision in 1..=3 {
+            state
+                .configure(
+                    authorization(revision, revision as i32 * 10),
+                    watch_request(SMART_WATCH_CONSENT_VERSION, "ERROR appears", 5),
+                )
+                .unwrap();
+        }
+        assert_eq!(state.status().target_count, 3);
+        assert_eq!(state.capture_targets().len(), 3);
+        assert_eq!(
+            state
+                .configure(
+                    authorization(4, 40),
+                    watch_request(SMART_WATCH_CONSENT_VERSION, "READY appears", 5),
+                )
+                .unwrap_err()
+                .code,
+            SmartWatchErrorCode::TargetLimitReached
+        );
+    }
+
+    #[test]
+    fn selecting_the_same_bound_region_updates_instead_of_duplicating() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                authorization(1, 10),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "ERROR appears", 5),
+            )
+            .unwrap();
+        state
+            .configure(
+                authorization(2, 10),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "READY appears", 30),
+            )
+            .unwrap();
+        let status = state.status();
+        assert_eq!(status.target_count, 1);
+        assert_eq!(status.rule_summary, "TEXT APPEARS: ready");
     }
 
     #[test]
     fn watch_interval_accepts_only_supported_values() {
         let state = SmartWatchState::default();
         assert_eq!(state.status().analysis_interval_minutes, 5);
+        state
+            .configure(
+                authorization(1, 0),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "ERROR appears", 5),
+            )
+            .unwrap();
         assert_eq!(
             state
                 .set_analysis_interval(1)
@@ -568,7 +574,7 @@ mod tests {
         let state = SmartWatchState::default();
         state
             .configure(
-                4,
+                authorization(4, 0),
                 watch_request(
                     SMART_WATCH_CONSENT_VERSION,
                     "  Alert me when the build fails  ",
@@ -576,7 +582,8 @@ mod tests {
                 ),
             )
             .unwrap();
-        let context = state.begin_analysis(4, 1).expect("analysis context");
+        let id = current_target_id(&state);
+        let context = state.begin_analysis(&id, 1).expect("analysis context");
         assert_eq!(context.intent, "Alert me when the build fails");
         let status = state.status();
         assert!(status.custom_intent);
@@ -591,10 +598,14 @@ mod tests {
 
         let default_state = SmartWatchState::default();
         default_state
-            .configure(5, watch_request(SMART_WATCH_CONSENT_VERSION, "", 5))
+            .configure(
+                authorization(5, 0),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "", 5),
+            )
             .unwrap();
+        let default_id = current_target_id(&default_state);
         assert_eq!(
-            default_state.begin_analysis(5, 1).unwrap().intent,
+            default_state.begin_analysis(&default_id, 1).unwrap().intent,
             DEFAULT_WATCH_INTENT
         );
         assert!(!default_state.status().custom_intent);
@@ -606,7 +617,10 @@ mod tests {
         for intent in ["unsafe\0intent".to_string(), "x".repeat(501)] {
             assert_eq!(
                 state
-                    .configure(4, watch_request(SMART_WATCH_CONSENT_VERSION, intent, 5),)
+                    .configure(
+                        authorization(4, 0),
+                        watch_request(SMART_WATCH_CONSENT_VERSION, intent, 5),
+                    )
                     .unwrap_err()
                     .code,
                 SmartWatchErrorCode::InvalidIntent
@@ -617,31 +631,34 @@ mod tests {
     #[test]
     fn selected_interval_limits_ai_analysis_without_stopping_local_watch() {
         let state = enabled_watch(5);
+        let id = current_target_id(&state);
 
-        assert!(state.begin_analysis(2, 1).is_some());
-        state.finish_analysis(2, true);
-        assert!(state.begin_analysis(2, 60).is_none());
+        assert!(state.begin_analysis(&id, 1).is_some());
+        state.finish_analysis(&id, true);
+        assert!(state.begin_analysis(&id, 60).is_none());
         assert!(state.status().enabled);
-        assert!(state.begin_analysis(2, 61).is_some());
+        assert!(state.begin_analysis(&id, 61).is_some());
     }
 
     #[test]
     fn changing_interval_applies_to_the_next_analysis() {
         let state = enabled_watch(30);
+        let id = current_target_id(&state);
 
-        assert!(state.begin_analysis(2, 1).is_some());
-        state.finish_analysis(2, true);
+        assert!(state.begin_analysis(&id, 1).is_some());
+        state.finish_analysis(&id, true);
         state.set_analysis_interval(1).unwrap();
-        assert!(state.begin_analysis(2, 13).is_some());
+        assert!(state.begin_analysis(&id, 13).is_some());
     }
 
     #[test]
     fn watch_has_no_fixed_session_analysis_cap() {
         let state = enabled_watch(1);
+        let id = current_target_id(&state);
 
         for analysis in 0..20_u64 {
-            assert!(state.begin_analysis(2, analysis * 12).is_some());
-            state.finish_analysis(2, true);
+            assert!(state.begin_analysis(&id, analysis * 12).is_some());
+            state.finish_analysis(&id, true);
         }
         assert_eq!(state.status().analyses_completed, 20);
         assert!(state.status().enabled);
@@ -650,25 +667,29 @@ mod tests {
     #[test]
     fn failed_or_cancelled_analysis_does_not_count_or_emit_late_results() {
         let state = enabled_watch(1);
+        let id = current_target_id(&state);
 
-        assert!(state.begin_analysis(2, 1).is_some());
-        assert!(state.begin_analysis(2, 2).is_none());
-        let (status, accepted) = state.finish_analysis(2, false);
+        assert!(state.begin_analysis(&id, 1).is_some());
+        assert!(state.begin_analysis(&id, 2).is_none());
+        let (status, accepted) = state.finish_analysis(&id, false);
         assert!(accepted);
         assert_eq!(status.analyses_completed, 0);
 
-        assert!(state.begin_analysis(2, 13).is_some());
+        let context = state.begin_analysis(&id, 13).expect("analysis context");
+        assert!(context.authorization.is_active());
         state.disable();
-        let (_, accepted) = state.finish_analysis(2, true);
+        assert!(!context.authorization.is_active());
+        let (_, accepted) = state.finish_analysis(&id, true);
         assert!(!accepted);
     }
 
     #[test]
     fn disable_stops_notifications_immediately() {
         let state = enabled_watch(5);
+        let id = current_target_id(&state);
         let status = state.disable();
 
-        assert!(state.begin_analysis(2, 1).is_none());
+        assert!(state.begin_analysis(&id, 1).is_none());
         assert_eq!(status.watching_for, None);
         assert!(!status.custom_intent);
     }
@@ -676,32 +697,67 @@ mod tests {
     #[test]
     fn duplicate_events_are_suppressed_within_the_selected_interval() {
         let state = enabled_watch(1);
-        let (_, accepted) = state.finish_local_match(2, "local:error", 1);
+        let id = current_target_id(&state);
+        let (_, accepted) = state.finish_local_match(&id, "local:error", 1);
         assert!(accepted);
-        let (status, accepted) = state.finish_local_match(2, "local:error", 2);
+        let (status, accepted) = state.finish_local_match(&id, "local:error", 2);
         assert!(!accepted);
         assert_eq!(status.suppressed_events, 1);
         assert_eq!(status.local_matches_completed, 1);
 
-        let (_, accepted) = state.finish_local_match(2, "local:error", 13);
+        let (_, accepted) = state.finish_local_match(&id, "local:error", 13);
         assert!(accepted);
     }
 
     #[test]
     fn semantic_dedupe_ignores_case_and_punctuation() {
         let state = enabled_watch(5);
-        let (_, accepted) = state.accept_ai_event(2, "Build failed: lint.", 1);
+        let id = current_target_id(&state);
+        let (_, accepted) = state.accept_ai_event(&id, "Build failed: lint.", 1);
         assert!(accepted);
-        let (status, accepted) = state.accept_ai_event(2, "BUILD FAILED - LINT", 2);
+        let (status, accepted) = state.accept_ai_event(&id, "BUILD FAILED - LINT", 2);
         assert!(!accepted);
         assert_eq!(status.suppressed_events, 1);
+    }
+
+    #[test]
+    fn individual_target_removal_preserves_other_regions() {
+        let state = enabled_watch(5);
+        let first = current_target_id(&state);
+        let first_context = state.begin_analysis(&first, 1).expect("first context");
+        state
+            .configure(
+                authorization(3, 30),
+                watch_request(SMART_WATCH_CONSENT_VERSION, "READY appears", 5),
+            )
+            .unwrap();
+        let status = state.remove_target(&first).unwrap();
+        assert_eq!(status.target_count, 1);
+        assert_eq!(status.targets[0].name, "REGION 2");
+        assert!(!state.contains_target(&first));
+        assert!(!first_context.authorization.is_active());
+    }
+
+    #[test]
+    fn serialized_status_never_exposes_capture_coordinates_or_window_ids() {
+        let state = enabled_watch(5);
+        let raw = serde_json::to_string(&state.status()).expect("status json");
+        for forbidden in [
+            "sourceWindow",
+            "windowId",
+            "scaleFactor",
+            "monitorId",
+            "relativeX",
+        ] {
+            assert!(!raw.contains(forbidden));
+        }
     }
 
     fn enabled_watch(interval_minutes: u16) -> SmartWatchState {
         let state = SmartWatchState::default();
         state
             .configure(
-                2,
+                authorization(2, 0),
                 watch_request(
                     SMART_WATCH_CONSENT_VERSION,
                     "Alert me when the build fails",
@@ -710,6 +766,37 @@ mod tests {
             )
             .unwrap();
         state
+    }
+
+    fn current_target_id(state: &SmartWatchState) -> String {
+        state
+            .status()
+            .targets
+            .into_iter()
+            .find(|target| target.current)
+            .expect("current target")
+            .id
+    }
+
+    fn authorization(revision: u64, x: i32) -> WatchRegionAuthorization {
+        WatchRegionAuthorization {
+            revision,
+            region: PhysicalRegion {
+                monitor_id: "main".into(),
+                x,
+                y: 0,
+                width: 320,
+                height: 200,
+                source_window: Some(WindowCaptureTarget {
+                    window_id: 1,
+                    relative_x_millipoints: i64::from(x) * 1_000,
+                    relative_y_millipoints: 0,
+                    width_millipoints: 320_000,
+                    height_millipoints: 200_000,
+                }),
+            },
+            scale_factor: 2.0,
+        }
     }
 
     fn watch_request(
