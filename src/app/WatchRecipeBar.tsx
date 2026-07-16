@@ -55,7 +55,7 @@ export function WatchRecipeBar({
           key={recipe.id}
           recipe={recipe}
           disabled={disabled}
-          active={false}
+          active={intent.trim() === recipe.intent}
           onClick={() => apply(recipe, false)}
         />
       ))}
@@ -64,7 +64,7 @@ export function WatchRecipeBar({
           key={recipe.id}
           recipe={recipe}
           disabled={disabled}
-          active={recipe.id === selectedSavedId}
+          active={intent.trim() === recipe.intent}
           onClick={() => apply(recipe, true)}
         />
       ))}

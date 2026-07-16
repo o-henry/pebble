@@ -174,14 +174,12 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         onConnect={() => void connect()}
       />
 
-      {connection === "connected" ? (
-        <WatchRecipeBar
-          intent={question}
-          disabled={disabled || asking || connecting}
-          intervalMinutes={smartWatchInterval(globalThis.localStorage)}
-          onApply={(recipe) => setQuestion(recipe.intent)}
-        />
-      ) : null}
+      <WatchRecipeBar
+        intent={question}
+        disabled={disabled || asking || connecting || privacyBlankActive}
+        intervalMinutes={smartWatchInterval(globalThis.localStorage)}
+        onApply={(recipe) => setQuestion(recipe.intent)}
+      />
 
       {connection === "connected" ? (
         <form className="region-question__form" onSubmit={(event) => void ask(event)}>
