@@ -20,6 +20,7 @@ export interface SmartWatchStatus {
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
   provider: AiProvider;
   model: string;
+  aiFallbackEnabled: boolean;
   customIntent: boolean;
   watchingFor: string | null;
   evaluationMode: "local" | "ai";
@@ -40,6 +41,7 @@ export interface SmartWatchTargetStatus {
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
   provider: AiProvider;
   model: string;
+  aiFallbackEnabled: boolean;
   evaluationMode: "local" | "ai";
   ruleSummary: string;
 }
@@ -109,7 +111,9 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
 
 export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
   const engine = target.evaluationMode === "local"
-    ? `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`
+    ? target.aiFallbackEnabled
+      ? `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`
+      : "LOCAL OCR ONLY · NO AI USAGE"
     : `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`;
   const completed = target.evaluationMode === "local"
     ? `${target.localMatchesCompleted} MATCHES`
@@ -127,7 +131,9 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
 export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
   const engine = status.evaluationMode === "local"
-    ? `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
+    ? status.aiFallbackEnabled
+      ? `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
+      : "LOCAL OCR ONLY · NO AI USAGE"
     : `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
   const completed = status.evaluationMode === "local"
     ? `${status.localMatchesCompleted} MATCHES`

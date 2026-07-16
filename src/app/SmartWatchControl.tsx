@@ -24,6 +24,7 @@ export function SmartWatchControl({
   intent,
   disabled,
   privacyBlankActive,
+  aiConnected,
   onStatusChange,
   onBusyChange,
   onError
@@ -33,6 +34,7 @@ export function SmartWatchControl({
   intent: string;
   disabled: boolean;
   privacyBlankActive: boolean;
+  aiConnected: boolean;
   onStatusChange: (status: SmartWatchStatus | null) => void;
   onBusyChange: (busy: boolean) => void;
   onError: (message: string | null) => void;
@@ -89,7 +91,8 @@ export function SmartWatchControl({
         model,
         intent,
         globalThis.navigator.language,
-        intervalMinutes
+        intervalMinutes,
+        aiConnected
       ));
     } catch (reason) {
       onError(errorMessage(reason, "SMART WATCH COULD NOT BE UPDATED."));
@@ -97,7 +100,7 @@ export function SmartWatchControl({
       setBusy(false);
       onBusyChange(false);
     }
-  }, [acceptStatus, intent, intervalMinutes, model, onBusyChange, onError, provider]);
+  }, [acceptStatus, aiConnected, intent, intervalMinutes, model, onBusyChange, onError, provider]);
 
   const updateInterval = useCallback(async (
     nextInterval: SmartWatchIntervalMinutes

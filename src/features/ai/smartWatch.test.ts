@@ -54,6 +54,7 @@ describe("smart watch consent", () => {
           analysisIntervalMinutes: 60,
           provider: "openAi",
           model: "gpt-5.6-terra",
+          aiFallbackEnabled: true,
           evaluationMode: "ai",
           ruleSummary: "AI SEMANTIC MATCH"
         }],
@@ -63,6 +64,7 @@ describe("smart watch consent", () => {
         analysisIntervalMinutes: 60,
         provider: "openAi",
         model: "gpt-5.6-terra",
+        aiFallbackEnabled: true,
         customIntent: true,
         watchingFor: "NOTIFY ME ABOUT A MEANINGFUL CHANGE",
         evaluationMode: "ai",
@@ -83,6 +85,28 @@ describe("smart watch consent", () => {
       "REGION 1 · AI SEMANTIC MATCH",
       "OPENAI · GPT-5.6-TERRA · AI MAX 1 HOUR",
       "12 AI RUNS"
+    ]);
+  });
+
+  it("makes zero-token local watch explicit", () => {
+    expect(smartWatchTargetSegments({
+      id: "watch-1",
+      name: "REGION 1",
+      current: true,
+      analysesCompleted: 0,
+      localMatchesCompleted: 3,
+      suppressedEvents: 2,
+      analysisIntervalMinutes: 5,
+      provider: "openAi",
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: false,
+      evaluationMode: "local",
+      ruleSummary: "TEXT APPEARS: error"
+    })).toEqual([
+      "REGION 1 · TEXT APPEARS: error",
+      "LOCAL OCR ONLY · NO AI USAGE",
+      "3 MATCHES",
+      "2 REPEATS HIDDEN"
     ]);
   });
 

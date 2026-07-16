@@ -125,6 +125,7 @@ export interface BackendCommandMap {
       intent: string;
       locale: string;
       analysisIntervalMinutes: SmartWatchIntervalMinutes;
+      aiFallbackEnabled: boolean;
     } };
     result: SmartWatchStatus;
   };
@@ -322,7 +323,8 @@ export function setSmartWatch(
   model: string,
   intent: string,
   locale: string,
-  analysisIntervalMinutes: SmartWatchIntervalMinutes
+  analysisIntervalMinutes: SmartWatchIntervalMinutes,
+  aiFallbackEnabled: boolean
 ): Promise<SmartWatchStatus> {
   return invokeBackend("set_smart_watch", {
     request: {
@@ -332,7 +334,8 @@ export function setSmartWatch(
       model,
       intent,
       locale,
-      analysisIntervalMinutes
+      analysisIntervalMinutes,
+      aiFallbackEnabled
     }
   });
 }

@@ -46,6 +46,7 @@ pub struct SmartWatchStatus {
     pub analysis_interval_minutes: u16,
     pub provider: AiProvider,
     pub model: String,
+    pub ai_fallback_enabled: bool,
     pub custom_intent: bool,
     pub watching_for: Option<String>,
     pub evaluation_mode: WatchEvaluationMode,
@@ -68,6 +69,7 @@ pub struct SmartWatchTargetStatus {
     pub analysis_interval_minutes: u16,
     pub provider: AiProvider,
     pub model: String,
+    pub ai_fallback_enabled: bool,
     pub evaluation_mode: WatchEvaluationMode,
     pub rule_summary: String,
 }
@@ -86,6 +88,7 @@ pub struct WatchAnalysisContext {
     pub locale: String,
     pub plan: CompiledWatchIntent,
     pub authorization: WatchAuthorization,
+    pub ai_fallback_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -98,6 +101,7 @@ pub struct SetSmartWatchRequest {
     pub intent: String,
     pub locale: String,
     pub analysis_interval_minutes: u16,
+    pub ai_fallback_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -120,6 +124,7 @@ impl SmartWatchState {
             intent,
             locale,
             analysis_interval_minutes,
+            ai_fallback_enabled,
         } = request;
         if enabled && consent_version != SMART_WATCH_CONSENT_VERSION {
             return Err(SmartWatchError::consent_required());
@@ -128,6 +133,9 @@ impl SmartWatchState {
         let model = normalized_model(provider, model)?;
         let (intent, custom_intent) = normalized_intent(intent)?;
         let plan = CompiledWatchIntent::compile(intent);
+        if enabled && plan.mode() == WatchEvaluationMode::Ai && !ai_fallback_enabled {
+            return Err(SmartWatchError::ai_connection_required());
+        }
 
         let config = WatchTargetConfig {
             provider,
@@ -136,6 +144,7 @@ impl SmartWatchState {
             custom_intent,
             locale: normalized_locale(locale),
             analysis_interval_minutes,
+            ai_fallback_enabled,
         };
         let mut data = self
             .data
@@ -249,6 +258,7 @@ impl Default for WatchTargetRegistry {
             plan: CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string()),
             custom_intent: false,
             locale: "und".to_string(),
+            ai_fallback_enabled: true,
         })
     }
 }
@@ -357,6 +367,7 @@ pub enum SmartWatchErrorCode {
     InvalidSession,
     InvalidTarget,
     TargetLimitReached,
+    AiConnectionRequired,
     Unavailable,
 }
 
@@ -407,6 +418,13 @@ impl SmartWatchError {
         Self {
             code: SmartWatchErrorCode::TargetLimitReached,
             message: "WATCH SUPPORTS UP TO 3 ACTIVE REGIONS. STOP ONE BEFORE ADDING ANOTHER.",
+        }
+    }
+
+    fn ai_connection_required() -> Self {
+        Self {
+            code: SmartWatchErrorCode::AiConnectionRequired,
+            message: "CONNECT THE SELECTED AI PROVIDER FOR SEMANTIC WATCH, OR USE A LOCAL TEXT, NUMBER, PROGRESS, OR STATE RULE.",
         }
     }
 
@@ -516,6 +534,35 @@ mod tests {
                 .unwrap_err()
                 .code,
             SmartWatchErrorCode::TargetLimitReached
+        );
+    }
+
+    #[test]
+    fn deterministic_rules_run_without_ai_fallback() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(SMART_WATCH_CONSENT_VERSION, "ERROR appears", 5);
+        request.ai_fallback_enabled = false;
+        let status = state.configure(authorization(1, 0), request).unwrap();
+        assert!(status.enabled);
+        assert!(!status.ai_fallback_enabled);
+        assert!(!status.targets[0].ai_fallback_enabled);
+    }
+
+    #[test]
+    fn semantic_rules_require_an_ai_connection() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(
+            SMART_WATCH_CONSENT_VERSION,
+            "Tell me when this looks important",
+            5,
+        );
+        request.ai_fallback_enabled = false;
+        assert_eq!(
+            state
+                .configure(authorization(1, 0), request)
+                .unwrap_err()
+                .code,
+            SmartWatchErrorCode::AiConnectionRequired
         );
     }
 
@@ -812,6 +859,7 @@ mod tests {
             intent: intent.into(),
             locale: "ko-KR".into(),
             analysis_interval_minutes,
+            ai_fallback_enabled: true,
         }
     }
 }

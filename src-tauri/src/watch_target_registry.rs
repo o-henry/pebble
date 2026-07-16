@@ -61,6 +61,7 @@ pub(super) struct WatchTargetConfig {
     pub custom_intent: bool,
     pub locale: String,
     pub analysis_interval_minutes: u16,
+    pub ai_fallback_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -272,6 +273,7 @@ impl WatchTargetRegistry {
             analysis_interval_minutes: config.analysis_interval_minutes,
             provider: config.provider,
             model: config.model.clone(),
+            ai_fallback_enabled: config.ai_fallback_enabled,
             custom_intent: current.is_some_and(|target| target.config.custom_intent),
             watching_for: current.map(|target| target.config.plan.intent().to_string()),
             evaluation_mode: config.plan.mode(),
@@ -301,6 +303,7 @@ impl WatchTarget {
             locale: self.config.locale.clone(),
             plan: self.config.plan.clone(),
             authorization: self.authorization.clone(),
+            ai_fallback_enabled: self.config.ai_fallback_enabled,
         }
     }
 
@@ -315,6 +318,7 @@ impl WatchTarget {
             analysis_interval_minutes: self.config.analysis_interval_minutes,
             provider: self.config.provider,
             model: self.config.model.clone(),
+            ai_fallback_enabled: self.config.ai_fallback_enabled,
             evaluation_mode: self.config.plan.mode(),
             rule_summary: self.config.plan.rule_summary(),
         }

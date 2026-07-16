@@ -61,8 +61,9 @@ export function AiPanelHeader({
               provider={provider}
               model={model}
               intent={watchIntent}
-              disabled={disabled || connection !== "connected"}
+              disabled={disabled || connection === "checking"}
               privacyBlankActive={privacyBlankActive}
+              aiConnected={connection === "connected"}
               onStatusChange={acceptWatchStatus}
               onBusyChange={onBusyChange}
               onError={onError}

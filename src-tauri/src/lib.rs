@@ -358,6 +358,7 @@ fn set_smart_watch(
     let model = request.model.clone();
     let custom_intent = !request.intent.trim().is_empty();
     let analysis_interval_minutes = request.analysis_interval_minutes;
+    let ai_fallback_enabled = request.ai_fallback_enabled;
     let authorization = WatchRegionAuthorization {
         revision: authorized.session_revision(),
         region: authorized.region().clone(),
@@ -369,7 +370,13 @@ fn set_smart_watch(
         activity_feed::record_watch(
             &app,
             activity_feed.inner(),
-            &watch_started_log(provider, &model, custom_intent, analysis_interval_minutes),
+            &watch_started_log(
+                provider,
+                &model,
+                custom_intent,
+                analysis_interval_minutes,
+                ai_fallback_enabled,
+            ),
         );
     }
     Ok(status)
@@ -611,6 +618,9 @@ async fn evaluate_watch_target(
         watch_intent::LocalWatchDecision::NotMatched => {
             pending.remove(&target.id);
         }
+        watch_intent::LocalWatchDecision::NeedsAi if !context.ai_fallback_enabled => {
+            pending.remove(&target.id);
+        }
         watch_intent::LocalWatchDecision::NeedsAi => match pending.get_mut(&target.id) {
             Some(existing) => existing.update(kind, frame, prepared.current_text),
             None => {
@@ -721,6 +731,7 @@ fn watch_started_log(
     model: &str,
     custom_intent: bool,
     analysis_interval_minutes: u16,
+    ai_fallback_enabled: bool,
 ) -> String {
     let provider = match provider {
         AiProvider::OpenAi => "OPENAI",
@@ -731,11 +742,17 @@ fn watch_started_log(
     } else {
         "GENERAL MEANINGFUL CHANGE"
     };
-    format!(
-        "WATCH STARTED · {provider} · {} · {intent} · LOCAL CHECK EVERY 5S · APPLE VISION OCR + AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
-        model.to_ascii_uppercase(),
-        watch_interval_label(analysis_interval_minutes)
-    )
+    if ai_fallback_enabled {
+        format!(
+            "WATCH STARTED · {provider} · {} · {intent} · LOCAL CHECK EVERY 5S · APPLE VISION OCR + AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
+            model.to_ascii_uppercase(),
+            watch_interval_label(analysis_interval_minutes)
+        )
+    } else {
+        format!(
+            "WATCH STARTED · {intent} · LOCAL CHECK EVERY 5S · APPLE VISION OCR ONLY · NO AI USAGE"
+        )
+    }
 }
 
 fn watch_interval_log(analysis_interval_minutes: u16) -> String {
@@ -1020,7 +1037,7 @@ mod tests {
 
     #[test]
     fn watch_start_log_explains_local_cadence_and_ai_gate() {
-        let log = watch_started_log(AiProvider::OpenAi, "gpt-5.6-terra", true, 30);
+        let log = watch_started_log(AiProvider::OpenAi, "gpt-5.6-terra", true, 30, true);
 
         assert!(log.contains("OPENAI"));
         assert!(log.contains("LOCAL CHECK EVERY 5S"));

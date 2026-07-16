@@ -98,6 +98,7 @@ fn hiding_the_window_keeps_explicit_watch_authorization_active() {
                 intent: "Alert me when the build fails".into(),
                 locale: "ko-KR".into(),
                 analysis_interval_minutes: 5,
+                ai_fallback_enabled: true,
             },
         )
         .expect("enabled watch");
