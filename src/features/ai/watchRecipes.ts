@@ -22,6 +22,11 @@ interface RecipeStorage {
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
   builtIn(
+    "visual-loop",
+    "LOOP DETECTOR",
+    "Tell me when this region repeats the same visual cycle"
+  ),
+  builtIn(
     "follow-through-trigger",
     "FOLLOW START",
     "Use this region as the FOLLOW THROUGH trigger"

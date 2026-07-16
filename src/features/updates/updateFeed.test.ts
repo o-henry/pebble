@@ -65,4 +65,13 @@ describe("update feed", () => {
       "REGION 1 + REGION 2 · NO FOLLOW-THROUGH · LOCAL FOLLOW-THROUGH · HIGH"
     );
   });
+
+  it("labels a local visual loop without a provider model", () => {
+    expect(updateSignalLabel({
+      kind: "loop",
+      region: "REGION 1",
+      engine: "localVisualLoop",
+      confidence: "high"
+    })).toBe("REGION 1 · LOOP · LOCAL VISUAL LOOP · HIGH");
+  });
 });

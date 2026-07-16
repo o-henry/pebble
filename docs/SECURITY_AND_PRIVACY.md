@@ -130,6 +130,8 @@ Every frame is filtered locally before bounded AI analysis:
 
 ```text
 selected crop -> local diff gate -> activity/stability timer -> local stuck event
+              -> Loop baseline/stable change -> compact in-memory fingerprint
+              -> three repeated cycles -> local loop event
               -> Follow Start stable change -> memory-only result deadline
               -> Follow Result stable change or local missed-result event
               -> Cross Check baseline/stable change -> local OCR state enum
@@ -178,6 +180,15 @@ relationship state. Capture failure, target removal, privacy blank, and app
 shutdown cancel the pending check so an unavailable result cannot create a
 false alert. Follow Through never calls AI, opens a URL, searches the web, or
 controls mouse or keyboard input.
+
+Loop Detector is local visual fingerprint comparison. On the baseline and only
+after stable material changes, Pebble reduces the selected crop to an 8-by-8
+grid of quantized RGB and local contrast values. At most twelve 64-byte fingerprints exist per
+active loop target. Detection requires three complete repetitions of a distinct
+2- to 4-step pattern. The detector resets on capture failure or target reset and
+suppresses repeated alerts until the pattern breaks. Fingerprints have no
+serialization path and are never persisted, returned to the webview, included
+in Updates, sent to AI, or used to control input.
 
 After activation, Pebble appends safe Watch lifecycle and result summaries plus
 structured region label, signal type, engine or model name, confidence, and

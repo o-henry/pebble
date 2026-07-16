@@ -26,7 +26,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("10");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("11");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -189,6 +189,28 @@ describe("smart watch consent", () => {
       "REGION 2 · FOLLOW THROUGH RESULT",
       "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE",
       "0 MATCHES"
+    ]);
+  });
+
+  it("describes loop detection as fixed local fingerprint analysis", () => {
+    expect(smartWatchTargetSegments({
+      id: "watch-1",
+      name: "REGION 1",
+      current: true,
+      analysesCompleted: 0,
+      localMatchesCompleted: 1,
+      suppressedEvents: 0,
+      analysisIntervalMinutes: 5,
+      provider: "openAi",
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: false,
+      evaluationMode: "local",
+      localEngine: "visualLoop",
+      ruleSummary: "REPEATING VISUAL LOOP"
+    })).toEqual([
+      "REGION 1 · REPEATING VISUAL LOOP",
+      "LOCAL LOOP DETECTOR · 2-4 STEPS · ALERT AFTER 3 CYCLES · NO OCR · NO AI USAGE",
+      "1 MATCHES"
     ]);
   });
 

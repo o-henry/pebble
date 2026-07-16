@@ -20,6 +20,7 @@ pub enum WatchLocalEngine {
     CrossRegionOcr,
     FollowThroughTrigger,
     FollowThroughResult,
+    VisualLoop,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,7 @@ enum WatchRule {
     CrossRegionConflict,
     FollowThroughTrigger,
     FollowThroughResult,
+    VisualLoop,
     TextAppears(String),
     TextDisappears(String),
     TextChanges,
@@ -108,6 +110,7 @@ impl CompiledWatchIntent {
             WatchRule::CrossRegionConflict => Some(WatchLocalEngine::CrossRegionOcr),
             WatchRule::FollowThroughTrigger => Some(WatchLocalEngine::FollowThroughTrigger),
             WatchRule::FollowThroughResult => Some(WatchLocalEngine::FollowThroughResult),
+            WatchRule::VisualLoop => Some(WatchLocalEngine::VisualLoop),
             _ => Some(WatchLocalEngine::Ocr),
         }
     }
@@ -126,6 +129,10 @@ impl CompiledWatchIntent {
             WatchRule::FollowThroughResult => Some(FollowThroughRole::Result),
             _ => None,
         }
+    }
+
+    pub fn detects_visual_loop(&self) -> bool {
+        matches!(self.rule, WatchRule::VisualLoop)
     }
 
     pub fn classify_cross_region_state(&self, text: &str) -> Option<CrossRegionState> {
@@ -210,6 +217,7 @@ impl CompiledWatchIntent {
             WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
             WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
             WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
+            WatchRule::VisualLoop => "REPEATING VISUAL LOOP".to_string(),
             WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
             WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
             WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),

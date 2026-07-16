@@ -10,6 +10,15 @@ pub(super) fn evaluate(
     current_text: Option<&str>,
     locale: &str,
 ) -> LocalWatchDecision {
+    match rule {
+        WatchRule::StuckAfterActivity
+        | WatchRule::CrossRegionConflict
+        | WatchRule::FollowThroughTrigger
+        | WatchRule::FollowThroughResult
+        | WatchRule::VisualLoop => return LocalWatchDecision::NotMatched,
+        WatchRule::Semantic => return LocalWatchDecision::NeedsAi,
+        _ => {}
+    }
     let (Some(previous), Some(current)) = (previous_text, current_text) else {
         return LocalWatchDecision::NeedsAi;
     };
@@ -17,12 +26,12 @@ pub(super) fn evaluate(
     let current = normalize(current);
 
     let matched = match rule {
-        WatchRule::Semantic => return LocalWatchDecision::NeedsAi,
-        WatchRule::StuckAfterActivity => return LocalWatchDecision::NotMatched,
-        WatchRule::CrossRegionConflict => return LocalWatchDecision::NotMatched,
-        WatchRule::FollowThroughTrigger | WatchRule::FollowThroughResult => {
-            return LocalWatchDecision::NotMatched;
-        }
+        WatchRule::Semantic
+        | WatchRule::StuckAfterActivity
+        | WatchRule::CrossRegionConflict
+        | WatchRule::FollowThroughTrigger
+        | WatchRule::FollowThroughResult
+        | WatchRule::VisualLoop => unreachable!("handled before OCR evidence validation"),
         WatchRule::TextAppears(text) => !previous.contains(text) && current.contains(text),
         WatchRule::TextDisappears(text) => previous.contains(text) && !current.contains(text),
         WatchRule::TextChanges => !previous.is_empty() && previous != current,
@@ -88,6 +97,7 @@ fn rule_summary(rule: &WatchRule) -> String {
         WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
         WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
         WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
+        WatchRule::VisualLoop => "REPEATING VISUAL LOOP".to_string(),
         WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
         WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
         WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),
@@ -136,6 +146,7 @@ fn local_summary(rule: &WatchRule, locale: &str) -> String {
         WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
         WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
         WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
+        WatchRule::VisualLoop => "REPEATING VISUAL LOOP".to_string(),
     };
     if locale.to_ascii_lowercase().starts_with("ko") {
         format!("조건이 충족되었습니다. {condition}")

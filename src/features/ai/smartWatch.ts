@@ -1,6 +1,6 @@
 import type { AiProvider } from "./regionQuestion";
 
-export const SMART_WATCH_CONSENT_VERSION = 10;
+export const SMART_WATCH_CONSENT_VERSION = 11;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -30,6 +30,7 @@ export interface SmartWatchStatus {
     | "crossRegionOcr"
     | "followThroughTrigger"
     | "followThroughResult"
+    | "visualLoop"
     | null;
   ruleSummary: string;
   captureScope: "selectedRegionOnly";
@@ -56,6 +57,7 @@ export interface SmartWatchTargetStatus {
     | "crossRegionOcr"
     | "followThroughTrigger"
     | "followThroughResult"
+    | "visualLoop"
     | null;
   ruleSummary: string;
 }
@@ -130,6 +132,8 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
     ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
     : target.localEngine === "followThroughResult"
     ? "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE"
+    : target.localEngine === "visualLoop"
+    ? "LOCAL LOOP DETECTOR · 2-4 STEPS · ALERT AFTER 3 CYCLES · NO OCR · NO AI USAGE"
     : target.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : target.evaluationMode === "local"
@@ -158,6 +162,8 @@ export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
     ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
     : status.localEngine === "followThroughResult"
     ? "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE"
+    : status.localEngine === "visualLoop"
+    ? "LOCAL LOOP DETECTOR · 2-4 STEPS · ALERT AFTER 3 CYCLES · NO OCR · NO AI USAGE"
     : status.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : status.evaluationMode === "local"

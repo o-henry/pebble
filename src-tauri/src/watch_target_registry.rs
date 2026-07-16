@@ -7,6 +7,7 @@ use crate::{
     ai_runtime::AiProvider,
     monitoring::MonitoringState,
     region_selection_types::PhysicalRegion,
+    visual_loop::{VisualFingerprint, VisualLoopDetector},
     watch_intent::{CompiledWatchIntent, CrossRegionState, FollowThroughRole, LocalWatchMatch},
 };
 
@@ -110,6 +111,7 @@ struct WatchTarget {
     stability_started_tick: Option<u64>,
     stuck_notified: bool,
     cross_region_state: Option<CrossRegionState>,
+    visual_loop: VisualLoopDetector,
 }
 
 #[derive(Debug, Clone)]
@@ -186,6 +188,7 @@ impl WatchTargetRegistry {
             target.last_event = None;
             target.reset_visual_activity();
             target.cross_region_state = None;
+            target.visual_loop.reset();
             self.pending_cross_conflict = None;
             self.pending_follow_through = None;
             return Ok(());
@@ -216,6 +219,7 @@ impl WatchTargetRegistry {
             stability_started_tick: None,
             stuck_notified: false,
             cross_region_state: None,
+            visual_loop: VisualLoopDetector::default(),
         });
         self.pending_cross_conflict = None;
         self.pending_follow_through = None;
@@ -462,6 +466,7 @@ impl WatchTargetRegistry {
                 target.cross_region_state = None;
                 self.pending_cross_conflict = None;
             }
+            target.visual_loop.reset();
         }
         if self
             .pending_follow_through
@@ -476,6 +481,34 @@ impl WatchTargetRegistry {
         {
             self.pending_follow_through = None;
         }
+    }
+
+    pub(super) fn seed_visual_loop(&mut self, id: &str, fingerprint: VisualFingerprint) -> bool {
+        let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
+            return false;
+        };
+        if !target.config.plan.detects_visual_loop() {
+            return false;
+        }
+        target.visual_loop.seed(fingerprint);
+        true
+    }
+
+    pub(super) fn observe_visual_loop(
+        &mut self,
+        id: &str,
+        fingerprint: VisualFingerprint,
+    ) -> Option<LocalWatchMatch> {
+        let target = self.targets.iter_mut().find(|target| target.id == id)?;
+        if !target.config.plan.detects_visual_loop() {
+            return None;
+        }
+        let pattern = target.visual_loop.observe(fingerprint)?;
+        target.local_matches_completed = target.local_matches_completed.saturating_add(1);
+        Some(LocalWatchMatch {
+            summary: visual_loop_summary(&target.config.locale, pattern.period),
+            fingerprint: format!("local:visual-loop:{}", pattern.period),
+        })
     }
 
     pub(super) fn finish_analysis(&mut self, id: &str, completed: bool) -> bool {
@@ -762,6 +795,14 @@ fn follow_through_summary(locale: &str, trigger: &str, results: &[String], minut
             format!("{minutes} minutes")
         };
         format!("{results} did not change within {duration} after {trigger} changed.")
+    }
+}
+
+fn visual_loop_summary(locale: &str, period: usize) -> String {
+    if locale.to_ascii_lowercase().starts_with("ko") {
+        format!("화면이 {period}단계 패턴을 세 번 연속 반복하고 있습니다.")
+    } else {
+        format!("The region repeated the same {period}-step visual cycle three times.")
     }
 }
 

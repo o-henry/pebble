@@ -222,6 +222,13 @@ that result, all responses clear the relation silently, and expiry emits one
 local missed-result signal. Capture failure or target mutation clears the
 relation fail-closed. This engine has no OCR, AI, network, or input-control path.
 
+Loop Detector owns a per-target `VisualLoopDetector`. It samples a fixed grid
+from baseline and stable-change frames, quantizes each RGB channel and local
+contrast to two bits, and retains at most twelve 64-byte fingerprints in a bounded deque. Tail
+matching recognizes distinct periods of two through four after three cycles;
+canonical cycle rotation prevents duplicate alerts. The detector has no serde
+implementation or outbound adapter, and capture failure resets its state.
+
 ### AiRuntime
 
 Optional explicit-request service. Manual questions and locally gated Watch

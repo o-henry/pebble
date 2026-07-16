@@ -1,6 +1,9 @@
 use super::{contains_any, normalize, NumberOperator, WatchRule, WatchState};
 
 pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
+    if is_visual_loop_intent(normalized) {
+        return WatchRule::VisualLoop;
+    }
     if is_follow_through_trigger(normalized) {
         return WatchRule::FollowThroughTrigger;
     }
@@ -33,6 +36,22 @@ pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
         return WatchRule::StateAppears(state);
     }
     WatchRule::Semantic
+}
+
+fn is_visual_loop_intent(value: &str) -> bool {
+    contains_any(
+        value,
+        &[
+            "repeats the same visual cycle",
+            "repeating visual loop",
+            "visual loop detector",
+            "screen keeps looping",
+            "same screen cycle repeats",
+            "화면 반복 루프",
+            "같은 화면 순환 반복",
+            "화면이 계속 반복",
+        ],
+    )
 }
 
 fn is_follow_through_trigger(value: &str) -> bool {

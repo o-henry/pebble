@@ -14,8 +14,9 @@ visual gate and, after a material change, sends only the previous and current
 selected crops to the chosen AI provider at the interval you select. Watch is
 off by default, with no frame history, telemetry, or continuous image upload.
 You can also explicitly ask OpenAI or Claude about one fresh selected crop.
-Zero-token local recipes can detect stalled activity, compare opposing status
-regions, or verify that a change in one app is followed by another app.
+Zero-token local recipes can detect stalled activity, repeated visual loops,
+compare opposing status regions, or verify that a change in one app is followed
+by another app.
 
 It is pre-alpha and available on GitHub:
 https://github.com/o-henry/pebble
@@ -41,9 +42,9 @@ it sends only the previous and current selected crops to the chosen provider,
 no more often than the interval selected by the user. It stores no frame
 history and does not continuously upload the screen.
 
-Local-only recipes also cover stalled regions, opposing status regions, and
-cross-app follow-through deadlines without provider AI; the visual-only paths
-do not run OCR.
+Local-only recipes also cover stalled regions, repeated visual loops, opposing
+status regions, and cross-app follow-through deadlines without provider AI; the
+visual-only paths do not run OCR.
 
 For explicit questions, Pebble can send one freshly authorized selected crop to
 OpenAI through account sign-in, or to Claude through its CLI subscription or an
@@ -77,8 +78,9 @@ changes. It runs a low-FPS local gate and stores no frame history. When Watch is
 enabled and a material change occurs, it sends only the before-and-after crops
 to the chosen provider, no more often than the interval selected by the user.
 
-It also includes local-only recipes for stalled activity, opposing states, and
-checking whether one app responds after another changes.
+It also includes local-only recipes for stalled activity, repeated visual
+loops, opposing states, and checking whether one app responds after another
+changes.
 
 There is also an optional Ask flow for OpenAI or Claude. It sends exactly one
 fresh selected crop only when the user presses Ask. OpenAI uses account sign-in;

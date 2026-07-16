@@ -236,3 +236,18 @@ fn compiles_follow_through_roles_as_zero_token_visual_rules() {
     );
     assert_eq!(result.rule_summary(), "FOLLOW THROUGH RESULT");
 }
+
+#[test]
+fn compiles_visual_loop_detection_as_a_zero_token_local_rule() {
+    let compiled = CompiledWatchIntent::compile(
+        "Tell me when this region repeats the same visual cycle".into(),
+    );
+    assert_eq!(compiled.mode(), WatchEvaluationMode::Local);
+    assert_eq!(compiled.local_engine(), Some(WatchLocalEngine::VisualLoop));
+    assert!(compiled.detects_visual_loop());
+    assert_eq!(compiled.rule_summary(), "REPEATING VISUAL LOOP");
+    assert_eq!(
+        compiled.evaluate(None, None, "en-US"),
+        LocalWatchDecision::NotMatched
+    );
+}

@@ -96,6 +96,11 @@ npm run tauri:build
   one linked-region alert at expiry and rearms only after a new trigger change.
 - Stopping a linked target or making it unavailable cancels a pending Follow
   Through check without alerting. The path runs no OCR, AI, or input control.
+- Loop Detector stays silent for a static baseline, one-off changes, and fewer
+  than three complete cycles. Repeating two, three, or four distinct states
+  three times emits one alert, remains deduplicated, and rearms after a break.
+- Loop status, Updates JSON, and the Markdown journal contain no fingerprint,
+  frame bytes, coordinates, OCR text, or model metadata.
 - Watch respects each 1, 5, 30, and 60 minute interval without a fixed session cap.
 - A custom composer intent suppresses notifications and journal entries when
   the typed Watch result is unmatched.

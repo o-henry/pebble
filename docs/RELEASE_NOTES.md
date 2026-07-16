@@ -36,6 +36,8 @@ This is a contributor-facing pre-alpha demo build.
 - Local Follow Through Watch that links a trigger to one or two result regions
   and reports only downstream regions that miss the selected response deadline,
   without OCR, AI, network access, or input control.
+- Local Loop Detector that recognizes 2- to 4-step visual cycles after three
+  repetitions using a bounded memory-only fingerprint history with no OCR or AI.
 - Structured Watch signals with safe region, event, engine or model,
   confidence, and duration metadata separated from the human summary.
 - Stable-candidate animation suppression and per-region semantic event dedupe.

@@ -24,6 +24,9 @@ Follow Through is also outside AI handoff. It compares stable visual-change
 events between explicitly linked regions and stores only target IDs and a
 deadline tick in memory. It never runs OCR or sends a provider request.
 
+Loop Detector is outside AI handoff as well. Its bounded, non-serializable local
+fingerprints never enter prompts, status payloads, Updates, or provider calls.
+
 ## Runtime
 
 Pebble bundles the OpenAI Codex app-server as a Tauri sidecar. Claude uses a

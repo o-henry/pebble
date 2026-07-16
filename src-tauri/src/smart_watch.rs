@@ -6,6 +6,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     ai_runtime::AiProvider,
+    visual_loop::VisualFingerprint,
     watch_intent::{
         CompiledWatchIntent, CrossRegionState, LocalWatchMatch, WatchEvaluationMode,
         WatchLocalEngine,
@@ -20,14 +21,14 @@ pub(crate) use registry::{
 };
 use registry::{WatchTargetConfig, WatchTargetRegistry};
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 10;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 11;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL STABILITY AND FOLLOW THROUGH RULES USE VISUAL CHANGE STATE ONLY, WITH NO OCR OR AI, AND NEVER CONTROL INPUT. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL STABILITY, FOLLOW THROUGH, AND LOOP RULES USE VISUAL CHANGE STATE OR COMPACT MEMORY-ONLY FINGERPRINTS, WITH NO OCR OR AI, AND NEVER CONTROL INPUT. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
 
@@ -148,6 +149,7 @@ impl SmartWatchState {
                     | WatchLocalEngine::CrossRegionOcr
                     | WatchLocalEngine::FollowThroughTrigger
                     | WatchLocalEngine::FollowThroughResult
+                    | WatchLocalEngine::VisualLoop
             )
         ) {
             ai_fallback_enabled = false;
@@ -315,6 +317,22 @@ impl SmartWatchState {
         let mut data = self.data.lock().expect("smart watch state lock");
         data.invalidate_local_relationships(id);
         data.status()
+    }
+
+    pub fn seed_visual_loop(&self, id: &str, fingerprint: VisualFingerprint) -> SmartWatchStatus {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        data.seed_visual_loop(id, fingerprint);
+        data.status()
+    }
+
+    pub fn observe_visual_loop(
+        &self,
+        id: &str,
+        fingerprint: VisualFingerprint,
+    ) -> (SmartWatchStatus, Option<LocalWatchMatch>) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let matched = data.observe_visual_loop(id, fingerprint);
+        (data.status(), matched)
     }
 
     pub fn finish_analysis(&self, id: &str, completed: bool) -> (SmartWatchStatus, bool) {
@@ -526,7 +544,9 @@ mod tests {
     };
     use crate::{
         ai_runtime::AiProvider,
+        capture_backend::cropped_frame,
         region_selection_types::{PhysicalRegion, WindowCaptureTarget},
+        visual_loop::VisualFingerprint,
         watch_intent::CrossRegionState,
     };
 
@@ -539,6 +559,8 @@ mod tests {
         assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
         assert!(STARTUP_NOTICE_BODY.contains("NO OCR OR AI"));
         assert!(STARTUP_NOTICE_BODY.contains("FOLLOW THROUGH"));
+        assert!(STARTUP_NOTICE_BODY.contains("LOOP RULES"));
+        assert!(STARTUP_NOTICE_BODY.contains("MEMORY-ONLY FINGERPRINTS"));
         assert!(STARTUP_NOTICE_BODY.contains("NEVER CONTROL INPUT"));
         assert!(STARTUP_NOTICE_BODY.contains("CROSS CHECK RUNS EPHEMERAL LOCAL OCR"));
         assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
@@ -700,6 +722,27 @@ mod tests {
             assert!(!status.ai_fallback_enabled);
             assert_eq!(status.local_engine, Some(engine));
         }
+    }
+
+    #[test]
+    fn visual_loop_rules_force_local_fingerprints_without_ai() {
+        let state = SmartWatchState::default();
+        let status = state
+            .configure(
+                authorization(1, 10),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Tell me when this region repeats the same visual cycle",
+                    5,
+                ),
+            )
+            .unwrap();
+
+        assert!(!status.ai_fallback_enabled);
+        assert_eq!(
+            status.local_engine,
+            Some(crate::watch_intent::WatchLocalEngine::VisualLoop)
+        );
     }
 
     #[test]
@@ -1140,6 +1183,44 @@ mod tests {
     }
 
     #[test]
+    fn visual_loop_match_updates_only_local_counts_and_dedupes_active_cycle() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                authorization(1, 10),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Tell me when this region repeats the same visual cycle",
+                    5,
+                ),
+            )
+            .unwrap();
+        let id = current_target_id(&state);
+        state.seed_visual_loop(&id, loop_fingerprint([20, 20, 20, 255]));
+        for color in [
+            [220, 30, 30, 255],
+            [20, 20, 20, 255],
+            [220, 30, 30, 255],
+            [20, 20, 20, 255],
+        ] {
+            assert!(state
+                .observe_visual_loop(&id, loop_fingerprint(color))
+                .1
+                .is_none());
+        }
+        let (status, matched) =
+            state.observe_visual_loop(&id, loop_fingerprint([220, 30, 30, 255]));
+        let matched = matched.expect("visual loop match");
+        assert!(matched.summary.contains("2단계 패턴"));
+        assert_eq!(status.targets[0].local_matches_completed, 1);
+        assert_eq!(status.targets[0].analyses_completed, 0);
+        assert!(state
+            .observe_visual_loop(&id, loop_fingerprint([20, 20, 20, 255]))
+            .1
+            .is_none());
+    }
+
+    #[test]
     fn semantic_dedupe_ignores_case_and_punctuation() {
         let state = enabled_watch(5);
         let id = current_target_id(&state);
@@ -1178,6 +1259,8 @@ mod tests {
             "scaleFactor",
             "monitorId",
             "relativeX",
+            "visualFingerprint",
+            "loopHistory",
         ] {
             assert!(!raw.contains(forbidden));
         }
@@ -1244,5 +1327,18 @@ mod tests {
             analysis_interval_minutes,
             ai_fallback_enabled: true,
         }
+    }
+
+    fn loop_fingerprint(color: [u8; 4]) -> VisualFingerprint {
+        let region = PhysicalRegion {
+            monitor_id: "main".into(),
+            x: 0,
+            y: 0,
+            width: 8,
+            height: 8,
+            source_window: None,
+        };
+        VisualFingerprint::from_frame(&cropped_frame(&region, color.repeat(64)))
+            .expect("loop fingerprint")
     }
 }

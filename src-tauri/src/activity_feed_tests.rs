@@ -225,6 +225,45 @@ fn follow_through_signal_keeps_only_safe_linked_region_labels() {
     let _ = fs::remove_dir_all(path.parent().expect("parent"));
 }
 
+#[test]
+fn visual_loop_signal_contains_no_fingerprint_or_frame_data() {
+    let path = test_path("visual-loop");
+    let state = ActivityFeedState::default();
+    let signal = WatchSignal::new(
+        WatchSignalKind::Loop,
+        "REGION 1",
+        WatchSignalEngine::LocalVisualLoop,
+        None,
+        Some(WatchSignalConfidence::High),
+        None,
+    )
+    .expect("safe visual loop signal");
+    let entry = state
+        .record_signal(
+            "The region repeated a 2-step visual cycle.",
+            "2026-07-16T12:00:00Z".into(),
+            Some(&path),
+            signal,
+        )
+        .expect("visual loop entry");
+
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(document.contains("REGION 1 | LOOP | LOCAL VISUAL LOOP | HIGH"));
+    let serialized = serde_json::to_string(&entry).expect("entry json");
+    for private_field in [
+        "frame",
+        "bytes",
+        "fingerprint",
+        "cells",
+        "loopHistory",
+        "monitorId",
+        "sourceWindow",
+    ] {
+        assert!(!serialized.contains(private_field));
+    }
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
 #[cfg(unix)]
 #[test]
 fn journal_refuses_a_symlink_target() {

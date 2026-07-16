@@ -152,7 +152,8 @@ export function SmartWatchControl({
         disabled={
           busy ||
           status?.localEngine === "crossRegionOcr" ||
-          status?.localEngine === "followThroughResult"
+          status?.localEngine === "followThroughResult" ||
+          status?.localEngine === "visualLoop"
         }
         onChange={(minutes) => selectInterval(String(minutes))}
       />

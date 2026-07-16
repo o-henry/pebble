@@ -85,6 +85,10 @@ Implemented:
   stable trigger change starts the selected 1, 5, 30, or 60 minute deadline;
   Pebble alerts only for result regions that do not change in time. It uses
   local visual state with no OCR, AI, network request, or input control.
+- **Loop Detector** finds 2- to 4-step visual cycles repeated three times, such
+  as retry, refresh, or redirect loops. It compares at most twelve compact
+  64-byte color fingerprints in memory and never retains frames, runs OCR, or
+  calls AI.
 - Stable-candidate gating ignores transient animation, while semantic
   fingerprints suppress repeated alerts within the selected interval.
 - Up to three independently bound Watch regions can stay active. Selecting a
@@ -235,6 +239,14 @@ results still missing. A new trigger change rearms the check, while capture
 failure, target removal, privacy blank, or app shutdown cancels pending state.
 This path retains target IDs and ticks only and never runs OCR or AI.
 
+**Loop Detector** seeds one compact fingerprint from the selected baseline and
+adds another only after a stable material change. Each fingerprint contains an
+8-by-8 grid of heavily quantized average RGB and local contrast values. Pebble keeps at most twelve
+in memory, detects distinct 2- to 4-step patterns only after three complete
+cycles, and emits one signal while that cycle continues. A nonmatching state
+breaks the cycle and rearms detection. Fingerprints are never serialized,
+persisted, included in Updates, sent to AI, or exposed to the webview.
+
 Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed
 match decision, compact summary, and low/medium/high confidence. Pebble notifies
@@ -274,7 +286,8 @@ is never persisted, included in Updates, or sent to AI.
    regions; the interval control is disabled because conflict confirmation is a
    fixed 10 seconds. To verify a downstream response, apply **Follow Start** to
    the source, choose its deadline, then apply **Follow Result** to one or two
-   destination regions.
+   destination regions. Choose **Loop Detector** for repeated retry or refresh
+   cycles; it uses a fixed three-cycle confirmation.
 9. Choose a provider, type a question, and press **Send** when one-shot analysis
    is wanted. This sends one fresh crop only for that request.
 

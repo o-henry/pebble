@@ -48,6 +48,7 @@ mod region_selection_tests;
 pub mod region_selection_types;
 mod region_selector_window;
 mod smart_watch;
+mod visual_loop;
 mod watch_intent;
 #[cfg(test)]
 mod watch_intent_tests;
@@ -79,6 +80,7 @@ use smart_watch::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+use visual_loop::VisualFingerprint;
 use watch_intent::WatchLocalEngine;
 use window_shell::WindowShellError;
 
@@ -649,12 +651,15 @@ async fn evaluate_watch_target(
         monitoring::MonitoringDecision::Baseline => {
             pending.remove(&target.id);
             watch.reset_visual_activity(&target.id);
-            if let Some(context) = watch
-                .current_context(&target.id)
-                .filter(|context| context.plan.detects_cross_region_conflict())
-            {
-                let state = classify_cross_region_frame(&context.plan, &frame).await;
-                watch.update_cross_region_state(&target.id, state);
+            if let Some(context) = watch.current_context(&target.id) {
+                if context.plan.detects_cross_region_conflict() {
+                    let state = classify_cross_region_frame(&context.plan, &frame).await;
+                    watch.update_cross_region_state(&target.id, state);
+                } else if context.plan.detects_visual_loop() {
+                    if let Some(fingerprint) = VisualFingerprint::from_frame(&frame) {
+                        watch.seed_visual_loop(&target.id, fingerprint);
+                    }
+                }
             }
             return;
         }
@@ -706,6 +711,29 @@ async fn evaluate_watch_target(
         pending.remove(&target.id);
         let status = watch.note_follow_through_change(&target.id, tick);
         smart_watch::emit_status(app, status);
+        return;
+    }
+    if context.plan.detects_visual_loop() {
+        pending.remove(&target.id);
+        if let Some(fingerprint) = VisualFingerprint::from_frame(&frame) {
+            let (status, matched) = watch.observe_visual_loop(&target.id, fingerprint);
+            if let Some(event) = matched {
+                smart_watch::emit_status(app, status);
+                emit_watch_event(
+                    app,
+                    WatchEventNotice {
+                        target_name: &target.name,
+                        related_regions: &[],
+                        kind: WatchSignalKind::Loop,
+                        engine: WatchSignalEngine::LocalVisualLoop,
+                        model: None,
+                        confidence: "HIGH",
+                        duration_ms: None,
+                        summary: &event.summary,
+                    },
+                );
+            }
+        }
         return;
     }
     let prepared = prepare_watch_candidate(&context, &previous_frame, &frame).await;
@@ -891,6 +919,11 @@ fn watch_started_log(
             "WATCH STARTED · {intent} · FOLLOW RESULT · LOCAL CHECK EVERY 5S · DEADLINE SET BY FOLLOW START · NO OCR · NO AI USAGE"
         );
     }
+    if local_engine == Some(WatchLocalEngine::VisualLoop) {
+        return format!(
+            "WATCH STARTED · {intent} · LOOP DETECTOR · LOCAL STABLE FINGERPRINTS · ALERT AFTER 3 CYCLES · NO OCR · NO AI USAGE"
+        );
+    }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
             "WATCH STARTED · {intent} · LOCAL CHECK EVERY 5S · ALERT AFTER {} WITHOUT PROGRESS · NO OCR · NO AI USAGE",
@@ -925,6 +958,9 @@ fn watch_interval_log(
     }
     if local_engine == Some(WatchLocalEngine::FollowThroughResult) {
         return "FOLLOW START CONTROLS THE FOLLOW THROUGH DEADLINE".to_string();
+    }
+    if local_engine == Some(WatchLocalEngine::VisualLoop) {
+        return "LOOP DETECTOR USES A FIXED 3-CYCLE CONFIRMATION".to_string();
     }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
@@ -1360,6 +1396,27 @@ mod tests {
         assert!(result.contains("DEADLINE SET BY FOLLOW START"));
         assert!(result.contains("NO OCR · NO AI USAGE"));
         assert!(!result.contains("GPT-5.6"));
+    }
+
+    #[test]
+    fn loop_detector_log_explains_local_fingerprints_and_fixed_confirmation() {
+        let log = watch_started_log(
+            Some(WatchLocalEngine::VisualLoop),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            5,
+            true,
+        );
+        assert!(log.contains("LOOP DETECTOR"));
+        assert!(log.contains("LOCAL STABLE FINGERPRINTS"));
+        assert!(log.contains("ALERT AFTER 3 CYCLES"));
+        assert!(log.contains("NO OCR · NO AI USAGE"));
+        assert!(!log.contains("GPT-5.6"));
+        assert_eq!(
+            watch_interval_log(Some(WatchLocalEngine::VisualLoop), 5),
+            "LOOP DETECTOR USES A FIXED 3-CYCLE CONFIRMATION"
+        );
     }
 
     #[test]
