@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use tauri_plugin_notification::NotificationExt;
 
-use crate::ai_runtime::AiProvider;
+use crate::{
+    ai_runtime::AiProvider,
+    watch_intent::{CompiledWatchIntent, WatchEvaluationMode},
+};
 
 pub const SMART_WATCH_CONSENT_VERSION: u16 = 6;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
@@ -31,9 +34,12 @@ pub fn show_startup_notice(app: &tauri::AppHandle) {
 pub struct SmartWatchStatus {
     pub enabled: bool,
     pub analyses_completed: u32,
+    pub local_matches_completed: u32,
     pub analysis_interval_minutes: u16,
     pub model: String,
     pub custom_intent: bool,
+    pub evaluation_mode: WatchEvaluationMode,
+    pub rule_summary: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -46,22 +52,24 @@ struct SmartWatchData {
     enabled: bool,
     revision: Option<u64>,
     analyses_completed: u32,
+    local_matches_completed: u32,
     analysis_in_flight: bool,
     analysis_interval_minutes: u16,
     last_analysis_tick: Option<u64>,
     provider: AiProvider,
     model: String,
-    intent: String,
+    plan: CompiledWatchIntent,
     custom_intent: bool,
     locale: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WatchAnalysisContext {
     pub provider: AiProvider,
     pub model: String,
     pub intent: String,
     pub locale: String,
+    pub plan: CompiledWatchIntent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -103,6 +111,7 @@ impl SmartWatchState {
         validate_analysis_interval(analysis_interval_minutes)?;
         let model = normalized_model(provider, model)?;
         let (intent, custom_intent) = normalized_intent(intent)?;
+        let plan = CompiledWatchIntent::compile(intent);
 
         let mut data = self
             .data
@@ -115,7 +124,7 @@ impl SmartWatchState {
         data.analysis_interval_minutes = analysis_interval_minutes;
         data.provider = provider;
         data.model = model;
-        data.intent = intent;
+        data.plan = plan;
         data.custom_intent = custom_intent;
         data.locale = normalized_locale(locale);
         Ok(data.status())
@@ -168,9 +177,33 @@ impl SmartWatchState {
         Some(WatchAnalysisContext {
             provider: data.provider,
             model: data.model.clone(),
-            intent: data.intent.clone(),
+            intent: data.plan.intent().to_string(),
             locale: data.locale.clone(),
+            plan: data.plan.clone(),
         })
+    }
+
+    pub fn current_context(&self, revision: u64) -> Option<WatchAnalysisContext> {
+        let data = self.data.lock().ok()?;
+        if !data.enabled || data.revision != Some(revision) || data.analysis_in_flight {
+            return None;
+        }
+        Some(WatchAnalysisContext {
+            provider: data.provider,
+            model: data.model.clone(),
+            intent: data.plan.intent().to_string(),
+            locale: data.locale.clone(),
+            plan: data.plan.clone(),
+        })
+    }
+
+    pub fn finish_local_match(&self, revision: u64) -> (SmartWatchStatus, bool) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let accepted = data.enabled && data.revision == Some(revision);
+        if accepted {
+            data.local_matches_completed = data.local_matches_completed.saturating_add(1);
+        }
+        (data.status(), accepted)
     }
 
     pub fn finish_analysis(&self, revision: u64, completed: bool) -> (SmartWatchStatus, bool) {
@@ -192,12 +225,13 @@ impl Default for SmartWatchData {
             enabled: false,
             revision: None,
             analyses_completed: 0,
+            local_matches_completed: 0,
             analysis_in_flight: false,
             analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             last_analysis_tick: None,
             provider: AiProvider::OpenAi,
             model: "gpt-5.6-terra".to_string(),
-            intent: DEFAULT_WATCH_INTENT.to_string(),
+            plan: CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string()),
             custom_intent: false,
             locale: "und".to_string(),
         }
@@ -222,9 +256,12 @@ impl SmartWatchData {
         SmartWatchStatus {
             enabled: self.enabled,
             analyses_completed: self.analyses_completed,
+            local_matches_completed: self.local_matches_completed,
             analysis_interval_minutes: self.analysis_interval_minutes,
             model: self.model.clone(),
             custom_intent: self.custom_intent,
+            evaluation_mode: self.plan.mode(),
+            rule_summary: self.plan.rule_summary(),
         }
     }
 

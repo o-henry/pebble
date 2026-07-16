@@ -42,9 +42,12 @@ describe("smart watch consent", () => {
       smartWatchTitle({
         enabled: true,
         analysesCompleted: 12,
+        localMatchesCompleted: 0,
         analysisIntervalMinutes: 60,
         model: "gpt-5.6-terra",
-        customIntent: true
+        customIntent: true,
+        evaluationMode: "ai",
+        ruleSummary: "AI SEMANTIC MATCH"
       })
     ).toContain("1 HOUR");
   });

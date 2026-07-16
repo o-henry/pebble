@@ -46,6 +46,9 @@ mod region_selection_tests;
 pub mod region_selection_types;
 mod region_selector_window;
 mod smart_watch;
+mod watch_intent;
+#[cfg(test)]
+mod watch_intent_tests;
 mod window_shell;
 #[cfg(test)]
 mod window_shell_tests;
@@ -504,15 +507,44 @@ fn start_background_watch(app: AppHandle) {
                         ..
                     }) = monitoring.observe(revision, &frame, tick)
                     {
-                        match pending_analysis.as_mut() {
-                            Some(pending) => pending.update(kind, frame),
-                            None => {
-                                pending_analysis = Some(PendingWatchAnalysis {
-                                    revision,
-                                    kind,
-                                    previous_frame,
-                                    current_frame: frame,
-                                });
+                        if let Some(context) = watch.current_context(revision) {
+                            let prepared =
+                                prepare_watch_candidate(&context, &previous_frame, &frame).await;
+                            match prepared.decision {
+                                watch_intent::LocalWatchDecision::Matched(event) => {
+                                    pending_analysis = None;
+                                    let (status, accepted) = watch.finish_local_match(revision);
+                                    smart_watch::emit_status(&app, status);
+                                    if accepted {
+                                        emit_watch_event(
+                                            &app,
+                                            "LOCAL OCR",
+                                            "HIGH",
+                                            0,
+                                            &event.summary,
+                                        );
+                                    }
+                                }
+                                watch_intent::LocalWatchDecision::NotMatched => {
+                                    pending_analysis = None;
+                                }
+                                watch_intent::LocalWatchDecision::NeedsAi => {
+                                    match pending_analysis.as_mut() {
+                                        Some(pending) => {
+                                            pending.update(kind, frame, prepared.current_text)
+                                        }
+                                        None => {
+                                            pending_analysis = Some(PendingWatchAnalysis {
+                                                revision,
+                                                kind,
+                                                previous_frame,
+                                                current_frame: frame,
+                                                previous_text: prepared.previous_text,
+                                                current_text: prepared.current_text,
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -535,6 +567,8 @@ fn start_background_watch(app: AppHandle) {
                                 kind: pending.kind,
                                 previous_frame: pending.previous_frame,
                                 current_frame: pending.current_frame,
+                                previous_text: pending.previous_text,
+                                current_text: pending.current_text,
                             });
                             smart_watch::emit_status(&app, watch.status());
                         }
@@ -562,12 +596,60 @@ struct PendingWatchAnalysis {
     kind: monitoring::VisualChangeKind,
     previous_frame: CroppedFramePayload,
     current_frame: CroppedFramePayload,
+    previous_text: Option<String>,
+    current_text: Option<String>,
 }
 
 impl PendingWatchAnalysis {
-    fn update(&mut self, kind: monitoring::VisualChangeKind, current_frame: CroppedFramePayload) {
+    fn update(
+        &mut self,
+        kind: monitoring::VisualChangeKind,
+        current_frame: CroppedFramePayload,
+        current_text: Option<String>,
+    ) {
         self.kind = kind;
         self.current_frame = current_frame;
+        self.current_text = current_text;
+    }
+}
+
+struct PreparedWatchCandidate {
+    decision: watch_intent::LocalWatchDecision,
+    previous_text: Option<String>,
+    current_text: Option<String>,
+}
+
+async fn prepare_watch_candidate(
+    context: &smart_watch::WatchAnalysisContext,
+    previous_frame: &CroppedFramePayload,
+    current_frame: &CroppedFramePayload,
+) -> PreparedWatchCandidate {
+    let previous_ocr_frame = previous_frame.clone();
+    let current_ocr_frame = current_frame.clone();
+    let (previous_text, current_text) = tauri::async_runtime::spawn_blocking(move || {
+        let engine = LocalOcrAdapter;
+        (
+            engine
+                .recognize_text(&previous_ocr_frame)
+                .ok()
+                .filter(|text| !text.trim().is_empty()),
+            engine
+                .recognize_text(&current_ocr_frame)
+                .ok()
+                .filter(|text| !text.trim().is_empty()),
+        )
+    })
+    .await
+    .unwrap_or((None, None));
+    let decision = context.plan.evaluate(
+        previous_text.as_deref(),
+        current_text.as_deref(),
+        &context.locale,
+    );
+    PreparedWatchCandidate {
+        decision,
+        previous_text,
+        current_text,
     }
 }
 
@@ -642,6 +724,8 @@ struct WatchAnalysisJob {
     kind: monitoring::VisualChangeKind,
     previous_frame: capture_backend::CroppedFramePayload,
     current_frame: capture_backend::CroppedFramePayload,
+    previous_text: Option<String>,
+    current_text: Option<String>,
 }
 
 fn schedule_watch_analysis(job: WatchAnalysisJob) {
@@ -656,24 +740,9 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
             kind,
             previous_frame,
             current_frame,
+            previous_text,
+            current_text,
         } = job;
-        let previous_ocr_frame = previous_frame.clone();
-        let current_ocr_frame = current_frame.clone();
-        let (previous_text, current_text) = tauri::async_runtime::spawn_blocking(move || {
-            let engine = LocalOcrAdapter;
-            (
-                engine
-                    .recognize_text(&previous_ocr_frame)
-                    .ok()
-                    .filter(|text| !text.trim().is_empty()),
-                engine
-                    .recognize_text(&current_ocr_frame)
-                    .ok()
-                    .filter(|text| !text.trim().is_empty()),
-            )
-        })
-        .await
-        .unwrap_or((None, None));
         let result = ai_runtime::analyze_watch_change(
             &app,
             &runtime,
@@ -702,27 +771,13 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 if !analysis.matched {
                     return;
                 }
-                menu_bar::set_attention(&app, true);
-                let title = format!(
-                    "PEBBLE WATCH · {} · {} · {:.1}S",
-                    analysis.model.to_ascii_uppercase(),
-                    analysis.confidence.to_ascii_uppercase(),
-                    analysis.duration_ms as f64 / 1_000.0
+                emit_watch_event(
+                    &app,
+                    &analysis.model,
+                    &analysis.confidence,
+                    analysis.duration_ms,
+                    &analysis.summary,
                 );
-                let _ = app
-                    .notification()
-                    .builder()
-                    .title(&title)
-                    .body(&analysis.summary)
-                    .show();
-                let log = compact_watch_log(format!(
-                    "{} · {} · {:.1}S · {}",
-                    analysis.model.to_ascii_uppercase(),
-                    analysis.confidence.to_ascii_uppercase(),
-                    analysis.duration_ms as f64 / 1_000.0,
-                    analysis.summary
-                ));
-                activity_feed::record_watch(&app, app.state::<ActivityFeedState>().inner(), &log);
             }
             Err(error) => {
                 let (status, accepted) = watch.finish_analysis(revision, false);
@@ -741,6 +796,30 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
             }
         }
     });
+}
+
+fn emit_watch_event(
+    app: &tauri::AppHandle,
+    model: &str,
+    confidence: &str,
+    duration_ms: u64,
+    summary: &str,
+) {
+    menu_bar::set_attention(app, true);
+    let model = model.to_ascii_uppercase();
+    let confidence = confidence.to_ascii_uppercase();
+    let duration = duration_ms as f64 / 1_000.0;
+    let title = format!("PEBBLE WATCH · {model} · {confidence} · {duration:.1}S");
+    let _ = app
+        .notification()
+        .builder()
+        .title(&title)
+        .body(summary)
+        .show();
+    let log = compact_watch_log(format!(
+        "{model} · {confidence} · {duration:.1}S · {summary}"
+    ));
+    activity_feed::record_watch(app, app.state::<ActivityFeedState>().inner(), &log);
 }
 
 fn compact_watch_log(value: String) -> String {

@@ -11,9 +11,12 @@ export type SmartWatchIntervalMinutes =
 export interface SmartWatchStatus {
   enabled: boolean;
   analysesCompleted: number;
+  localMatchesCompleted: number;
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
   model: string;
   customIntent: boolean;
+  evaluationMode: "local" | "ai";
+  ruleSummary: string;
 }
 
 interface ConsentStorage {
@@ -68,8 +71,9 @@ export function smartWatchIntervalAtOffset(
 }
 
 export function smartWatchTitle(status: SmartWatchStatus | null): string {
-  if (!status) return "SEMANTIC SMART WATCH";
-  return status.enabled
-    ? `SEMANTIC SMART WATCH ON · AI MAX ONCE EVERY ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
-    : "SEMANTIC SMART WATCH OFF";
+  if (!status) return "SMART WATCH";
+  if (!status.enabled) return "SMART WATCH OFF";
+  return status.evaluationMode === "local"
+    ? `LOCAL WATCH ON · ${status.ruleSummary}`
+    : `AI WATCH ON · MAX ONCE EVERY ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
 }
