@@ -33,6 +33,9 @@ This is a contributor-facing pre-alpha demo build.
 - Local Cross Check Watch that compares coarse positive and negative states
   across two or three explicitly enrolled browser or native-app regions, with a
   fixed 10-second confirmation and no AI use.
+- Local Follow Through Watch that links a trigger to one or two result regions
+  and reports only downstream regions that miss the selected response deadline,
+  without OCR, AI, network access, or input control.
 - Structured Watch signals with safe region, event, engine or model,
   confidence, and duration metadata separated from the human summary.
 - Stable-candidate animation suppression and per-region semantic event dedupe.

@@ -91,6 +91,11 @@ npm run tauri:build
   ephemeral.
 - Cross Check ignores one enrolled region, compares only other Cross Check
   regions, waits 10 seconds before conflict notification, and never calls AI.
+- Follow Start does nothing until at least one Follow Result is active. A result
+  change before the selected deadline stays silent; an unchanged result emits
+  one linked-region alert at expiry and rearms only after a new trigger change.
+- Stopping a linked target or making it unavailable cancels a pending Follow
+  Through check without alerting. The path runs no OCR, AI, or input control.
 - Watch respects each 1, 5, 30, and 60 minute interval without a fixed session cap.
 - A custom composer intent suppresses notifications and journal entries when
   the typed Watch result is unmatched.

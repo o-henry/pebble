@@ -130,6 +130,8 @@ Every frame is filtered locally before bounded AI analysis:
 
 ```text
 selected crop -> local diff gate -> activity/stability timer -> local stuck event
+              -> Follow Start stable change -> memory-only result deadline
+              -> Follow Result stable change or local missed-result event
               -> Cross Check baseline/stable change -> local OCR state enum
               -> 10-second cross-region confirmation -> local conflict event
               -> stable candidate -> Apple Vision OCR -> deterministic rule
@@ -166,6 +168,16 @@ removal, or an unclassified state clears the pending conflict. Pebble retains
 only the enum state and generated region labels; it does not persist or send
 OCR text, frames, coordinates, or source-window IDs, and it never calls AI for
 Cross Check.
+
+Follow Through is local visual relationship tracking. Only targets explicitly
+configured as Follow Start or Follow Result participate. A stable Follow Start
+change stores its target ID, the waiting result IDs, and a deadline tick in
+memory. Stable Follow Result changes remove their IDs from that pending set. No
+frame, visual fingerprint, coordinate, window ID, or OCR text enters the
+relationship state. Capture failure, target removal, privacy blank, and app
+shutdown cancel the pending check so an unavailable result cannot create a
+false alert. Follow Through never calls AI, opens a URL, searches the web, or
+controls mouse or keyboard input.
 
 After activation, Pebble appends safe Watch lifecycle and result summaries plus
 structured region label, signal type, engine or model name, confidence, and

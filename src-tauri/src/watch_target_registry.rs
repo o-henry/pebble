@@ -7,7 +7,7 @@ use crate::{
     ai_runtime::AiProvider,
     monitoring::MonitoringState,
     region_selection_types::PhysicalRegion,
-    watch_intent::{CompiledWatchIntent, CrossRegionState, LocalWatchMatch},
+    watch_intent::{CompiledWatchIntent, CrossRegionState, FollowThroughRole, LocalWatchMatch},
 };
 
 use super::{
@@ -37,6 +37,12 @@ pub(crate) struct WatchCaptureTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CrossRegionMatch {
+    pub regions: Vec<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FollowThroughMatch {
     pub regions: Vec<String>,
     pub summary: String,
 }
@@ -80,6 +86,7 @@ pub(super) struct WatchTargetRegistry {
     targets: Vec<WatchTarget>,
     fallback: WatchTargetConfig,
     pending_cross_conflict: Option<CrossConflictCandidate>,
+    pending_follow_through: Option<FollowThroughCandidate>,
 }
 
 #[derive(Debug)]
@@ -124,6 +131,22 @@ struct CrossConflictSnapshot {
     locale: String,
 }
 
+#[derive(Debug)]
+struct FollowThroughCandidate {
+    trigger_id: String,
+    trigger_name: String,
+    waiting_results: Vec<FollowThroughResult>,
+    deadline_tick: u64,
+    deadline_minutes: u16,
+    locale: String,
+}
+
+#[derive(Debug)]
+struct FollowThroughResult {
+    id: String,
+    name: String,
+}
+
 impl WatchTargetRegistry {
     pub(super) fn new(fallback: WatchTargetConfig) -> Self {
         Self {
@@ -132,6 +155,7 @@ impl WatchTargetRegistry {
             targets: Vec::new(),
             fallback,
             pending_cross_conflict: None,
+            pending_follow_through: None,
         }
     }
 
@@ -163,6 +187,7 @@ impl WatchTargetRegistry {
             target.reset_visual_activity();
             target.cross_region_state = None;
             self.pending_cross_conflict = None;
+            self.pending_follow_through = None;
             return Ok(());
         }
         if self.targets.len() >= MAX_WATCH_TARGETS {
@@ -193,6 +218,7 @@ impl WatchTargetRegistry {
             cross_region_state: None,
         });
         self.pending_cross_conflict = None;
+        self.pending_follow_through = None;
         Ok(())
     }
 
@@ -213,6 +239,7 @@ impl WatchTargetRegistry {
         }
         self.targets.clear();
         self.pending_cross_conflict = None;
+        self.pending_follow_through = None;
     }
 
     pub(super) fn capture_targets(&self) -> Vec<WatchCaptureTarget> {
@@ -341,6 +368,116 @@ impl WatchTargetRegistry {
         })
     }
 
+    pub(super) fn note_follow_through_change(&mut self, id: &str, tick: u64) -> bool {
+        let Some(target) = self.targets.iter().find(|target| target.id == id) else {
+            return false;
+        };
+        let Some(role) = target.config.plan.follow_through_role() else {
+            return false;
+        };
+        match role {
+            FollowThroughRole::Trigger => {
+                let waiting_results = self
+                    .targets
+                    .iter()
+                    .filter(|target| {
+                        target.config.plan.follow_through_role() == Some(FollowThroughRole::Result)
+                    })
+                    .map(|target| FollowThroughResult {
+                        id: target.id.clone(),
+                        name: target.name.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                if waiting_results.is_empty() {
+                    self.pending_follow_through = None;
+                    return true;
+                }
+                self.pending_follow_through = Some(FollowThroughCandidate {
+                    trigger_id: target.id.clone(),
+                    trigger_name: target.name.clone(),
+                    waiting_results,
+                    deadline_tick: tick.saturating_add(analysis_interval_ticks(
+                        target.config.analysis_interval_minutes,
+                    )),
+                    deadline_minutes: target.config.analysis_interval_minutes,
+                    locale: target.config.locale.clone(),
+                });
+            }
+            FollowThroughRole::Result => {
+                let Some(candidate) = self.pending_follow_through.as_mut() else {
+                    return true;
+                };
+                candidate.waiting_results.retain(|result| result.id != id);
+                if candidate.waiting_results.is_empty() {
+                    self.pending_follow_through = None;
+                }
+            }
+        }
+        true
+    }
+
+    pub(super) fn observe_follow_through_deadline(
+        &mut self,
+        tick: u64,
+    ) -> Option<FollowThroughMatch> {
+        let candidate = self.pending_follow_through.as_ref()?;
+        if tick < candidate.deadline_tick {
+            return None;
+        }
+        let candidate = self.pending_follow_through.take()?;
+        let mut regions = vec![candidate.trigger_name.clone()];
+        regions.extend(
+            candidate
+                .waiting_results
+                .iter()
+                .map(|result| result.name.clone()),
+        );
+        for target in self.targets.iter_mut().filter(|target| {
+            target.id == candidate.trigger_id
+                || candidate
+                    .waiting_results
+                    .iter()
+                    .any(|result| result.id == target.id)
+        }) {
+            target.local_matches_completed = target.local_matches_completed.saturating_add(1);
+        }
+        Some(FollowThroughMatch {
+            summary: follow_through_summary(
+                &candidate.locale,
+                &candidate.trigger_name,
+                &candidate
+                    .waiting_results
+                    .iter()
+                    .map(|result| result.name.clone())
+                    .collect::<Vec<_>>(),
+                candidate.deadline_minutes,
+            ),
+            regions,
+        })
+    }
+
+    pub(super) fn invalidate_local_relationships(&mut self, id: &str) {
+        if let Some(target) = self.targets.iter_mut().find(|target| target.id == id) {
+            if target.config.plan.detects_cross_region_conflict() {
+                target.cross_region_state = None;
+                self.pending_cross_conflict = None;
+            }
+        }
+        if self
+            .pending_follow_through
+            .as_ref()
+            .is_some_and(|candidate| {
+                candidate.trigger_id == id
+                    || candidate
+                        .waiting_results
+                        .iter()
+                        .any(|result| result.id == id)
+            })
+        {
+            self.pending_follow_through = None;
+        }
+    }
+
     pub(super) fn finish_analysis(&mut self, id: &str, completed: bool) -> bool {
         let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
             return false;
@@ -413,6 +550,7 @@ impl WatchTargetRegistry {
         }
         self.targets.retain(|target| !predicate(target));
         self.pending_cross_conflict = None;
+        self.pending_follow_through = None;
     }
 
     fn current_cross_conflict(&self) -> Option<CrossConflictSnapshot> {
@@ -603,6 +741,27 @@ fn cross_conflict_summary(locale: &str, regions: &[String]) -> String {
         format!(
             "Opposing success or healthy and error or failed states remain visible across {regions}."
         )
+    }
+}
+
+fn follow_through_summary(locale: &str, trigger: &str, results: &[String], minutes: u16) -> String {
+    let results = results.join(", ");
+    if locale.to_ascii_lowercase().starts_with("ko") {
+        let duration = if minutes == 60 {
+            "1시간".to_string()
+        } else {
+            format!("{minutes}분")
+        };
+        format!("{trigger} 변화 후 {duration} 안에 {results}의 후속 변화가 감지되지 않았습니다.")
+    } else {
+        let duration = if minutes == 60 {
+            "1 hour".to_string()
+        } else if minutes == 1 {
+            "1 minute".to_string()
+        } else {
+            format!("{minutes} minutes")
+        };
+        format!("{results} did not change within {duration} after {trigger} changed.")
     }
 }
 

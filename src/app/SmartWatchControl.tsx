@@ -149,7 +149,11 @@ export function SmartWatchControl({
       </button>
       <SmartWatchIntervalControl
         value={intervalMinutes}
-        disabled={busy || status?.localEngine === "crossRegionOcr"}
+        disabled={
+          busy ||
+          status?.localEngine === "crossRegionOcr" ||
+          status?.localEngine === "followThroughResult"
+        }
         onChange={(minutes) => selectInterval(String(minutes))}
       />
     </div>

@@ -26,7 +26,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("9");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("10");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -154,6 +154,41 @@ describe("smart watch consent", () => {
       "REGION 1 · CROSS-REGION STATUS CONFLICT",
       "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE",
       "1 MATCHES"
+    ]);
+  });
+
+  it("describes both follow-through roles without implying OCR or AI", () => {
+    const base = {
+      id: "watch-1",
+      name: "REGION 1",
+      current: true,
+      analysesCompleted: 0,
+      localMatchesCompleted: 0,
+      suppressedEvents: 0,
+      analysisIntervalMinutes: 5 as const,
+      provider: "openAi" as const,
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: false,
+      evaluationMode: "local" as const
+    };
+    expect(smartWatchTargetSegments({
+      ...base,
+      localEngine: "followThroughTrigger",
+      ruleSummary: "FOLLOW THROUGH TRIGGER"
+    })).toEqual([
+      "REGION 1 · FOLLOW THROUGH TRIGGER",
+      "LOCAL FOLLOW START · EXPECT RESULT WITHIN 5 MIN · NO OCR · NO AI USAGE",
+      "0 MATCHES"
+    ]);
+    expect(smartWatchTargetSegments({
+      ...base,
+      name: "REGION 2",
+      localEngine: "followThroughResult",
+      ruleSummary: "FOLLOW THROUGH RESULT"
+    })).toEqual([
+      "REGION 2 · FOLLOW THROUGH RESULT",
+      "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE",
+      "0 MATCHES"
     ]);
   });
 

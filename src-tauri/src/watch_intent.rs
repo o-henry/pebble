@@ -18,6 +18,8 @@ pub enum WatchLocalEngine {
     Ocr,
     VisualStability,
     CrossRegionOcr,
+    FollowThroughTrigger,
+    FollowThroughResult,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +33,8 @@ enum WatchRule {
     Semantic,
     StuckAfterActivity,
     CrossRegionConflict,
+    FollowThroughTrigger,
+    FollowThroughResult,
     TextAppears(String),
     TextDisappears(String),
     TextChanges,
@@ -73,6 +77,12 @@ pub enum CrossRegionState {
     Negative,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowThroughRole {
+    Trigger,
+    Result,
+}
+
 impl CompiledWatchIntent {
     pub fn compile(intent: String) -> Self {
         let normalized = normalize(&intent);
@@ -96,6 +106,8 @@ impl CompiledWatchIntent {
             WatchRule::Semantic => None,
             WatchRule::StuckAfterActivity => Some(WatchLocalEngine::VisualStability),
             WatchRule::CrossRegionConflict => Some(WatchLocalEngine::CrossRegionOcr),
+            WatchRule::FollowThroughTrigger => Some(WatchLocalEngine::FollowThroughTrigger),
+            WatchRule::FollowThroughResult => Some(WatchLocalEngine::FollowThroughResult),
             _ => Some(WatchLocalEngine::Ocr),
         }
     }
@@ -106,6 +118,14 @@ impl CompiledWatchIntent {
 
     pub fn detects_cross_region_conflict(&self) -> bool {
         matches!(self.rule, WatchRule::CrossRegionConflict)
+    }
+
+    pub fn follow_through_role(&self) -> Option<FollowThroughRole> {
+        match self.rule {
+            WatchRule::FollowThroughTrigger => Some(FollowThroughRole::Trigger),
+            WatchRule::FollowThroughResult => Some(FollowThroughRole::Result),
+            _ => None,
+        }
     }
 
     pub fn classify_cross_region_state(&self, text: &str) -> Option<CrossRegionState> {
@@ -188,6 +208,8 @@ impl CompiledWatchIntent {
             WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
             WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
             WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
+            WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
+            WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
             WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
             WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
             WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),

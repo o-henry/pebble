@@ -49,6 +49,7 @@ pub enum WatchSignalKind {
     Match,
     Stuck,
     Conflict,
+    NoFollowThrough,
     Waiting,
     AnalysisSkipped,
 }
@@ -59,6 +60,7 @@ impl WatchSignalKind {
             Self::Match => "MATCH",
             Self::Stuck => "STUCK",
             Self::Conflict => "CONFLICT",
+            Self::NoFollowThrough => "NO FOLLOW-THROUGH",
             Self::Waiting => "WAITING",
             Self::AnalysisSkipped => "ANALYSIS SKIPPED",
         }
@@ -72,6 +74,7 @@ pub enum WatchSignalEngine {
     LocalOcr,
     LocalVisual,
     LocalCrossCheck,
+    LocalFollowThrough,
     OpenAi,
     Claude,
 }
@@ -83,6 +86,7 @@ impl WatchSignalEngine {
             Self::LocalOcr => "LOCAL OCR",
             Self::LocalVisual => "LOCAL VISUAL",
             Self::LocalCrossCheck => "LOCAL CROSS-CHECK",
+            Self::LocalFollowThrough => "LOCAL FOLLOW-THROUGH",
             Self::OpenAi => "OPENAI",
             Self::Claude => "CLAUDE",
         }

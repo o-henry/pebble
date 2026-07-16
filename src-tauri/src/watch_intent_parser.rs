@@ -1,6 +1,12 @@
 use super::{contains_any, normalize, NumberOperator, WatchRule, WatchState};
 
 pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
+    if is_follow_through_trigger(normalized) {
+        return WatchRule::FollowThroughTrigger;
+    }
+    if is_follow_through_result(normalized) {
+        return WatchRule::FollowThroughResult;
+    }
     if is_cross_region_conflict_intent(normalized) {
         return WatchRule::CrossRegionConflict;
     }
@@ -27,6 +33,36 @@ pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
         return WatchRule::StateAppears(state);
     }
     WatchRule::Semantic
+}
+
+fn is_follow_through_trigger(value: &str) -> bool {
+    contains_any(
+        value,
+        &[
+            "follow through trigger",
+            "follow-through trigger",
+            "follow through start",
+            "follow-through start",
+            "follow through source",
+            "후속 확인 시작",
+            "후속 확인 트리거",
+        ],
+    )
+}
+
+fn is_follow_through_result(value: &str) -> bool {
+    contains_any(
+        value,
+        &[
+            "follow through result",
+            "follow-through result",
+            "follow through response",
+            "follow-through response",
+            "follow through destination",
+            "후속 확인 결과",
+            "후속 확인 응답",
+        ],
+    )
 }
 
 fn is_cross_region_conflict_intent(value: &str) -> bool {

@@ -20,6 +20,10 @@ Cross Check is not an AI handoff path. It uses ephemeral local OCR on each
 explicitly enrolled baseline and stable change, stores only a coarse local
 state enum, and never sends frames or text to a provider.
 
+Follow Through is also outside AI handoff. It compares stable visual-change
+events between explicitly linked regions and stores only target IDs and a
+deadline tick in memory. It never runs OCR or sends a provider request.
+
 ## Runtime
 
 Pebble bundles the OpenAI Codex app-server as a Tauri sidecar. Claude uses a

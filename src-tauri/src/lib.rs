@@ -545,7 +545,7 @@ fn start_background_watch(app: AppHandle) {
                         .await;
                     }
                     Err(error) => {
-                        watch.update_cross_region_state(&target.id, None);
+                        watch.invalidate_local_relationships(&target.id);
                         if last_capture_errors.get(&target.id) != Some(&error.code) {
                             let signal = WatchSignal::new(
                                 WatchSignalKind::Waiting,
@@ -607,6 +607,25 @@ fn start_background_watch(app: AppHandle) {
                             confidence: "HIGH",
                             duration_ms: None,
                             summary: &conflict.summary,
+                        },
+                    );
+                }
+            }
+            let (status, missed) = watch.observe_follow_through_deadline(tick);
+            if let Some(missed) = missed {
+                smart_watch::emit_status(&app, status);
+                if let Some(target_name) = missed.regions.first() {
+                    emit_watch_event(
+                        &app,
+                        WatchEventNotice {
+                            target_name,
+                            related_regions: &missed.regions[1..],
+                            kind: WatchSignalKind::NoFollowThrough,
+                            engine: WatchSignalEngine::LocalFollowThrough,
+                            model: None,
+                            confidence: "HIGH",
+                            duration_ms: None,
+                            summary: &missed.summary,
                         },
                     );
                 }
@@ -681,6 +700,12 @@ async fn evaluate_watch_target(
         pending.remove(&target.id);
         let state = classify_cross_region_frame(&context.plan, &frame).await;
         watch.update_cross_region_state(&target.id, state);
+        return;
+    }
+    if context.plan.follow_through_role().is_some() {
+        pending.remove(&target.id);
+        let status = watch.note_follow_through_change(&target.id, tick);
+        smart_watch::emit_status(app, status);
         return;
     }
     let prepared = prepare_watch_candidate(&context, &previous_frame, &frame).await;
@@ -855,6 +880,17 @@ fn watch_started_log(
             "WATCH STARTED · {intent} · CROSS CHECK · USE ON 2+ REGIONS · LOCAL OCR ON BASELINE + STABLE CHANGES · FIXED 10S CONFIRMATION · NO AI USAGE"
         );
     }
+    if local_engine == Some(WatchLocalEngine::FollowThroughTrigger) {
+        return format!(
+            "WATCH STARTED · {intent} · FOLLOW START · LOCAL CHECK EVERY 5S · EXPECT RESULT WITHIN {} · NO OCR · NO AI USAGE",
+            watch_interval_label(analysis_interval_minutes)
+        );
+    }
+    if local_engine == Some(WatchLocalEngine::FollowThroughResult) {
+        return format!(
+            "WATCH STARTED · {intent} · FOLLOW RESULT · LOCAL CHECK EVERY 5S · DEADLINE SET BY FOLLOW START · NO OCR · NO AI USAGE"
+        );
+    }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
             "WATCH STARTED · {intent} · LOCAL CHECK EVERY 5S · ALERT AFTER {} WITHOUT PROGRESS · NO OCR · NO AI USAGE",
@@ -880,6 +916,15 @@ fn watch_interval_log(
 ) -> String {
     if local_engine == Some(WatchLocalEngine::CrossRegionOcr) {
         return "CROSS CHECK USES A FIXED 10S CONFIRMATION".to_string();
+    }
+    if local_engine == Some(WatchLocalEngine::FollowThroughTrigger) {
+        return format!(
+            "FOLLOW THROUGH DEADLINE UPDATED · {}",
+            watch_interval_label(analysis_interval_minutes)
+        );
+    }
+    if local_engine == Some(WatchLocalEngine::FollowThroughResult) {
+        return "FOLLOW START CONTROLS THE FOLLOW THROUGH DEADLINE".to_string();
     }
     if local_engine == Some(WatchLocalEngine::VisualStability) {
         return format!(
@@ -1283,6 +1328,38 @@ mod tests {
             watch_interval_log(Some(WatchLocalEngine::CrossRegionOcr), 30),
             "CROSS CHECK USES A FIXED 10S CONFIRMATION"
         );
+    }
+
+    #[test]
+    fn follow_through_logs_explain_roles_deadline_and_zero_token_path() {
+        let trigger = watch_started_log(
+            Some(WatchLocalEngine::FollowThroughTrigger),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            5,
+            true,
+        );
+        assert!(trigger.contains("FOLLOW START"));
+        assert!(trigger.contains("EXPECT RESULT WITHIN 5 MIN"));
+        assert!(trigger.contains("NO OCR · NO AI USAGE"));
+        assert!(!trigger.contains("GPT-5.6"));
+        assert!(
+            watch_interval_log(Some(WatchLocalEngine::FollowThroughTrigger), 30).contains("30 MIN")
+        );
+
+        let result = watch_started_log(
+            Some(WatchLocalEngine::FollowThroughResult),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            5,
+            true,
+        );
+        assert!(result.contains("FOLLOW RESULT"));
+        assert!(result.contains("DEADLINE SET BY FOLLOW START"));
+        assert!(result.contains("NO OCR · NO AI USAGE"));
+        assert!(!result.contains("GPT-5.6"));
     }
 
     #[test]

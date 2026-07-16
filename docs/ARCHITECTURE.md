@@ -215,6 +215,13 @@ only among explicitly enrolled Cross Check targets and emits after the same
 opposing state set survives two additional five-second checks. Raw OCR text and
 capture data never enter the registry.
 
+For Follow Through targets, the registry owns one memory-only pending relation:
+the trigger target ID, result target IDs still waiting, deadline tick, and safe
+region labels. Stable visual changes are the only inputs. A result change clears
+that result, all responses clear the relation silently, and expiry emits one
+local missed-result signal. Capture failure or target mutation clears the
+relation fail-closed. This engine has no OCR, AI, network, or input-control path.
+
 ### AiRuntime
 
 Optional explicit-request service. Manual questions and locally gated Watch

@@ -1,6 +1,6 @@
 use crate::watch_intent::{
-    CompiledWatchIntent, CrossRegionState, LocalWatchDecision, WatchEvaluationMode,
-    WatchLocalEngine,
+    CompiledWatchIntent, CrossRegionState, FollowThroughRole, LocalWatchDecision,
+    WatchEvaluationMode, WatchLocalEngine,
 };
 
 #[test]
@@ -206,4 +206,33 @@ fn ordinary_semantic_intents_do_not_join_cross_region_watch() {
     let compiled = CompiledWatchIntent::compile("Tell me whether these screens agree".into());
     assert!(!compiled.detects_cross_region_conflict());
     assert_eq!(compiled.classify_cross_region_state("SUCCESS"), None);
+}
+
+#[test]
+fn compiles_follow_through_roles_as_zero_token_visual_rules() {
+    let trigger =
+        CompiledWatchIntent::compile("Use this region as the FOLLOW THROUGH trigger".into());
+    assert_eq!(trigger.mode(), WatchEvaluationMode::Local);
+    assert_eq!(
+        trigger.local_engine(),
+        Some(WatchLocalEngine::FollowThroughTrigger)
+    );
+    assert_eq!(
+        trigger.follow_through_role(),
+        Some(FollowThroughRole::Trigger)
+    );
+    assert_eq!(trigger.rule_summary(), "FOLLOW THROUGH TRIGGER");
+
+    let result =
+        CompiledWatchIntent::compile("Use this region as the FOLLOW THROUGH result".into());
+    assert_eq!(result.mode(), WatchEvaluationMode::Local);
+    assert_eq!(
+        result.local_engine(),
+        Some(WatchLocalEngine::FollowThroughResult)
+    );
+    assert_eq!(
+        result.follow_through_role(),
+        Some(FollowThroughRole::Result)
+    );
+    assert_eq!(result.rule_summary(), "FOLLOW THROUGH RESULT");
 }

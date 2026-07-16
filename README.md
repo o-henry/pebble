@@ -81,6 +81,10 @@ Implemented:
   browser and native apps. It alerts only when positive states such as success
   or healthy and negative states such as error, failed, or offline remain
   opposed for 10 seconds, using local OCR and no AI.
+- **Follow Through** links a trigger region to one or two result regions. A
+  stable trigger change starts the selected 1, 5, 30, or 60 minute deadline;
+  Pebble alerts only for result regions that do not change in time. It uses
+  local visual state with no OCR, AI, network request, or input control.
 - Stable-candidate gating ignores transient animation, while semantic
   fingerprints suppress repeated alerts within the selected interval.
 - Up to three independently bound Watch regions can stay active. Selecting a
@@ -222,6 +226,15 @@ fixed 10-second confirmation. General warnings and in-progress states do not
 trigger it. The signal names all participating region labels but stores no OCR
 text, pixels, coordinates, or source-window IDs and never calls AI.
 
+**Follow Through** is configured with the built-in **Follow Start** recipe on
+the source region and **Follow Result** on each expected destination. A stable
+material change in Follow Start opens a memory-only deadline. Each Follow Result
+that changes before the deadline is removed from the pending set; if every
+result responds, Pebble stays quiet. At expiry, one signal names only the
+results still missing. A new trigger change rearms the check, while capture
+failure, target removal, privacy blank, or app shutdown cancels pending state.
+This path retains target IDs and ticks only and never runs OCR or AI.
+
 Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed
 match decision, compact summary, and low/medium/high confidence. Pebble notifies
@@ -259,7 +272,9 @@ is never persisted, included in Updates, or sent to AI.
    Their status rows remain visible in the AI panel and can be stopped one by
    one. To compare apps, choose **Cross Check** and enable Watch on at least two
    regions; the interval control is disabled because conflict confirmation is a
-   fixed 10 seconds.
+   fixed 10 seconds. To verify a downstream response, apply **Follow Start** to
+   the source, choose its deadline, then apply **Follow Result** to one or two
+   destination regions.
 9. Choose a provider, type a question, and press **Send** when one-shot analysis
    is wanted. This sends one fresh crop only for that request.
 

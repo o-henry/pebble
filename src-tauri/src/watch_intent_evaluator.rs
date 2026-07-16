@@ -20,6 +20,9 @@ pub(super) fn evaluate(
         WatchRule::Semantic => return LocalWatchDecision::NeedsAi,
         WatchRule::StuckAfterActivity => return LocalWatchDecision::NotMatched,
         WatchRule::CrossRegionConflict => return LocalWatchDecision::NotMatched,
+        WatchRule::FollowThroughTrigger | WatchRule::FollowThroughResult => {
+            return LocalWatchDecision::NotMatched;
+        }
         WatchRule::TextAppears(text) => !previous.contains(text) && current.contains(text),
         WatchRule::TextDisappears(text) => previous.contains(text) && !current.contains(text),
         WatchRule::TextChanges => !previous.is_empty() && previous != current,
@@ -83,6 +86,8 @@ fn rule_summary(rule: &WatchRule) -> String {
         WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
         WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
         WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
+        WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
+        WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
         WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
         WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
         WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),
@@ -129,6 +134,8 @@ fn local_summary(rule: &WatchRule, locale: &str) -> String {
         WatchRule::Semantic => "MEANINGFUL CHANGE MATCHED".to_string(),
         WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
         WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
+        WatchRule::FollowThroughTrigger => "FOLLOW THROUGH TRIGGER".to_string(),
+        WatchRule::FollowThroughResult => "FOLLOW THROUGH RESULT".to_string(),
     };
     if locale.to_ascii_lowercase().starts_with("ko") {
         format!("조건이 충족되었습니다. {condition}")

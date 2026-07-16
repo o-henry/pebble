@@ -4,6 +4,7 @@ export type WatchSignalKind =
   | "match"
   | "stuck"
   | "conflict"
+  | "noFollowThrough"
   | "waiting"
   | "analysisSkipped";
 
@@ -12,6 +13,7 @@ export type WatchSignalEngine =
   | "localOcr"
   | "localVisual"
   | "localCrossCheck"
+  | "localFollowThrough"
   | "openAi"
   | "claude";
 
@@ -67,6 +69,7 @@ export function updateSignalLabel(signal: WatchSignal): string {
     match: "MATCH",
     stuck: "STUCK",
     conflict: "CONFLICT",
+    noFollowThrough: "NO FOLLOW-THROUGH",
     waiting: "WAITING",
     analysisSkipped: "ANALYSIS SKIPPED"
   };
@@ -75,6 +78,7 @@ export function updateSignalLabel(signal: WatchSignal): string {
     localOcr: "LOCAL OCR",
     localVisual: "LOCAL VISUAL",
     localCrossCheck: "LOCAL CROSS-CHECK",
+    localFollowThrough: "LOCAL FOLLOW-THROUGH",
     openAi: "OPENAI",
     claude: "CLAUDE"
   };

@@ -15,18 +15,19 @@ use crate::{
 #[path = "watch_target_registry.rs"]
 mod registry;
 pub(crate) use registry::{
-    CrossRegionMatch, WatchAuthorization, WatchCaptureTarget, WatchRegionAuthorization,
+    CrossRegionMatch, FollowThroughMatch, WatchAuthorization, WatchCaptureTarget,
+    WatchRegionAuthorization,
 };
 use registry::{WatchTargetConfig, WatchTargetRegistry};
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 9;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 10;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL VISUAL STABILITY CHECKS USE NO OCR OR AI. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL STABILITY AND FOLLOW THROUGH RULES USE VISUAL CHANGE STATE ONLY, WITH NO OCR OR AI, AND NEVER CONTROL INPUT. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
 
@@ -142,7 +143,12 @@ impl SmartWatchState {
         let plan = CompiledWatchIntent::compile(intent);
         if matches!(
             plan.local_engine(),
-            Some(WatchLocalEngine::VisualStability | WatchLocalEngine::CrossRegionOcr)
+            Some(
+                WatchLocalEngine::VisualStability
+                    | WatchLocalEngine::CrossRegionOcr
+                    | WatchLocalEngine::FollowThroughTrigger
+                    | WatchLocalEngine::FollowThroughResult
+            )
         ) {
             ai_fallback_enabled = false;
         }
@@ -288,6 +294,27 @@ impl SmartWatchState {
         let mut data = self.data.lock().expect("smart watch state lock");
         let matched = data.observe_cross_region_conflict(tick);
         (data.status(), matched)
+    }
+
+    pub fn note_follow_through_change(&self, id: &str, tick: u64) -> SmartWatchStatus {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        data.note_follow_through_change(id, tick);
+        data.status()
+    }
+
+    pub fn observe_follow_through_deadline(
+        &self,
+        tick: u64,
+    ) -> (SmartWatchStatus, Option<FollowThroughMatch>) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let matched = data.observe_follow_through_deadline(tick);
+        (data.status(), matched)
+    }
+
+    pub fn invalidate_local_relationships(&self, id: &str) -> SmartWatchStatus {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        data.invalidate_local_relationships(id);
+        data.status()
     }
 
     pub fn finish_analysis(&self, id: &str, completed: bool) -> (SmartWatchStatus, bool) {
@@ -511,6 +538,8 @@ mod tests {
         assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
         assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
         assert!(STARTUP_NOTICE_BODY.contains("NO OCR OR AI"));
+        assert!(STARTUP_NOTICE_BODY.contains("FOLLOW THROUGH"));
+        assert!(STARTUP_NOTICE_BODY.contains("NEVER CONTROL INPUT"));
         assert!(STARTUP_NOTICE_BODY.contains("CROSS CHECK RUNS EPHEMERAL LOCAL OCR"));
         assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
@@ -645,6 +674,32 @@ mod tests {
             status.local_engine,
             Some(crate::watch_intent::WatchLocalEngine::CrossRegionOcr)
         );
+    }
+
+    #[test]
+    fn follow_through_roles_force_local_visual_evaluation_without_ai() {
+        let state = SmartWatchState::default();
+        for (revision, intent, engine) in [
+            (
+                1,
+                "Use this region as the FOLLOW THROUGH trigger",
+                crate::watch_intent::WatchLocalEngine::FollowThroughTrigger,
+            ),
+            (
+                2,
+                "Use this region as the FOLLOW THROUGH result",
+                crate::watch_intent::WatchLocalEngine::FollowThroughResult,
+            ),
+        ] {
+            let status = state
+                .configure(
+                    authorization(revision, revision as i32 * 10),
+                    watch_request(SMART_WATCH_CONSENT_VERSION, intent, 1),
+                )
+                .unwrap();
+            assert!(!status.ai_fallback_enabled);
+            assert_eq!(status.local_engine, Some(engine));
+        }
     }
 
     #[test]
@@ -979,6 +1034,109 @@ mod tests {
         state.update_cross_region_state(&regular_id, Some(CrossRegionState::Negative));
         assert!(state.observe_cross_region_conflict(1).1.is_none());
         assert!(state.observe_cross_region_conflict(3).1.is_none());
+    }
+
+    #[test]
+    fn follow_through_clears_when_the_result_changes_before_the_deadline() {
+        let state = SmartWatchState::default();
+        state
+            .configure(
+                authorization(1, 10),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Use this region as the FOLLOW THROUGH trigger",
+                    1,
+                ),
+            )
+            .unwrap();
+        state
+            .configure(
+                authorization(2, 20),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Use this region as the FOLLOW THROUGH result",
+                    1,
+                ),
+            )
+            .unwrap();
+        let ids = state
+            .status()
+            .targets
+            .iter()
+            .map(|target| target.id.clone())
+            .collect::<Vec<_>>();
+
+        state.note_follow_through_change(&ids[0], 10);
+        assert!(state.observe_follow_through_deadline(21).1.is_none());
+        state.note_follow_through_change(&ids[1], 21);
+        assert!(state.observe_follow_through_deadline(22).1.is_none());
+        assert!(state
+            .status()
+            .targets
+            .iter()
+            .all(|target| target.local_matches_completed == 0));
+    }
+
+    #[test]
+    fn follow_through_alerts_only_for_results_still_missing_at_the_deadline() {
+        let state = SmartWatchState::default();
+        for (revision, intent) in [
+            (1, "Use this region as the FOLLOW THROUGH trigger"),
+            (2, "Use this region as the FOLLOW THROUGH result"),
+            (3, "Use this region as the FOLLOW THROUGH result"),
+        ] {
+            state
+                .configure(
+                    authorization(revision, revision as i32 * 10),
+                    watch_request(SMART_WATCH_CONSENT_VERSION, intent, 1),
+                )
+                .unwrap();
+        }
+        let ids = state
+            .status()
+            .targets
+            .iter()
+            .map(|target| target.id.clone())
+            .collect::<Vec<_>>();
+
+        state.note_follow_through_change(&ids[0], 30);
+        state.note_follow_through_change(&ids[1], 35);
+        assert!(state.observe_follow_through_deadline(41).1.is_none());
+        let (status, matched) = state.observe_follow_through_deadline(42);
+        let matched = matched.expect("missing follow-through result");
+        assert_eq!(matched.regions, ["REGION 1", "REGION 3"]);
+        assert!(matched.summary.contains("REGION 3"));
+        assert!(!matched.summary.contains("REGION 2"));
+        assert_eq!(status.targets[0].local_matches_completed, 1);
+        assert_eq!(status.targets[1].local_matches_completed, 0);
+        assert_eq!(status.targets[2].local_matches_completed, 1);
+        assert!(state.observe_follow_through_deadline(43).1.is_none());
+    }
+
+    #[test]
+    fn capture_failure_cancels_a_pending_follow_through_alert() {
+        let state = SmartWatchState::default();
+        for (revision, intent) in [
+            (1, "Use this region as the FOLLOW THROUGH trigger"),
+            (2, "Use this region as the FOLLOW THROUGH result"),
+        ] {
+            state
+                .configure(
+                    authorization(revision, revision as i32 * 10),
+                    watch_request(SMART_WATCH_CONSENT_VERSION, intent, 1),
+                )
+                .unwrap();
+        }
+        let ids = state
+            .status()
+            .targets
+            .iter()
+            .map(|target| target.id.clone())
+            .collect::<Vec<_>>();
+
+        state.note_follow_through_change(&ids[0], 10);
+        state.invalidate_local_relationships(&ids[1]);
+        assert!(state.observe_follow_through_deadline(30).1.is_none());
     }
 
     #[test]

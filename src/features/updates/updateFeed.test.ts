@@ -53,4 +53,16 @@ describe("update feed", () => {
       confidence: "high"
     })).toBe("REGION 1 + REGION 2 · CONFLICT · LOCAL CROSS-CHECK · HIGH");
   });
+
+  it("labels linked regions when a follow-through result is missing", () => {
+    expect(updateSignalLabel({
+      kind: "noFollowThrough",
+      region: "REGION 1",
+      relatedRegions: ["REGION 2"],
+      engine: "localFollowThrough",
+      confidence: "high"
+    })).toBe(
+      "REGION 1 + REGION 2 · NO FOLLOW-THROUGH · LOCAL FOLLOW-THROUGH · HIGH"
+    );
+  });
 });

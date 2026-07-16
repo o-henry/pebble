@@ -186,6 +186,45 @@ fn cross_region_signal_rejects_unsafe_or_excessive_related_regions() {
         .is_none());
 }
 
+#[test]
+fn follow_through_signal_keeps_only_safe_linked_region_labels() {
+    let path = test_path("follow-through");
+    let state = ActivityFeedState::default();
+    let related = vec!["REGION 2".to_string()];
+    let signal = WatchSignal::new(
+        WatchSignalKind::NoFollowThrough,
+        "REGION 1",
+        WatchSignalEngine::LocalFollowThrough,
+        None,
+        Some(WatchSignalConfidence::High),
+        None,
+    )
+    .and_then(|signal| signal.with_related_regions(&related))
+    .expect("safe follow-through signal");
+    let entry = state
+        .record_signal(
+            "REGION 2 did not change after REGION 1.",
+            "2026-07-16T11:00:00Z".into(),
+            Some(&path),
+            signal,
+        )
+        .expect("follow-through entry");
+
+    assert_eq!(
+        entry.signal.as_ref().map(|signal| signal.kind),
+        Some(WatchSignalKind::NoFollowThrough)
+    );
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(
+        document.contains("REGION 1 + REGION 2 | NO FOLLOW-THROUGH | LOCAL FOLLOW-THROUGH | HIGH")
+    );
+    let serialized = serde_json::to_string(&entry).expect("entry json");
+    for private_field in ["frame", "bytes", "ocrText", "monitorId", "sourceWindow"] {
+        assert!(!serialized.contains(private_field));
+    }
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
 #[cfg(unix)]
 #[test]
 fn journal_refuses_a_symlink_target() {

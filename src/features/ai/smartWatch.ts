@@ -1,6 +1,6 @@
 import type { AiProvider } from "./regionQuestion";
 
-export const SMART_WATCH_CONSENT_VERSION = 9;
+export const SMART_WATCH_CONSENT_VERSION = 10;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -24,7 +24,13 @@ export interface SmartWatchStatus {
   customIntent: boolean;
   watchingFor: string | null;
   evaluationMode: "local" | "ai";
-  localEngine: "ocr" | "visualStability" | "crossRegionOcr" | null;
+  localEngine:
+    | "ocr"
+    | "visualStability"
+    | "crossRegionOcr"
+    | "followThroughTrigger"
+    | "followThroughResult"
+    | null;
   ruleSummary: string;
   captureScope: "selectedRegionOnly";
   storagePolicy: "memoryOnly";
@@ -44,7 +50,13 @@ export interface SmartWatchTargetStatus {
   model: string;
   aiFallbackEnabled: boolean;
   evaluationMode: "local" | "ai";
-  localEngine: "ocr" | "visualStability" | "crossRegionOcr" | null;
+  localEngine:
+    | "ocr"
+    | "visualStability"
+    | "crossRegionOcr"
+    | "followThroughTrigger"
+    | "followThroughResult"
+    | null;
   ruleSummary: string;
 }
 
@@ -114,6 +126,10 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
 export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
   const engine = target.localEngine === "crossRegionOcr"
     ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
+    : target.localEngine === "followThroughTrigger"
+    ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
+    : target.localEngine === "followThroughResult"
+    ? "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE"
     : target.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : target.evaluationMode === "local"
@@ -138,6 +154,10 @@ export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
   const engine = status.localEngine === "crossRegionOcr"
     ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
+    : status.localEngine === "followThroughTrigger"
+    ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
+    : status.localEngine === "followThroughResult"
+    ? "LOCAL FOLLOW RESULT · RESPONDS TO FOLLOW START · NO OCR · NO AI USAGE"
     : status.localEngine === "visualStability"
     ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
     : status.evaluationMode === "local"

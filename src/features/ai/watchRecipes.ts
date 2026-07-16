@@ -22,6 +22,16 @@ interface RecipeStorage {
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
   builtIn(
+    "follow-through-trigger",
+    "FOLLOW START",
+    "Use this region as the FOLLOW THROUGH trigger"
+  ),
+  builtIn(
+    "follow-through-result",
+    "FOLLOW RESULT",
+    "Use this region as the FOLLOW THROUGH result"
+  ),
+  builtIn(
     "cross-region-conflict",
     "CROSS CHECK",
     "Tell me when watched regions show opposing success and error states"
