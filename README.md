@@ -6,7 +6,7 @@
 [![Status](https://img.shields.io/badge/status-pre--alpha-6b7280)](#status)
 [![Price](https://img.shields.io/badge/price-free%20forever-15803d)](#free-and-open)
 [![Privacy](https://img.shields.io/badge/privacy-local--first-0f766e)](#privacy)
-[![AI](https://img.shields.io/badge/AI-explicit%20requests%20only-4338ca)](#ask-ai)
+[![AI](https://img.shields.io/badge/AI-bounded%20and%20opt--in-4338ca)](#ask-ai)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Pebble is a local-first desktop utility for the tiny parts of your screen you
@@ -71,11 +71,21 @@ Implemented:
   cadence of 1, 5, 30, or 60 minutes. There is no fixed session analysis cap.
 - Intent Watch: text in the AI composer becomes the condition Watch evaluates;
   an empty composer uses a general meaningful-change intent.
+- Deterministic text appearance, disappearance, text-change, single-number
+  threshold, progress, and state-word rules run locally without an AI
+  connection or provider tokens.
+- Stable-candidate gating ignores transient animation, while semantic
+  fingerprints suppress repeated alerts within the selected interval.
+- Up to three independently bound Watch regions can stay active. Selecting a
+  new region does not retarget an existing Watch, and every region can be
+  stopped separately.
+- Privacy-safe Watch recipes store only a name, intent, and recommended
+  interval. They never store pixels, coordinates, OCR output, or credentials.
 - Production Apple Vision OCR runs only after a stable material-change candidate
   and remains ephemeral in memory.
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
-- Collapsible Updates feed whose semantic Watch summaries are appended to one
+- Collapsible Updates feed whose matched Watch summaries are appended to one
   local Markdown journal under Downloads after Watch is explicitly enabled.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
@@ -128,7 +138,7 @@ An optional Anthropic API key is persisted only as a macOS Keychain generic
 password. Pebble never returns the saved key to the webview or writes it to a
 Pebble-managed file.
 
-Semantic Watch summaries, model names, and generation times are appended to
+Matched Watch summaries, engine or model names, and generation times are appended to
 `Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
 questions and manual AI answers are never written to that journal.
 
@@ -171,25 +181,31 @@ app's tokens, use MCP, or stream screen images continuously.
 
 ## Smart Watch
 
-**Watch** uses a local change gate before bounded background AI. On every app
-launch, a native notification discloses that:
+**Watch** checks only regions the user explicitly selected and enabled. Up to
+three source-window-bound regions can run independently. Selecting a different
+region, covering the source window, or hiding or closing the Pebble window does
+not silently retarget or stop an existing Watch. The AI panel lists active
+regions; each row has its own **Stop** action. The menu-bar indicator marks new
+matched events rather than every local check.
 
-- Only the selected region is compared on the Mac.
-- Watch cannot follow URLs, browser sessions, other windows, or the full screen.
-- A material change sends only the previous and current selected-region crops
-  to the chosen provider.
-- Apple Vision OCR reads text locally only after a stable material change. OCR
-  output is never written to disk.
-- AI runs no more often than the selected 1, 5, 30, or 60 minute interval. There
-  is no fixed session count cap.
-- Pause, Hide, privacy blank, close, and reselection stop monitoring; a newly
-  selected region requires Watch to be enabled again.
+Every five seconds, Rust performs a local visual check. A candidate must settle
+before Apple Vision OCR runs. Common text, number, progress, and state rules are
+resolved locally and can run with no AI connection or token use. Ambiguous or
+semantic conditions require a connected provider; only then may one previous
+and current crop pair be sent, no more often than the selected 1, 5, 30, or 60
+minute interval. There is no fixed session count cap.
 
-Watch freezes the selected provider, model, and current composer text when it
-starts. The model returns a typed match decision, compact summary, and
-low/medium/high confidence. Pebble notifies only matched changes. Tools, MCP,
-shell, files, and web search remain disabled. Watch uses the same explicit
-Claude API-key or subscription path shown in the UI.
+Watch freezes the provider, model, intent, interval, source-window binding, and
+AI-fallback choice for each region when it starts. The model returns a typed
+match decision, compact summary, and low/medium/high confidence. Pebble notifies
+only matched, deduplicated changes and labels the region and engine in its log.
+Tools, MCP, shell, files, and web search remain disabled.
+
+**Live** and **Pause** control the visible preview, not background Watch. A
+region keeps watching while Pebble is hidden. Use that region's **Stop**,
+privacy blank, **Remove Pebble**, or app quit to end capture. If the bound source
+window or display becomes unavailable, Watch fails closed and records a waiting
+state instead of capturing whatever happens to occupy the old coordinates.
 
 ## Adaptive Background
 
@@ -208,14 +224,18 @@ is never persisted, included in Updates, or sent to AI.
 4. Drag over a small region in any visible browser or native desktop app.
 5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
 6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
-7. Toggle **AI**, type what matters, choose a model and interval, then press
-   **Watch**. Stable candidate changes may send one before/after pair to the
-   selected provider; unchanged frames stay local.
-8. Choose a provider, type a question, and press **Send** when one-shot analysis is
-   wanted. This sends one fresh crop only for that request.
+7. Toggle **AI**, type what matters, choose an interval, then press **Watch**.
+   Local text, number, progress, and state rules can start without connecting a
+   provider. Semantic rules ask you to connect one.
+8. Repeat selection and Watch activation for up to three independent regions.
+   Their status rows remain visible in the AI panel and can be stopped one by
+   one.
+9. Choose a provider, type a question, and press **Send** when one-shot analysis
+   is wanted. This sends one fresh crop only for that request.
 
-Pebble captures only the selected crop and does not save frame history. Live
-monitoring stays local; only a visible **Send** action sends one fresh crop.
+Pebble captures only explicitly selected crops and does not save frame history.
+Manual AI sends only after **Send**; Watch AI sends only after per-region opt-in,
+a stable local gate, and the selected minimum interval.
 
 ## Install From Source
 

@@ -26,6 +26,13 @@ This is a contributor-facing pre-alpha demo build.
   generation-time metadata.
 - Intent-aware material-change alerts with selectable 1, 5, 30, or 60 minute
   maximum AI cadence, orange menu-bar state, and native notifications.
+- Local text, single-number threshold, progress, and state Watch rules that can
+  run with no AI connection or token usage.
+- Stable-candidate animation suppression and per-region semantic event dedupe.
+- Up to three independently source-bound Watch regions with stable labels,
+  individual stop actions, and background operation while Pebble is hidden.
+- Privacy-safe local Watch recipes containing only names, intents, and
+  recommended intervals.
 - Desktop-wide product positioning that covers browsers and native apps rather
   than browser content alone.
 - Manual smoke checklist and issue templates.
@@ -50,5 +57,5 @@ This is a contributor-facing pre-alpha demo build.
 - No Homebrew formula yet.
 - Multi-monitor selection is still limited to the display containing the main
   window.
-- Deterministic local text and numeric Watch conditions are not wired yet; OCR
-  currently supports the bounded semantic comparison.
+- Source-window behavior across every macOS Space, full-screen, minimize, and
+  mixed-DPI display transition still needs broader real-device coverage.

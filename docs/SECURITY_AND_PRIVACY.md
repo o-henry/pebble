@@ -10,11 +10,14 @@ they selected.
 
 The app must make capture visible:
 
-- Every active region has a visible tile or visible status.
+- Every active region has a visible status row when Pebble is open. Startup
+  disclosure explains that authorized Watch regions remain active while the
+  window is hidden; macOS owns the system capture indicator.
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
 - App startup shows a native Watch scope notice before region selection.
-- Watch starts off for every newly selected region and requires explicit semantic-analysis consent.
+- Watch starts off for every newly selected region, supports at most three
+  active regions, and requires explicit per-region consent.
 - The startup notice discloses local monitoring before Watch can be enabled.
 - Manual AI runs after **Send**; Watch AI runs only after its local change gate.
 
@@ -39,8 +42,10 @@ Current desktop safeguards:
   or frame events.
 - The selected display identity, bounds, and scale are checked again immediately
   before capture and before a frame is delivered.
-- Every captured frame is matched to the current session revision; frames that
-  finish after privacy blank, close, or reselection are discarded.
+- Visible preview and manual AI frames are matched to the current session
+  revision; late frames are discarded after privacy blank, close, or
+  reselection. Watch uses a separate revocable authorization for each bound
+  region so reselection cannot retarget an existing Watch.
 - On macOS 14 or later, a region selected inside an app window is bound to that
   source window and captured with a desktop-independent ScreenCaptureKit filter.
   Covering the source with another window never changes the capture target.
@@ -53,10 +58,12 @@ Current desktop safeguards:
   display has room, preventing recursive self-capture.
 - Tile content is capture-protected so Pebble does not ingest its own
   preview if a user later moves the tile over the source.
-- Native close and stop both clear the scheduler task and latest in-memory
-  frame.
-- Adaptive colors are sampled locally from the existing selected crop, are not
-  persisted, and reset as soon as the window is hidden or privacy blank is on.
+- Native close clears the visible preview scheduler and hides Pebble. Explicit
+  per-region Watch stop, privacy blank, Pebble removal, and app quit revoke
+  Watch authorization and drop associated in-memory state.
+- Adaptive colors are sampled locally beneath the visible Pebble window, are
+  not persisted, and reset as soon as the window is hidden or privacy blank is
+  on.
 
 Watch compares crops locally. Unchanged frames never leave the Mac. After the
 user explicitly enables semantic Watch, a locally detected material change may
@@ -82,10 +89,13 @@ AI access is explicit, narrow in scope, and cheap by design:
   Screen Recording and keychain access; it is not user-facing branding.
 - AI processes receive a cleared environment, so inherited API-key and proxy
   variables are not available to them.
-- Each request uses one backend-authorized selected crop encoded as an in-memory
-  PNG data URL. No image temp file is created.
-- The selected region, session revision, display bounds, and display scale are
-  checked before capture and again immediately before upload.
+- Each manual request uses one backend-authorized selected crop; each eligible
+  Watch analysis uses one before-and-after pair. Both are encoded as in-memory
+  PNG data URLs, and no image temp file is created.
+- Manual requests recheck the selected region, session revision, display
+  bounds, and display scale before capture and upload. Watch validates its
+  bound display before capture and checks its revocable per-region
+  authorization immediately before and after provider work.
 - OpenAI threads are ephemeral, sandboxed read-only, use approval policy `never`, and
   have web search, MCP servers, and analytics disabled.
 - Claude runs in print mode with safe mode, slash commands disabled, strict
@@ -117,20 +127,24 @@ Disallowed behavior:
 Every frame is filtered locally before bounded AI analysis:
 
 ```text
-selected crop -> local diff gate -> Apple Vision OCR -> intent match -> local notification
+selected crop -> local diff gate -> Apple Vision OCR -> deterministic rule
+              -> local notification or bounded AI fallback -> deduplicated event
 ```
 
 Watch is off by default. App startup displays its scope before region
 selection, pressing Watch records explicit activation, and every new region
-requires a fresh opt-in. Local visual checks run every five seconds. Apple
-Vision OCR and semantic analysis run only after a stable material-change
-candidate and no more often than the user-selected interval of 1, 5, 30, or 60
+requires a fresh opt-in. At most three independent regions may be active. Local
+visual checks run every five seconds. Apple Vision OCR runs only after a stable
+material-change candidate. Deterministic text, single-number threshold,
+progress, and state rules can notify locally with AI fallback disabled. Semantic
+analysis runs only when required, connected, explicitly allowed for that
+region, and no more often than the user-selected interval of 1, 5, 30, or 60
 minutes. There is no fixed per-session analysis cap. Watch keeps only the
 comparison crops and OCR text needed for the current in-memory decision and
-drops them on reset; no crop or OCR text is written to disk.
+drops them on stop or reset; no crop or OCR text is written to disk.
 
-After activation, Pebble appends semantic summaries, model names, and generation
-times to one local Markdown document at
+After activation, Pebble appends matched local or semantic summaries, engine or
+model names, and generation times to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
 text, manual AI questions, AI answers, article bodies, credentials, or browser
 session data to that journal.
@@ -155,10 +169,13 @@ sample is taken while the window or document is hidden, and neither pixels nor
 RGB history are persisted, journaled, logged, or sent over the network.
 
 Automatic Watch has no URL, RSS, web-search, browser-session, or arbitrary
-network-fetch path. It accepts frames only after the backend confirms that the
-request matches the current selected region and session revision. Reselection,
-display reconfiguration, hiding, pausing, or privacy blank invalidates capture
-delivery and disables or stops Watch.
+network-fetch path. Every active target retains the exact source-window binding,
+display, crop, scale, provider, model, interval, intent, and AI-fallback choice
+that was authorized for that region. Reselection creates a new current region
+without changing existing targets. Hiding Pebble or pausing its live preview
+does not stop a disclosed Watch target. Per-region stop, privacy blank, Pebble
+removal, or app quit revokes it. Display reconfiguration or source-window loss
+fails closed without falling back to screen coordinates.
 
 ## Permission Rules
 
@@ -208,7 +225,9 @@ or document the decision before committing.
 Do not release if any of these are true:
 
 - Frames are written to disk by default.
-- Hidden, paused, or blanked regions keep capturing.
+- Privacy-blanked, removed, stopped, or unauthorized regions keep capturing.
+- Hidden background Watch capture is not disclosed at startup and by macOS's
+  system capture indicator.
 - Full monitor frames are sent to the UI or AI connector.
 - AI sends data without a visible user request.
 - Watch scope is not disclosed at app startup.

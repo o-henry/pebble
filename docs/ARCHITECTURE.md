@@ -192,12 +192,27 @@ Never store:
 ### OcrEngine
 
 The macOS adapter uses Apple Vision locally after a stable Watch change
-candidate. Recognized text is ephemeral, bounded, and treated as untrusted
-supporting evidence; it is never persisted or used as an instruction source.
+candidate. A deterministic intent compiler evaluates common text, single-number
+threshold, progress, and state rules locally. Recognized text is ephemeral,
+bounded, and treated as untrusted evidence; it is never persisted or used as an
+instruction source. Unsupported or ambiguous rules may use the explicitly
+enabled AI fallback.
+
+### WatchTargetRegistry
+
+Owns at most three independent runtime-only Watch targets. Each target freezes
+its source-window-bound crop, display scale, intent plan, interval, provider,
+model, and AI-fallback choice. Reselection changes only the current UI region;
+it cannot retarget an existing Watch. Per-target authorization is atomically
+revoked on stop, privacy blank, Pebble removal, or app shutdown, so late AI
+results cannot notify. Coordinates, window IDs, pixels, and OCR text are never
+serialized through Watch status.
 
 ### AiRuntime
 
-Optional explicit-request service. It is never part of the capture loop.
+Optional explicit-request service. Manual questions and locally gated Watch
+fallback call it through separate authorization paths; it never controls the
+capture loop.
 
 Responsibilities:
 

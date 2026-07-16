@@ -94,6 +94,10 @@ Screen capture work is high risk. Before committing capture-related code, verify
 - Full monitor frames are never emitted to the frontend.
 - Cropped frames are not written to disk.
 - Debug capture files are disabled or impossible in normal builds.
-- Hidden, paused, blanked, closed, and deleted tiles cannot keep capturing.
+- Hidden, paused, blanked, closed, and deleted preview tiles cannot keep their
+  live scheduler running.
+- A separately authorized background Watch may survive preview hide, pause, or
+  native close only when its active state remains disclosed and it retains its
+  exact source-window binding.
 - Permission-denied paths are recoverable.
 - Tests use fake capture unless manual OS capture is explicitly required.

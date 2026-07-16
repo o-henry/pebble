@@ -11,9 +11,10 @@ select region -> choose provider and model -> connect once -> type question -> S
 ```
 
 The **Send** action is the manual-question consent boundary. Pebble does not
-call AI at startup. Watch may call the selected provider only after explicit
-opt-in, a stable local material-change gate, Apple Vision OCR, and the selected
-1, 5, 30, or 60 minute analysis interval.
+call AI at startup. Deterministic Watch rules can run with AI fallback disabled.
+Watch may call the selected provider only after explicit per-region opt-in, a
+stable local material-change gate, Apple Vision OCR, and the selected 1, 5, 30,
+or 60 minute analysis interval.
 
 ## Runtime
 
@@ -29,6 +30,10 @@ ask_selected_region
 get_claude_credential_status
 set_claude_api_key
 delete_claude_api_key
+get_smart_watch_status
+set_smart_watch
+set_smart_watch_interval
+remove_smart_watch_target
 ```
 
 The webview has no shell, opener, filesystem, or network plugin permission.
@@ -90,7 +95,7 @@ thread file.
 - Reasoning effort: `medium`.
 - Reasoning summary: disabled.
 - Answer: at most 4,000 Unicode characters.
-- Concurrency: one connection or question operation at a time.
+- Concurrency: one connection, manual question, or Watch AI operation at a time.
 - Conversation: a new ephemeral thread for every question.
 
 If a selected model is unavailable, the official Claude CLI is unavailable,
@@ -125,7 +130,9 @@ The operation fails closed when:
 
 - The selected AI provider is unavailable or not connected.
 - The question is empty, oversized, or contains unsafe control characters.
-- The selected region is hidden, removed, or reselected.
+- A manual request's selected region is hidden, removed, or reselected.
+- A Watch target is stopped, privacy blanked, removed, loses its bound source
+  window, or has its display configuration invalidated.
 - The display is disconnected, rearranged, resized, or rescaled.
 - The Pebble window is hidden or minimized before upload.
 - The sidecar exits, times out, or returns invalid protocol data.

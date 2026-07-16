@@ -170,7 +170,8 @@ Recommended demonstrations:
 - The same selection workflow works first in a browser and then in a native app.
 - A user asks what changed and sees the provider, model, and generation time.
 - Pebble remains read-only while the source application stays untouched.
-- Watch is disabled, paused, blanked, and stopped with visible proof.
+- Preview pause, background Watch, privacy blank, and per-region stop are shown
+  as distinct states with visible proof.
 
 Use synthetic accounts, local fixtures, public pages, or purpose-built demo
 screens. Never publish a real personal desktop, bookmark bar, account name,
@@ -261,18 +262,24 @@ The current architecture already provides valuable foundations:
 
 Watch now freezes the user's composer text as an explicit intent, runs Apple
 Vision OCR after a stable local candidate, and asks the selected model for a
-typed match decision and confidence. This establishes the core interaction,
-but deterministic local intent rules are still missing. Until text and numeric
-conditions can be resolved locally, semantic candidates still require AI.
+typed match decision and confidence only when local evaluation cannot decide.
+Deterministic text appearance, disappearance, text-change, single-number
+threshold, progress, and state rules now run locally. They can be activated
+without an AI connection, and the UI states when token usage is zero.
 
 The remaining reliability problems are:
 
-1. Harmless animation, timestamps, cursors, or progress can produce noise.
-2. A meaningful state can be visually small and fail a generic threshold.
-3. AI must infer the user's goal repeatedly, increasing cost and uncertainty.
+1. Real-device source-window edge cases still need broader coverage across
+   Spaces, full screen, minimize, restore, and mixed-DPI displays.
+2. A meaningful state can be visually small and fail the current local signal
+   ensemble.
+3. Unsupported natural language still requires AI rather than a reviewable
+   one-time constrained compile step.
 
-The production OCR adapter is implemented, but its text currently supports the
-semantic model rather than compiling directly into local text and number rules.
+The production OCR adapter, deterministic intent compiler, stable-candidate
+animation suppression, and semantic fingerprint dedupe are implemented. A
+synthetic benchmark and explicit CPU, memory, detection-time, and escalation
+budgets are still missing.
 
 ## Candidate Product Kicks
 
@@ -346,9 +353,11 @@ Recommended local evidence:
 - Motion suppression for cursors, spinners, clocks, and repeated animation.
 - Baseline and last-notified semantic fingerprints for dedupe.
 
-The system should keep only the active baseline, current candidate, and compact
-local fingerprints in memory. Stop, pause, blank, close, reselection, or app
-quit must clear the associated pixels. No image timeline should be introduced.
+The system keeps only active baselines, current candidates, and compact local
+fingerprints in memory. Per-region stop, privacy blank, Pebble removal, or app
+quit clears associated Watch state. Hiding or closing Pebble and pausing the
+visible preview intentionally preserve disclosed background Watch targets.
+Reselection never retargets them. No image timeline should be introduced.
 
 ### Intent Representation
 
@@ -470,6 +479,12 @@ Implemented foundation as of July 2026:
 - User-selected OpenAI and Claude models validated again in the Rust backend.
 - Typed matched/unmatched model result with confidence; unmatched candidates do
   not notify.
+- Deterministic local rules for text, single-number thresholds, progress, and
+  state words, including an AI-free activation path.
+- Stable-candidate animation suppression and repeated semantic event dedupe.
+- Privacy-safe Watch recipes that persist only intent metadata.
+- Up to three independent source-window-bound regions with individual stop and
+  revocable AI authorization.
 
 ### P0 - Trustworthy Public Build
 
@@ -481,25 +496,23 @@ Implemented foundation as of July 2026:
 ### P1 - Local Understanding Foundation
 
 - Add synthetic Watch benchmarks and resource budgets.
-- Add typed conditions for text, numbers, progress, and state words.
+- Expand typed conditions only from measured false-negative cases.
 
 ### P2 - Intent Watch MVP
 
-- Add a reviewable compiled local rule for the captured one-sentence intent.
-- Evaluate deterministic conditions locally.
-- Escalate only ambiguous semantic candidates to the chosen AI provider.
-- Add semantic fingerprint dedupe and an ephemeral decision receipt in the UI.
+- Add an ephemeral decision receipt for AI-assisted events.
+- Add a review UI before an optional one-time AI compile of unsupported intent.
+- Measure local-versus-AI escalation rates against explicit budgets.
 
 ### P3 - Adoption Loop
 
-- Add privacy-safe Watch recipes.
 - Add workflow examples and GitHub Discussions showcase categories.
 - Localize onboarding and permission copy.
 - Publish benchmark results and technical implementation notes.
 
 ### P4 - Scale Only After Evidence
 
-- Add multiple independent regions only after one Intent Watch is reliable.
+- Validate three-region CPU and memory budgets on supported Mac hardware.
 - Explore optional local vision models only if OCR and deterministic signals
   cannot meet measured use cases within the resource budget.
 - Add new providers only when authentication, billing, security, and model
@@ -515,11 +528,14 @@ Intent Watch is ready to market when:
 - The same intent works in at least one browser, terminal, and native app demo.
 - Occlusion and window movement do not silently change the watched source.
 - Animation fixtures do not create repeated alerts.
-- Every AI event is attributable to a persisted local candidate and user intent.
+- Every AI event is attributable to an in-memory local candidate and the user's
+  explicit region intent.
 - No frame is written to disk.
 - No mouse, keyboard, Accessibility, browser cookie, or automation permission is
   requested.
-- Stop, pause, blank, close, and reselection clear active pixel buffers.
+- Per-region stop, privacy blank, Pebble removal, and app quit clear Watch pixel
+  buffers; hide, native close, preview pause, and reselection preserve and never
+  retarget disclosed background targets.
 - The UI accurately labels provider, billing path, interval, model, and duration.
 - CPU, memory, time-to-detect, false-alert rate, and AI escalation rate are
   measured against explicit budgets before release.
