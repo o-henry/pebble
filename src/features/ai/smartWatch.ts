@@ -1,3 +1,5 @@
+import type { AiProvider } from "./regionQuestion";
+
 export const SMART_WATCH_CONSENT_VERSION = 6;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
@@ -14,10 +16,16 @@ export interface SmartWatchStatus {
   localMatchesCompleted: number;
   suppressedEvents: number;
   analysisIntervalMinutes: SmartWatchIntervalMinutes;
+  provider: AiProvider;
   model: string;
   customIntent: boolean;
+  watchingFor: string | null;
   evaluationMode: "local" | "ai";
   ruleSummary: string;
+  captureScope: "selectedRegionOnly";
+  storagePolicy: "memoryOnly";
+  imagesSaved: false;
+  ocrSaved: false;
 }
 
 interface ConsentStorage {
@@ -77,4 +85,23 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
   return status.evaluationMode === "local"
     ? `LOCAL WATCH ON · ${status.ruleSummary}`
     : `AI WATCH ON · MAX ONCE EVERY ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
+}
+
+export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
+  if (!status.enabled) return [];
+  const engine = status.evaluationMode === "local"
+    ? "LOCAL OCR"
+    : `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
+  const completed = status.evaluationMode === "local"
+    ? `${status.localMatchesCompleted} MATCHES`
+    : `${status.analysesCompleted} AI RUNS`;
+  return [
+    `WATCHING FOR · ${status.ruleSummary}`,
+    engine,
+    completed,
+    ...(status.suppressedEvents > 0
+      ? [`${status.suppressedEvents} REPEATS HIDDEN`]
+      : []),
+    "SELECTED REGION ONLY · MEMORY ONLY · NOTHING SAVED"
+  ];
 }

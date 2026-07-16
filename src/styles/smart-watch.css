@@ -57,3 +57,32 @@
   color: var(--blue);
   background: transparent;
 }
+
+.region-question__header-group {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.smart-watch-status {
+  display: flex;
+  min-width: 0;
+  gap: 5px 9px;
+  flex-wrap: wrap;
+  color: var(--ink-muted);
+  font-size: 0.54rem;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.smart-watch-status > span {
+  flex: 0 0 auto;
+}
+
+.smart-watch-status__intent {
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--blue);
+  text-overflow: ellipsis;
+}

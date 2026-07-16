@@ -24,6 +24,7 @@ export function SmartWatchControl({
   intent,
   disabled,
   privacyBlankActive,
+  onStatusChange,
   onBusyChange,
   onError
 }: {
@@ -32,6 +33,7 @@ export function SmartWatchControl({
   intent: string;
   disabled: boolean;
   privacyBlankActive: boolean;
+  onStatusChange: (status: SmartWatchStatus | null) => void;
   onBusyChange: (busy: boolean) => void;
   onError: (message: string | null) => void;
 }) {
@@ -44,6 +46,7 @@ export function SmartWatchControl({
 
   const acceptStatus = useCallback((next: SmartWatchStatus) => {
     setStatus(next);
+    onStatusChange(next);
     if (next.enabled) {
       setIntervalMinutes(next.analysisIntervalMinutes);
       rememberSmartWatchInterval(
@@ -51,7 +54,9 @@ export function SmartWatchControl({
         next.analysisIntervalMinutes
       );
     }
-  }, []);
+  }, [onStatusChange]);
+
+  useEffect(() => () => onStatusChange(null), [onStatusChange]);
 
   useEffect(() => {
     let active = true;

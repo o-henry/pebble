@@ -37,10 +37,16 @@ pub struct SmartWatchStatus {
     pub local_matches_completed: u32,
     pub suppressed_events: u32,
     pub analysis_interval_minutes: u16,
+    pub provider: AiProvider,
     pub model: String,
     pub custom_intent: bool,
+    pub watching_for: Option<String>,
     pub evaluation_mode: WatchEvaluationMode,
     pub rule_summary: String,
+    pub capture_scope: &'static str,
+    pub storage_policy: &'static str,
+    pub images_saved: bool,
+    pub ocr_saved: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -146,6 +152,10 @@ impl SmartWatchState {
         data.revision = None;
         data.analysis_in_flight = false;
         data.last_analysis_tick = None;
+        data.last_event = None;
+        data.plan = CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string());
+        data.custom_intent = false;
+        data.locale = "und".to_string();
         data.status()
     }
 
@@ -291,10 +301,16 @@ impl SmartWatchData {
             local_matches_completed: self.local_matches_completed,
             suppressed_events: self.suppressed_events,
             analysis_interval_minutes: self.analysis_interval_minutes,
+            provider: self.provider,
             model: self.model.clone(),
             custom_intent: self.custom_intent,
+            watching_for: self.enabled.then(|| self.plan.intent().to_string()),
             evaluation_mode: self.plan.mode(),
             rule_summary: self.plan.rule_summary(),
+            capture_scope: "selectedRegionOnly",
+            storage_policy: "memoryOnly",
+            images_saved: false,
+            ocr_saved: false,
         }
     }
 
@@ -548,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn watch_freezes_a_safe_intent_without_persisting_it_in_status() {
+    fn watch_exposes_the_active_plan_without_persisting_frames_or_ocr() {
         let state = SmartWatchState::default();
         state
             .configure(
@@ -562,7 +578,16 @@ mod tests {
             .unwrap();
         let context = state.begin_analysis(4, 1).expect("analysis context");
         assert_eq!(context.intent, "Alert me when the build fails");
-        assert!(state.status().custom_intent);
+        let status = state.status();
+        assert!(status.custom_intent);
+        assert_eq!(
+            status.watching_for.as_deref(),
+            Some("Alert me when the build fails")
+        );
+        assert_eq!(status.capture_scope, "selectedRegionOnly");
+        assert_eq!(status.storage_policy, "memoryOnly");
+        assert!(!status.images_saved);
+        assert!(!status.ocr_saved);
 
         let default_state = SmartWatchState::default();
         default_state
@@ -641,9 +666,11 @@ mod tests {
     #[test]
     fn disable_stops_notifications_immediately() {
         let state = enabled_watch(5);
-        state.disable();
+        let status = state.disable();
 
         assert!(state.begin_analysis(2, 1).is_none());
+        assert_eq!(status.watching_for, None);
+        assert!(!status.custom_intent);
     }
 
     #[test]

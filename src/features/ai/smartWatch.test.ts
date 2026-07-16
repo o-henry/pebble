@@ -7,6 +7,7 @@ import {
   rememberSmartWatchInterval,
   smartWatchInterval,
   smartWatchIntervalAtOffset,
+  smartWatchStatusSegments,
   smartWatchTitle
 } from "./smartWatch";
 
@@ -38,19 +39,30 @@ describe("smart watch consent", () => {
   });
 
   it("reports the selected semantic analysis interval", () => {
-    expect(
-      smartWatchTitle({
+    const status = {
         enabled: true,
         analysesCompleted: 12,
         localMatchesCompleted: 0,
         suppressedEvents: 0,
         analysisIntervalMinutes: 60,
+        provider: "openAi",
         model: "gpt-5.6-terra",
         customIntent: true,
+        watchingFor: "NOTIFY ME ABOUT A MEANINGFUL CHANGE",
         evaluationMode: "ai",
-        ruleSummary: "AI SEMANTIC MATCH"
-      })
-    ).toContain("1 HOUR");
+        ruleSummary: "AI SEMANTIC MATCH",
+        captureScope: "selectedRegionOnly",
+        storagePolicy: "memoryOnly",
+        imagesSaved: false,
+        ocrSaved: false
+      } as const;
+    expect(smartWatchTitle(status)).toContain("1 HOUR");
+    expect(smartWatchStatusSegments(status)).toEqual([
+      "WATCHING FOR · AI SEMANTIC MATCH",
+      "OPENAI · GPT-5.6-TERRA · AI MAX 1 HOUR",
+      "12 AI RUNS",
+      "SELECTED REGION ONLY · MEMORY ONLY · NOTHING SAVED"
+    ]);
   });
 
   it("wraps interval keyboard navigation in both directions", () => {
