@@ -1,6 +1,9 @@
 use super::{contains_any, normalize, NumberOperator, WatchRule, WatchState};
 
 pub(super) fn compile_rule(original: &str, normalized: &str) -> WatchRule {
+    if is_stuck_intent(normalized) {
+        return WatchRule::StuckAfterActivity;
+    }
     if is_text_change_intent(normalized) {
         return WatchRule::TextChanges;
     }
@@ -166,6 +169,32 @@ fn is_text_change_intent(value: &str) -> bool {
             "내용이 바뀌",
             "텍스트가 바뀌",
             "값이 바뀌",
+        ],
+    )
+}
+
+fn is_stuck_intent(value: &str) -> bool {
+    contains_any(
+        value,
+        &[
+            "stops changing",
+            "stop changing",
+            "stopped changing",
+            "no longer changes",
+            "gets stuck",
+            "get stuck",
+            "is stuck",
+            "stalls",
+            "stalled",
+            "no progress",
+            "progress stops",
+            "진행이 멈",
+            "변화가 멈",
+            "변화가 없",
+            "바뀌지 않",
+            "멈추면",
+            "멈췄",
+            "정체",
         ],
     )
 }

@@ -1,4 +1,6 @@
-use crate::watch_intent::{CompiledWatchIntent, LocalWatchDecision, WatchEvaluationMode};
+use crate::watch_intent::{
+    CompiledWatchIntent, LocalWatchDecision, WatchEvaluationMode, WatchLocalEngine,
+};
 
 #[test]
 fn compiles_text_appearance_and_disappearance_rules() {
@@ -112,4 +114,33 @@ fn local_summaries_follow_the_user_locale() {
     };
     assert!(event.summary.starts_with("조건이 충족되었습니다."));
     assert!(event.fingerprint.starts_with("local:"));
+}
+
+#[test]
+fn compiles_stuck_intents_as_zero_token_visual_rules() {
+    for intent in [
+        "Tell me when this region stops changing after activity",
+        "Notify me if progress gets stuck",
+        "진행이 멈추면 알려줘",
+        "변화가 없으면 알려줘",
+    ] {
+        let compiled = CompiledWatchIntent::compile(intent.into());
+        assert_eq!(compiled.mode(), WatchEvaluationMode::Local);
+        assert_eq!(
+            compiled.local_engine(),
+            Some(WatchLocalEngine::VisualStability)
+        );
+        assert!(compiled.detects_stuck_after_activity());
+        assert_eq!(compiled.rule_summary(), "NO PROGRESS AFTER ACTIVITY");
+        assert_eq!(
+            compiled.evaluate(Some("10%"), Some("20%"), "en-US"),
+            LocalWatchDecision::NotMatched
+        );
+    }
+}
+
+#[test]
+fn ordinary_stop_language_does_not_accidentally_enable_stuck_watch() {
+    let compiled = CompiledWatchIntent::compile("Tell me when the service stops failing".into());
+    assert!(!compiled.detects_stuck_after_activity());
 }

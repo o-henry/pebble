@@ -34,4 +34,13 @@ describe("update feed", () => {
       durationMs: 1_240
     })).toBe("REGION 1 · MATCH · GPT-5.6-TERRA · HIGH · 1.2S");
   });
+
+  it("labels a zero-token stuck signal without inventing a model", () => {
+    expect(updateSignalLabel({
+      kind: "stuck",
+      region: "REGION 2",
+      engine: "localVisual",
+      confidence: "high"
+    })).toBe("REGION 2 · STUCK · LOCAL VISUAL · HIGH");
+  });
 });

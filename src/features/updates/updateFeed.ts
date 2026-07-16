@@ -2,12 +2,14 @@ export type UpdateKind = "watch";
 
 export type WatchSignalKind =
   | "match"
+  | "stuck"
   | "waiting"
   | "analysisSkipped";
 
 export type WatchSignalEngine =
   | "system"
   | "localOcr"
+  | "localVisual"
   | "openAi"
   | "claude";
 
@@ -60,12 +62,14 @@ export function formatUpdateTime(value: string): string {
 export function updateSignalLabel(signal: WatchSignal): string {
   const kind: Record<WatchSignalKind, string> = {
     match: "MATCH",
+    stuck: "STUCK",
     waiting: "WAITING",
     analysisSkipped: "ANALYSIS SKIPPED"
   };
   const engine: Record<WatchSignalEngine, string> = {
     system: "SYSTEM",
     localOcr: "LOCAL OCR",
+    localVisual: "LOCAL VISUAL",
     openAi: "OPENAI",
     claude: "CLAUDE"
   };

@@ -6,7 +6,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     ai_runtime::AiProvider,
-    watch_intent::{CompiledWatchIntent, WatchEvaluationMode},
+    watch_intent::{CompiledWatchIntent, LocalWatchMatch, WatchEvaluationMode, WatchLocalEngine},
 };
 
 #[path = "watch_target_registry.rs"]
@@ -14,14 +14,14 @@ mod registry;
 pub(crate) use registry::{WatchAuthorization, WatchCaptureTarget, WatchRegionAuthorization};
 use registry::{WatchTargetConfig, WatchTargetRegistry};
 
-pub const SMART_WATCH_CONSENT_VERSION: u16 = 7;
+pub const SMART_WATCH_CONSENT_VERSION: u16 = 8;
 pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
 pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
 pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. APPLE VISION OCR AND AI RUN ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN EACH REGION'S SELECTED INTERVAL.";
+    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL VISUAL STABILITY CHECKS USE NO OCR OR AI. OTHER RULES USE APPLE VISION OCR, WITH AI ONLY AFTER A MATERIAL CHANGE AND NO MORE OFTEN THAN EACH REGION'S SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
 
@@ -50,6 +50,7 @@ pub struct SmartWatchStatus {
     pub custom_intent: bool,
     pub watching_for: Option<String>,
     pub evaluation_mode: WatchEvaluationMode,
+    pub local_engine: Option<WatchLocalEngine>,
     pub rule_summary: String,
     pub capture_scope: &'static str,
     pub storage_policy: &'static str,
@@ -71,6 +72,7 @@ pub struct SmartWatchTargetStatus {
     pub model: String,
     pub ai_fallback_enabled: bool,
     pub evaluation_mode: WatchEvaluationMode,
+    pub local_engine: Option<WatchLocalEngine>,
     pub rule_summary: String,
 }
 
@@ -124,7 +126,7 @@ impl SmartWatchState {
             intent,
             locale,
             analysis_interval_minutes,
-            ai_fallback_enabled,
+            mut ai_fallback_enabled,
         } = request;
         if enabled && consent_version != SMART_WATCH_CONSENT_VERSION {
             return Err(SmartWatchError::consent_required());
@@ -133,6 +135,9 @@ impl SmartWatchState {
         let model = normalized_model(provider, model)?;
         let (intent, custom_intent) = normalized_intent(intent)?;
         let plan = CompiledWatchIntent::compile(intent);
+        if plan.local_engine() == Some(WatchLocalEngine::VisualStability) {
+            ai_fallback_enabled = false;
+        }
         if enabled && plan.mode() == WatchEvaluationMode::Ai && !ai_fallback_enabled {
             return Err(SmartWatchError::ai_connection_required());
         }
@@ -234,6 +239,28 @@ impl SmartWatchState {
         let mut data = self.data.lock().expect("smart watch state lock");
         let accepted = data.finish_local_match(id, fingerprint, tick);
         (data.status(), accepted)
+    }
+
+    pub fn reset_visual_activity(&self, id: &str) {
+        if let Ok(mut data) = self.data.lock() {
+            data.reset_visual_activity(id);
+        }
+    }
+
+    pub fn note_visual_activity(&self, id: &str, tick: u64, settled: bool) {
+        if let Ok(mut data) = self.data.lock() {
+            data.note_visual_activity(id, tick, settled);
+        }
+    }
+
+    pub fn observe_visual_stability(
+        &self,
+        id: &str,
+        tick: u64,
+    ) -> (SmartWatchStatus, Option<LocalWatchMatch>) {
+        let mut data = self.data.lock().expect("smart watch state lock");
+        let matched = data.observe_visual_stability(id, tick);
+        (data.status(), matched)
     }
 
     pub fn finish_analysis(&self, id: &str, completed: bool) -> (SmartWatchStatus, bool) {
@@ -455,6 +482,7 @@ mod tests {
         assert!(STARTUP_NOTICE_BODY.contains("UP TO 3"));
         assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
         assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
+        assert!(STARTUP_NOTICE_BODY.contains("NO OCR OR AI"));
         assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
     }
 
@@ -546,6 +574,27 @@ mod tests {
         assert!(status.enabled);
         assert!(!status.ai_fallback_enabled);
         assert!(!status.targets[0].ai_fallback_enabled);
+    }
+
+    #[test]
+    fn stuck_rules_force_zero_token_local_visual_evaluation() {
+        let state = SmartWatchState::default();
+        let status = state
+            .configure(
+                authorization(1, 0),
+                watch_request(
+                    SMART_WATCH_CONSENT_VERSION,
+                    "Tell me when this region stops changing after activity",
+                    5,
+                ),
+            )
+            .unwrap();
+
+        assert!(!status.ai_fallback_enabled);
+        assert_eq!(
+            status.local_engine,
+            Some(crate::watch_intent::WatchLocalEngine::VisualStability)
+        );
     }
 
     #[test]
@@ -754,6 +803,59 @@ mod tests {
 
         let (_, accepted) = state.finish_local_match(&id, "local:error", 13);
         assert!(accepted);
+    }
+
+    #[test]
+    fn stuck_watch_requires_real_activity_then_alerts_once_per_stall() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(
+            SMART_WATCH_CONSENT_VERSION,
+            "Tell me when this region stops changing after activity",
+            1,
+        );
+        request.ai_fallback_enabled = false;
+        state.configure(authorization(1, 0), request).unwrap();
+        let id = current_target_id(&state);
+
+        state.reset_visual_activity(&id);
+        assert!(state.observe_visual_stability(&id, 20).1.is_none());
+        state.note_visual_activity(&id, 21, false);
+        assert!(state.observe_visual_stability(&id, 40).1.is_none());
+
+        state.note_visual_activity(&id, 41, false);
+        state.note_visual_activity(&id, 42, false);
+        assert!(state.observe_visual_stability(&id, 43).1.is_none());
+        assert!(state.observe_visual_stability(&id, 54).1.is_none());
+        let (status, matched) = state.observe_visual_stability(&id, 55);
+        let matched = matched.expect("stuck signal after one minute");
+        assert!(matched.summary.contains("1분"));
+        assert_eq!(status.local_matches_completed, 1);
+
+        assert!(state.observe_visual_stability(&id, 56).1.is_none());
+        state.note_visual_activity(&id, 57, false);
+        state.note_visual_activity(&id, 58, false);
+        assert!(state.observe_visual_stability(&id, 59).1.is_none());
+        let (status, matched) = state.observe_visual_stability(&id, 71);
+        assert!(matched.is_some());
+        assert_eq!(status.local_matches_completed, 2);
+        assert_eq!(status.analyses_completed, 0);
+    }
+
+    #[test]
+    fn a_confirmed_visual_change_starts_the_stuck_timer_immediately() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(
+            SMART_WATCH_CONSENT_VERSION,
+            "Notify me if progress gets stuck",
+            1,
+        );
+        request.ai_fallback_enabled = false;
+        state.configure(authorization(1, 0), request).unwrap();
+        let id = current_target_id(&state);
+
+        state.note_visual_activity(&id, 10, true);
+        assert!(state.observe_visual_stability(&id, 21).1.is_none());
+        assert!(state.observe_visual_stability(&id, 22).1.is_some());
     }
 
     #[test]

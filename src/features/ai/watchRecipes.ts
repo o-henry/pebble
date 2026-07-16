@@ -21,6 +21,11 @@ interface RecipeStorage {
 }
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
+  builtIn(
+    "stuck-after-activity",
+    "NO PROGRESS",
+    "Tell me when this region stops changing after activity"
+  ),
   builtIn("build-failed", "BUILD FAILED", "Tell me when 'BUILD FAILED' appears"),
   builtIn("error-appears", "ERROR APPEARS", "Tell me when 'ERROR' appears"),
   builtIn("progress-complete", "PROGRESS 100%", "Tell me when progress reaches 100%"),

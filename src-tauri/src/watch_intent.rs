@@ -12,6 +12,13 @@ pub enum WatchEvaluationMode {
     Ai,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WatchLocalEngine {
+    Ocr,
+    VisualStability,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledWatchIntent {
     intent: String,
@@ -21,6 +28,7 @@ pub struct CompiledWatchIntent {
 #[derive(Debug, Clone, PartialEq)]
 enum WatchRule {
     Semantic,
+    StuckAfterActivity,
     TextAppears(String),
     TextDisappears(String),
     TextChanges,
@@ -75,9 +83,22 @@ impl CompiledWatchIntent {
         }
     }
 
+    pub fn local_engine(&self) -> Option<WatchLocalEngine> {
+        match self.rule {
+            WatchRule::Semantic => None,
+            WatchRule::StuckAfterActivity => Some(WatchLocalEngine::VisualStability),
+            _ => Some(WatchLocalEngine::Ocr),
+        }
+    }
+
+    pub fn detects_stuck_after_activity(&self) -> bool {
+        matches!(self.rule, WatchRule::StuckAfterActivity)
+    }
+
     pub fn rule_summary(&self) -> String {
         match &self.rule {
             WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
+            WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
             WatchRule::TextAppears(text) => format!("TEXT APPEARS: {text}"),
             WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARS: {text}"),
             WatchRule::TextChanges => "VISIBLE TEXT CHANGES".to_string(),

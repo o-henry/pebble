@@ -1,6 +1,6 @@
 import type { AiProvider } from "./regionQuestion";
 
-export const SMART_WATCH_CONSENT_VERSION = 7;
+export const SMART_WATCH_CONSENT_VERSION = 8;
 export const SMART_WATCH_CONSENT_KEY =
   "pebble.smart-watch-consent-version";
 export const SMART_WATCH_INTERVAL_KEY = "pebble.smart-watch-interval-minutes";
@@ -24,6 +24,7 @@ export interface SmartWatchStatus {
   customIntent: boolean;
   watchingFor: string | null;
   evaluationMode: "local" | "ai";
+  localEngine: "ocr" | "visualStability" | null;
   ruleSummary: string;
   captureScope: "selectedRegionOnly";
   storagePolicy: "memoryOnly";
@@ -43,6 +44,7 @@ export interface SmartWatchTargetStatus {
   model: string;
   aiFallbackEnabled: boolean;
   evaluationMode: "local" | "ai";
+  localEngine: "ocr" | "visualStability" | null;
   ruleSummary: string;
 }
 
@@ -110,7 +112,9 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
 }
 
 export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
-  const engine = target.evaluationMode === "local"
+  const engine = target.localEngine === "visualStability"
+    ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
+    : target.evaluationMode === "local"
     ? target.aiFallbackEnabled
       ? `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`
       : "LOCAL OCR ONLY · NO AI USAGE"
@@ -130,7 +134,9 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
 
 export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
-  const engine = status.evaluationMode === "local"
+  const engine = status.localEngine === "visualStability"
+    ? `LOCAL VISUAL ONLY · ALERT AFTER ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} WITHOUT PROGRESS · NO OCR · NO AI USAGE`
+    : status.evaluationMode === "local"
     ? status.aiFallbackEnabled
       ? `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
       : "LOCAL OCR ONLY · NO AI USAGE"

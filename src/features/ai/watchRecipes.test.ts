@@ -20,6 +20,7 @@ function memoryStorage(initial?: string) {
 describe("watch recipes", () => {
   it("ships local-first generic recipes", () => {
     expect(BUILT_IN_WATCH_RECIPES.map((recipe) => recipe.name)).toEqual([
+      "NO PROGRESS",
       "BUILD FAILED",
       "ERROR APPEARS",
       "PROGRESS 100%",

@@ -47,6 +47,7 @@ pub struct UpdateEntry {
 #[serde(rename_all = "camelCase")]
 pub enum WatchSignalKind {
     Match,
+    Stuck,
     Waiting,
     AnalysisSkipped,
 }
@@ -55,6 +56,7 @@ impl WatchSignalKind {
     fn label(self) -> &'static str {
         match self {
             Self::Match => "MATCH",
+            Self::Stuck => "STUCK",
             Self::Waiting => "WAITING",
             Self::AnalysisSkipped => "ANALYSIS SKIPPED",
         }
@@ -66,6 +68,7 @@ impl WatchSignalKind {
 pub enum WatchSignalEngine {
     System,
     LocalOcr,
+    LocalVisual,
     OpenAi,
     Claude,
 }
@@ -75,6 +78,7 @@ impl WatchSignalEngine {
         match self {
             Self::System => "SYSTEM",
             Self::LocalOcr => "LOCAL OCR",
+            Self::LocalVisual => "LOCAL VISUAL",
             Self::OpenAi => "OPENAI",
             Self::Claude => "CLAUDE",
         }

@@ -26,7 +26,7 @@ describe("smart watch consent", () => {
     const storage = memoryStorage();
     expect(hasSmartWatchConsent(storage)).toBe(false);
     rememberSmartWatchConsent(storage);
-    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("7");
+    expect(storage.getItem(SMART_WATCH_CONSENT_KEY)).toBe("8");
     expect(hasSmartWatchConsent(storage)).toBe(true);
   });
 
@@ -56,6 +56,7 @@ describe("smart watch consent", () => {
           model: "gpt-5.6-terra",
           aiFallbackEnabled: true,
           evaluationMode: "ai",
+          localEngine: null,
           ruleSummary: "AI SEMANTIC MATCH"
         }],
         analysesCompleted: 12,
@@ -68,6 +69,7 @@ describe("smart watch consent", () => {
         customIntent: true,
         watchingFor: "NOTIFY ME ABOUT A MEANINGFUL CHANGE",
         evaluationMode: "ai",
+        localEngine: null,
         ruleSummary: "AI SEMANTIC MATCH",
         captureScope: "selectedRegionOnly",
         storagePolicy: "memoryOnly",
@@ -101,12 +103,35 @@ describe("smart watch consent", () => {
       model: "gpt-5.6-terra",
       aiFallbackEnabled: false,
       evaluationMode: "local",
+      localEngine: "ocr",
       ruleSummary: "TEXT APPEARS: error"
     })).toEqual([
       "REGION 1 · TEXT APPEARS: error",
       "LOCAL OCR ONLY · NO AI USAGE",
       "3 MATCHES",
       "2 REPEATS HIDDEN"
+    ]);
+  });
+
+  it("describes stuck detection as local visual work with no OCR or AI", () => {
+    expect(smartWatchTargetSegments({
+      id: "watch-1",
+      name: "REGION 1",
+      current: true,
+      analysesCompleted: 0,
+      localMatchesCompleted: 1,
+      suppressedEvents: 0,
+      analysisIntervalMinutes: 5,
+      provider: "openAi",
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: false,
+      evaluationMode: "local",
+      localEngine: "visualStability",
+      ruleSummary: "NO PROGRESS AFTER ACTIVITY"
+    })).toEqual([
+      "REGION 1 · NO PROGRESS AFTER ACTIVITY",
+      "LOCAL VISUAL ONLY · ALERT AFTER 5 MIN WITHOUT PROGRESS · NO OCR · NO AI USAGE",
+      "1 MATCHES"
     ]);
   });
 

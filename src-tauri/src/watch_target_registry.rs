@@ -4,8 +4,10 @@ use std::sync::{
 };
 
 use crate::{
-    ai_runtime::AiProvider, monitoring::MonitoringState, region_selection_types::PhysicalRegion,
-    watch_intent::CompiledWatchIntent,
+    ai_runtime::AiProvider,
+    monitoring::MonitoringState,
+    region_selection_types::PhysicalRegion,
+    watch_intent::{CompiledWatchIntent, LocalWatchMatch},
 };
 
 use super::{
@@ -88,6 +90,10 @@ struct WatchTarget {
     analysis_in_flight: bool,
     last_analysis_tick: Option<u64>,
     last_event: Option<WatchEventFingerprint>,
+    visual_activity_streak: u8,
+    visual_activity_observed: bool,
+    stability_started_tick: Option<u64>,
+    stuck_notified: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +137,7 @@ impl WatchTargetRegistry {
             target.analysis_in_flight = false;
             target.last_analysis_tick = None;
             target.last_event = None;
+            target.reset_visual_activity();
             return Ok(());
         }
         if self.targets.len() >= MAX_WATCH_TARGETS {
@@ -154,6 +161,10 @@ impl WatchTargetRegistry {
             analysis_in_flight: false,
             last_analysis_tick: None,
             last_event: None,
+            visual_activity_streak: 0,
+            visual_activity_observed: false,
+            stability_started_tick: None,
+            stuck_notified: false,
         });
         Ok(())
     }
@@ -220,6 +231,29 @@ impl WatchTargetRegistry {
         true
     }
 
+    pub(super) fn reset_visual_activity(&mut self, id: &str) {
+        if let Some(target) = self.targets.iter_mut().find(|target| target.id == id) {
+            target.reset_visual_activity();
+        }
+    }
+
+    pub(super) fn note_visual_activity(&mut self, id: &str, tick: u64, settled: bool) {
+        if let Some(target) = self.targets.iter_mut().find(|target| target.id == id) {
+            target.note_visual_activity(tick, settled);
+        }
+    }
+
+    pub(super) fn observe_visual_stability(
+        &mut self,
+        id: &str,
+        tick: u64,
+    ) -> Option<LocalWatchMatch> {
+        self.targets
+            .iter_mut()
+            .find(|target| target.id == id)?
+            .observe_visual_stability(tick)
+    }
+
     pub(super) fn finish_analysis(&mut self, id: &str, completed: bool) -> bool {
         let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
             return false;
@@ -277,6 +311,7 @@ impl WatchTargetRegistry {
             custom_intent: current.is_some_and(|target| target.config.custom_intent),
             watching_for: current.map(|target| target.config.plan.intent().to_string()),
             evaluation_mode: config.plan.mode(),
+            local_engine: config.plan.local_engine(),
             rule_summary: config.plan.rule_summary(),
             capture_scope: "selectedRegionOnly",
             storage_policy: "memoryOnly",
@@ -320,6 +355,7 @@ impl WatchTarget {
             model: self.config.model.clone(),
             ai_fallback_enabled: self.config.ai_fallback_enabled,
             evaluation_mode: self.config.plan.mode(),
+            local_engine: self.config.plan.local_engine(),
             rule_summary: self.config.plan.rule_summary(),
         }
     }
@@ -348,6 +384,86 @@ impl WatchTarget {
             tick,
         });
         true
+    }
+
+    fn reset_visual_activity(&mut self) {
+        self.visual_activity_streak = 0;
+        self.visual_activity_observed = false;
+        self.stability_started_tick = None;
+        self.stuck_notified = false;
+    }
+
+    fn note_visual_activity(&mut self, tick: u64, settled: bool) {
+        if !self.config.plan.detects_stuck_after_activity() {
+            return;
+        }
+        if settled {
+            self.visual_activity_streak = 0;
+            self.visual_activity_observed = true;
+            self.stability_started_tick = Some(tick);
+            self.stuck_notified = false;
+            return;
+        }
+        self.visual_activity_streak = self.visual_activity_streak.saturating_add(1);
+        self.stability_started_tick = None;
+        if self.visual_activity_streak >= 2 {
+            self.visual_activity_observed = true;
+            self.stuck_notified = false;
+        }
+    }
+
+    fn observe_visual_stability(&mut self, tick: u64) -> Option<LocalWatchMatch> {
+        if !self.config.plan.detects_stuck_after_activity() {
+            return None;
+        }
+        self.visual_activity_streak = 0;
+        if !self.visual_activity_observed || self.stuck_notified {
+            return None;
+        }
+        let stable_since = match self.stability_started_tick {
+            Some(stable_since) => stable_since,
+            None => {
+                self.stability_started_tick = Some(tick);
+                return None;
+            }
+        };
+        if tick.saturating_sub(stable_since)
+            < analysis_interval_ticks(self.config.analysis_interval_minutes)
+        {
+            return None;
+        }
+        self.stuck_notified = true;
+        let fingerprint = "local:stuck-after-activity";
+        if !self.accept_event(fingerprint, tick) {
+            return None;
+        }
+        self.local_matches_completed = self.local_matches_completed.saturating_add(1);
+        Some(LocalWatchMatch {
+            summary: stuck_summary(&self.config.locale, self.config.analysis_interval_minutes),
+            fingerprint: fingerprint.to_string(),
+        })
+    }
+}
+
+fn stuck_summary(locale: &str, minutes: u16) -> String {
+    if locale.to_ascii_lowercase().starts_with("ko") {
+        let duration = if minutes == 60 {
+            "1시간".to_string()
+        } else {
+            format!("{minutes}분")
+        };
+        format!("진행되던 화면이 {duration} 동안 바뀌지 않았습니다.")
+    } else {
+        let duration = if minutes == 60 {
+            "1 hour".to_string()
+        } else if minutes == 1 {
+            "1 minute".to_string()
+        } else {
+            format!("{minutes} minutes")
+        };
+        format!(
+            "The region stopped changing after visible activity and stayed unchanged for {duration}."
+        )
     }
 }
 

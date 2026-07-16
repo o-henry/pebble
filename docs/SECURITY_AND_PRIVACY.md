@@ -127,7 +127,8 @@ Disallowed behavior:
 Every frame is filtered locally before bounded AI analysis:
 
 ```text
-selected crop -> local diff gate -> Apple Vision OCR -> deterministic rule
+selected crop -> local diff gate -> activity/stability timer -> local stuck event
+              -> stable candidate -> Apple Vision OCR -> deterministic rule
               -> local notification or bounded AI fallback -> deduplicated event
 ```
 
@@ -143,11 +144,19 @@ minutes. There is no fixed per-session analysis cap. Watch keeps only the
 comparison crops and OCR text needed for the current in-memory decision and
 drops them on stop or reset; no crop or OCR text is written to disk.
 
-After activation, Pebble appends matched local or semantic summaries, engine or
-model names, and generation times to one local Markdown document at
-`Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, OCR
-text, manual AI questions, AI answers, article bodies, credentials, or browser
-session data to that journal.
+The No Progress rule is local visual state only. It requires repeated activity
+or a confirmed stable change before starting the selected 1, 5, 30, or 60
+minute stability timer. A static initial region and one-poll transient cannot
+alert. One stuck event is emitted per activity cycle and the rule rearms only
+after renewed activity. It does not run Apple Vision OCR, AI, tools, browser
+access, or network requests.
+
+After activation, Pebble appends safe Watch lifecycle and result summaries plus
+structured region label, signal type, engine or model name, confidence, and
+duration metadata to one local Markdown document at
+`Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, capture
+coordinates, source-window IDs, OCR text, manual AI questions, AI answers,
+article bodies, credentials, or browser session data to that journal.
 The journal directory is mode 0700, the file is mode 0600, symbolic-link
 targets are rejected, and the document stops accepting entries at 25 MB.
 

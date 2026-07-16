@@ -79,6 +79,7 @@ use smart_watch::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+use watch_intent::WatchLocalEngine;
 use window_shell::WindowShellError;
 
 #[tauri::command]
@@ -374,6 +375,7 @@ fn set_smart_watch(
             &app,
             activity_feed.inner(),
             &watch_started_log(
+                status.local_engine,
                 provider,
                 &model,
                 custom_intent,
@@ -417,7 +419,7 @@ fn set_smart_watch_interval(
         activity_feed::record_watch(
             &app,
             activity_feed.inner(),
-            &watch_interval_log(status.analysis_interval_minutes),
+            &watch_interval_log(status.local_engine, status.analysis_interval_minutes),
         );
     }
     Ok(status)
@@ -601,17 +603,52 @@ async fn evaluate_watch_target(
     tick: u64,
     pending: &mut HashMap<String, PendingWatchAnalysis>,
 ) {
-    let Some(monitoring::MonitoringDecision::Changed {
-        kind,
-        previous_frame,
-        ..
-    }) = target.monitoring.observe(target.revision, &frame, tick)
-    else {
+    let Some(observation) = target.monitoring.observe(target.revision, &frame, tick) else {
         return;
+    };
+    let (kind, previous_frame) = match observation {
+        monitoring::MonitoringDecision::Baseline => {
+            pending.remove(&target.id);
+            watch.reset_visual_activity(&target.id);
+            return;
+        }
+        monitoring::MonitoringDecision::Stable => {
+            let (status, matched) = watch.observe_visual_stability(&target.id, tick);
+            if let Some(event) = matched {
+                smart_watch::emit_status(app, status);
+                emit_watch_event(
+                    app,
+                    WatchEventNotice {
+                        target_name: &target.name,
+                        kind: WatchSignalKind::Stuck,
+                        engine: WatchSignalEngine::LocalVisual,
+                        model: None,
+                        confidence: "HIGH",
+                        duration_ms: None,
+                        summary: &event.summary,
+                    },
+                );
+            }
+            return;
+        }
+        monitoring::MonitoringDecision::Activity => {
+            watch.note_visual_activity(&target.id, tick, false);
+            return;
+        }
+        monitoring::MonitoringDecision::Changed {
+            kind,
+            previous_frame,
+            ..
+        } => (kind, previous_frame),
     };
     let Some(context) = watch.current_context(&target.id) else {
         return;
     };
+    if context.plan.detects_stuck_after_activity() {
+        pending.remove(&target.id);
+        watch.note_visual_activity(&target.id, tick, true);
+        return;
+    }
     let prepared = prepare_watch_candidate(&context, &previous_frame, &frame).await;
     match prepared.decision {
         watch_intent::LocalWatchDecision::Matched(event) => {
@@ -621,12 +658,15 @@ async fn evaluate_watch_target(
             if accepted {
                 emit_watch_event(
                     app,
-                    &target.name,
-                    WatchSignalEngine::LocalOcr,
-                    None,
-                    "HIGH",
-                    0,
-                    &event.summary,
+                    WatchEventNotice {
+                        target_name: &target.name,
+                        kind: WatchSignalKind::Match,
+                        engine: WatchSignalEngine::LocalOcr,
+                        model: None,
+                        confidence: "HIGH",
+                        duration_ms: Some(0),
+                        summary: &event.summary,
+                    },
                 );
             }
         }
@@ -742,6 +782,7 @@ async fn capture_watch_target_frame(
 }
 
 fn watch_started_log(
+    local_engine: Option<WatchLocalEngine>,
     provider: AiProvider,
     model: &str,
     custom_intent: bool,
@@ -757,6 +798,12 @@ fn watch_started_log(
     } else {
         "GENERAL MEANINGFUL CHANGE"
     };
+    if local_engine == Some(WatchLocalEngine::VisualStability) {
+        return format!(
+            "WATCH STARTED · {intent} · LOCAL CHECK EVERY 5S · ALERT AFTER {} WITHOUT PROGRESS · NO OCR · NO AI USAGE",
+            watch_interval_label(analysis_interval_minutes)
+        );
+    }
     if ai_fallback_enabled {
         format!(
             "WATCH STARTED · {provider} · {} · {intent} · LOCAL CHECK EVERY 5S · APPLE VISION OCR + AI AFTER A MATERIAL CHANGE · MAX ONCE EVERY {}",
@@ -770,7 +817,16 @@ fn watch_started_log(
     }
 }
 
-fn watch_interval_log(analysis_interval_minutes: u16) -> String {
+fn watch_interval_log(
+    local_engine: Option<WatchLocalEngine>,
+    analysis_interval_minutes: u16,
+) -> String {
+    if local_engine == Some(WatchLocalEngine::VisualStability) {
+        return format!(
+            "STUCK THRESHOLD UPDATED · {} WITHOUT PROGRESS",
+            watch_interval_label(analysis_interval_minutes)
+        );
+    }
     format!(
         "WATCH INTERVAL UPDATED · AI MAX ONCE EVERY {}",
         watch_interval_label(analysis_interval_minutes)
@@ -851,12 +907,15 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
                 }
                 emit_watch_event(
                     &app,
-                    &target_name,
-                    signal_engine,
-                    Some(&analysis.model),
-                    &analysis.confidence,
-                    analysis.duration_ms,
-                    &analysis.summary,
+                    WatchEventNotice {
+                        target_name: &target_name,
+                        kind: WatchSignalKind::Match,
+                        engine: signal_engine,
+                        model: Some(&analysis.model),
+                        confidence: &analysis.confidence,
+                        duration_ms: Some(analysis.duration_ms),
+                        summary: &analysis.summary,
+                    },
                 );
             }
             Err(error) => {
@@ -886,21 +945,33 @@ fn schedule_watch_analysis(job: WatchAnalysisJob) {
     });
 }
 
-fn emit_watch_event(
-    app: &tauri::AppHandle,
-    target_name: &str,
+struct WatchEventNotice<'a> {
+    target_name: &'a str,
+    kind: WatchSignalKind,
     engine: WatchSignalEngine,
-    model: Option<&str>,
-    confidence: &str,
-    duration_ms: u64,
-    summary: &str,
-) {
+    model: Option<&'a str>,
+    confidence: &'a str,
+    duration_ms: Option<u64>,
+    summary: &'a str,
+}
+
+fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
+    let WatchEventNotice {
+        target_name,
+        kind,
+        engine,
+        model,
+        confidence,
+        duration_ms,
+        summary,
+    } = event;
     menu_bar::set_attention(app, true);
     let display_model = model.unwrap_or(engine.label()).to_ascii_uppercase();
     let confidence = confidence.to_ascii_uppercase();
-    let duration = duration_ms as f64 / 1_000.0;
-    let title =
-        format!("PEBBLE WATCH · {target_name} · {display_model} · {confidence} · {duration:.1}S");
+    let mut title = format!("PEBBLE WATCH · {target_name} · {display_model} · {confidence}");
+    if let Some(duration_ms) = duration_ms {
+        title.push_str(&format!(" · {:.1}S", duration_ms as f64 / 1_000.0));
+    }
     let _ = app
         .notification()
         .builder()
@@ -908,12 +979,12 @@ fn emit_watch_event(
         .body(summary)
         .show();
     let signal = WatchSignal::new(
-        WatchSignalKind::Match,
+        kind,
         target_name,
         engine,
         model,
         WatchSignalConfidence::parse(&confidence),
-        Some(duration_ms),
+        duration_ms,
     );
     record_signal_or_watch(app, &compact_watch_log(summary.to_string()), signal);
 }
@@ -1065,7 +1136,7 @@ mod tests {
             LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
         resolve_region_selection, validate_performance_request, watch_interval_log,
-        watch_started_log, AiProvider, WATCH_CAPTURE_INTERVAL,
+        watch_started_log, AiProvider, WatchLocalEngine, WATCH_CAPTURE_INTERVAL,
     };
 
     #[test]
@@ -1082,7 +1153,14 @@ mod tests {
 
     #[test]
     fn watch_start_log_explains_local_cadence_and_ai_gate() {
-        let log = watch_started_log(AiProvider::OpenAi, "gpt-5.6-terra", true, 30, true);
+        let log = watch_started_log(
+            Some(WatchLocalEngine::Ocr),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            30,
+            true,
+        );
 
         assert!(log.contains("OPENAI"));
         assert!(log.contains("LOCAL CHECK EVERY 5S"));
@@ -1094,7 +1172,27 @@ mod tests {
 
     #[test]
     fn watch_interval_log_formats_hour_choice_for_people() {
-        assert!(watch_interval_log(60).contains("1 HOUR"));
+        assert!(watch_interval_log(None, 60).contains("1 HOUR"));
+    }
+
+    #[test]
+    fn stuck_watch_log_promises_no_ocr_or_ai() {
+        let log = watch_started_log(
+            Some(WatchLocalEngine::VisualStability),
+            AiProvider::OpenAi,
+            "gpt-5.6-terra",
+            true,
+            5,
+            true,
+        );
+
+        assert!(log.contains("ALERT AFTER 5 MIN WITHOUT PROGRESS"));
+        assert!(log.contains("NO OCR · NO AI USAGE"));
+        assert!(!log.contains("GPT-5.6"));
+        assert!(
+            watch_interval_log(Some(WatchLocalEngine::VisualStability), 30)
+                .contains("30 MIN WITHOUT PROGRESS")
+        );
     }
 
     #[test]

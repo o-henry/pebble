@@ -15,6 +15,8 @@ const LOCAL_MEAN_DELTA_THRESHOLD: f64 = 0.08;
 #[derive(Debug, Clone, PartialEq)]
 pub enum MonitoringDecision {
     Baseline,
+    Stable,
+    Activity,
     Changed {
         score: f64,
         kind: VisualChangeKind,
@@ -124,7 +126,7 @@ impl MonitoringState {
         if !evidence.meaningful {
             data.candidate_tiles = None;
             data.candidate_sample = None;
-            return None;
+            return Some(MonitoringDecision::Stable);
         }
 
         let stable_candidate = data
@@ -139,7 +141,7 @@ impl MonitoringState {
         if !stable_candidate || !same_area {
             data.candidate_tiles = Some(evidence.changed_tiles);
             data.candidate_sample = Some(current_sample);
-            return None;
+            return Some(MonitoringDecision::Activity);
         }
 
         let previous_frame = baseline.frame.clone();
@@ -355,13 +357,22 @@ mod tests {
             state.observe(1, &frame(0), 1),
             Some(MonitoringDecision::Baseline)
         );
-        assert_eq!(state.observe(1, &frame(1), 2), None);
-        assert_eq!(state.observe(1, &frame(255), 3), None);
+        assert_eq!(
+            state.observe(1, &frame(1), 2),
+            Some(MonitoringDecision::Stable)
+        );
+        assert_eq!(
+            state.observe(1, &frame(255), 3),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             state.observe(1, &frame(255), 4),
             Some(MonitoringDecision::Changed { .. })
         ));
-        assert_eq!(state.observe(1, &frame(0), 5), None);
+        assert_eq!(
+            state.observe(1, &frame(0), 5),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             state.observe(1, &frame(0), 6),
             Some(MonitoringDecision::Changed { .. })
@@ -375,7 +386,10 @@ mod tests {
         let changed = frame_with_patch(0, 255, 16, 16, 8, 8);
         state.observe(1, &baseline, 1);
 
-        assert_eq!(state.observe(1, &changed, 2), None);
+        assert_eq!(
+            state.observe(1, &changed, 2),
+            Some(MonitoringDecision::Activity)
+        );
         let decision = state.observe(1, &changed, 3);
         assert!(matches!(
             &decision,
@@ -395,8 +409,14 @@ mod tests {
         let larger_change = frame_with_patch(0, 255, 16, 16, 8, 8);
         state.observe(1, &baseline, 1);
 
-        assert_eq!(state.observe(1, &small_change, 2), None);
-        assert_eq!(state.observe(1, &larger_change, 3), None);
+        assert_eq!(
+            state.observe(1, &small_change, 2),
+            Some(MonitoringDecision::Activity)
+        );
+        assert_eq!(
+            state.observe(1, &larger_change, 3),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             state.observe(1, &larger_change, 4),
             Some(MonitoringDecision::Changed { previous_frame, .. })
@@ -413,9 +433,18 @@ mod tests {
         let third = frame_with_patch(0, 255, 24, 16, 8, 8);
         state.observe(1, &baseline, 1);
 
-        assert_eq!(state.observe(1, &first, 2), None);
-        assert_eq!(state.observe(1, &second, 3), None);
-        assert_eq!(state.observe(1, &third, 4), None);
+        assert_eq!(
+            state.observe(1, &first, 2),
+            Some(MonitoringDecision::Activity)
+        );
+        assert_eq!(
+            state.observe(1, &second, 3),
+            Some(MonitoringDecision::Activity)
+        );
+        assert_eq!(
+            state.observe(1, &third, 4),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             state.observe(1, &third, 5),
             Some(MonitoringDecision::Changed { previous_frame, .. })
@@ -430,9 +459,18 @@ mod tests {
         let transient = frame_with_patch(0, 255, 16, 16, 8, 8);
         state.observe(1, &baseline, 1);
 
-        assert_eq!(state.observe(1, &transient, 2), None);
-        assert_eq!(state.observe(1, &baseline, 3), None);
-        assert_eq!(state.observe(1, &baseline, 4), None);
+        assert_eq!(
+            state.observe(1, &transient, 2),
+            Some(MonitoringDecision::Activity)
+        );
+        assert_eq!(
+            state.observe(1, &baseline, 3),
+            Some(MonitoringDecision::Stable)
+        );
+        assert_eq!(
+            state.observe(1, &baseline, 4),
+            Some(MonitoringDecision::Stable)
+        );
     }
 
     #[test]
@@ -442,7 +480,10 @@ mod tests {
         let green_with_similar_luma = rgba_frame([0, 131, 0, 255]);
         state.observe(1, &red, 1);
 
-        assert_eq!(state.observe(1, &green_with_similar_luma, 2), None);
+        assert_eq!(
+            state.observe(1, &green_with_similar_luma, 2),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             state.observe(1, &green_with_similar_luma, 3),
             Some(MonitoringDecision::Changed { .. })
@@ -480,7 +521,7 @@ mod tests {
         brightness.observe(1, &rgba_frame([0, 0, 0, 255]), 1);
         assert_eq!(
             brightness.observe(1, &rgba_frame([255, 255, 255, 255]), 2),
-            None
+            Some(MonitoringDecision::Activity)
         );
         assert!(matches!(
             brightness.observe(1, &rgba_frame([255, 255, 255, 255]), 3),
@@ -492,7 +533,10 @@ mod tests {
 
         let warning = MonitoringState::default();
         warning.observe(2, &rgba_frame([255, 255, 255, 255]), 1);
-        assert_eq!(warning.observe(2, &rgba_frame([220, 70, 40, 255]), 2), None);
+        assert_eq!(
+            warning.observe(2, &rgba_frame([220, 70, 40, 255]), 2),
+            Some(MonitoringDecision::Activity)
+        );
         assert!(matches!(
             warning.observe(2, &rgba_frame([220, 70, 40, 255]), 3),
             Some(MonitoringDecision::Changed {

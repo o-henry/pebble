@@ -74,6 +74,9 @@ Implemented:
 - Deterministic text appearance, disappearance, text-change, single-number
   threshold, progress, and state-word rules run locally without an AI
   connection or provider tokens.
+- **No Progress** detects when a region that was visibly active becomes stuck
+  for 1, 5, 30, or 60 minutes. A static starting screen and one-poll noise do
+  not alert; the rule uses local visual samples with no OCR, AI, or network use.
 - Stable-candidate gating ignores transient animation, while semantic
   fingerprints suppress repeated alerts within the selected interval.
 - Up to three independently bound Watch regions can stay active. Selecting a
@@ -85,8 +88,9 @@ Implemented:
   and remains ephemeral in memory.
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
-- Collapsible Updates feed whose matched Watch summaries are appended to one
-  local Markdown journal under Downloads after Watch is explicitly enabled.
+- Collapsible Updates feed with structured region, signal, engine or model,
+  confidence, and duration metadata. Safe Watch lifecycle and result summaries
+  are appended to one local Markdown journal under Downloads.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
@@ -138,9 +142,11 @@ An optional Anthropic API key is persisted only as a macOS Keychain generic
 password. Pebble never returns the saved key to the webview or writes it to a
 Pebble-managed file.
 
-Matched Watch summaries, engine or model names, and generation times are appended to
-`Downloads/Pebble/pebble-updates.md`. Captured pixels, OCR text, manual AI
-questions and manual AI answers are never written to that journal.
+Watch summaries and safe structured metadata such as region label, signal type,
+engine or model name, confidence, and generation time are appended to
+`Downloads/Pebble/pebble-updates.md`. Captured pixels, capture coordinates,
+window IDs, OCR text, manual AI questions, and manual AI answers are never
+written to that journal.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -195,6 +201,13 @@ semantic conditions require a connected provider; only then may one previous
 and current crop pair be sent, no more often than the selected 1, 5, 30, or 60
 minute interval. There is no fixed session count cap.
 
+The built-in **No Progress** recipe follows a separate zero-token path. It first
+requires repeated visible activity or one confirmed stable change, then starts
+the selected interval when the region becomes stable. It sends one **Stuck**
+signal if that interval expires, suppresses repeats while the screen remains
+unchanged, and rearms only after renewed activity. This path does not run OCR,
+AI, browser access, tools, or network requests.
+
 Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed
 match decision, compact summary, and low/medium/high confidence. Pebble notifies
@@ -226,7 +239,8 @@ is never persisted, included in Updates, or sent to AI.
 6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
 7. Toggle **AI**, type what matters, choose an interval, then press **Watch**.
    Local text, number, progress, and state rules can start without connecting a
-   provider. Semantic rules ask you to connect one.
+   provider. Choose **No Progress** to detect an active region becoming stuck
+   without OCR or AI. Semantic rules ask you to connect a provider.
 8. Repeat selection and Watch activation for up to three independent regions.
    Their status rows remain visible in the AI panel and can be stopped one by
    one.

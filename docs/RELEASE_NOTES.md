@@ -28,6 +28,10 @@ This is a contributor-facing pre-alpha demo build.
   maximum AI cadence, orange menu-bar state, and native notifications.
 - Local text, single-number threshold, progress, and state Watch rules that can
   run with no AI connection or token usage.
+- Local No Progress Watch that alerts once when a previously active region
+  remains stable for the selected interval, without OCR, AI, or network use.
+- Structured Watch signals with safe region, event, engine or model,
+  confidence, and duration metadata separated from the human summary.
 - Stable-candidate animation suppression and per-region semantic event dedupe.
 - Up to three independently source-bound Watch regions with stable labels,
   individual stop actions, and background operation while Pebble is hidden.
