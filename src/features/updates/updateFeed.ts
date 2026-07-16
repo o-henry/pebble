@@ -44,6 +44,28 @@ export interface UpdateFeedSnapshot {
   entries: UpdateEntry[];
 }
 
+export interface ChangeStory {
+  id: string;
+  entries: UpdateEntry[];
+  regions: string[];
+  startedAt: string;
+  endedAt: string;
+}
+
+export type UpdateFeedItem =
+  | { type: "entry"; entry: UpdateEntry }
+  | { type: "story"; story: ChangeStory };
+
+const CHANGE_STORY_WINDOW_MS = 5 * 60 * 1_000;
+const CHANGE_STORY_ENTRY_LIMIT = 8;
+const STORY_SIGNAL_KINDS = new Set<WatchSignalKind>([
+  "match",
+  "stuck",
+  "conflict",
+  "noFollowThrough",
+  "loop"
+]);
+
 export function mergeUpdateEntry(
   snapshot: UpdateFeedSnapshot,
   entry: UpdateEntry
@@ -64,6 +86,83 @@ export function formatUpdateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+export function buildChangeStoryItems(
+  entries: UpdateEntry[]
+): UpdateFeedItem[] {
+  const items: UpdateFeedItem[] = [];
+  let candidate: UpdateEntry[] = [];
+
+  const flush = () => {
+    if (candidate.length >= 2) {
+      const chronological = [...candidate].reverse();
+      const oldest = chronological[0];
+      const newest = chronological[chronological.length - 1];
+      items.push({
+        type: "story",
+        story: {
+          id: `story-${newest.id}-${oldest.id}`,
+          entries: chronological,
+          regions: storyRegions(chronological),
+          startedAt: oldest.occurredAt,
+          endedAt: newest.occurredAt
+        }
+      });
+    } else if (candidate.length === 1) {
+      items.push({ type: "entry", entry: candidate[0] });
+    }
+    candidate = [];
+  };
+
+  for (const entry of entries) {
+    if (!isStoryEntry(entry)) {
+      flush();
+      items.push({ type: "entry", entry });
+      continue;
+    }
+    const previous = candidate[candidate.length - 1];
+    const gap = previous ? entryTime(previous) - entryTime(entry) : 0;
+    const withinWindow = gap >= 0 && gap <= CHANGE_STORY_WINDOW_MS;
+    if (!withinWindow || candidate.length >= CHANGE_STORY_ENTRY_LIMIT) {
+      flush();
+    }
+    candidate.push(entry);
+  }
+  flush();
+  return items;
+}
+
+export function changeStoryLabel(story: ChangeStory): string {
+  const eventLabel = story.entries.length === 1 ? "EVENT" : "EVENTS";
+  const regions = story.regions.length > 0 ? ` · ${story.regions.join(" + ")}` : "";
+  return `CHANGE STORY · ${story.entries.length} ${eventLabel}${regions}`;
+}
+
+function isStoryEntry(entry: UpdateEntry): boolean {
+  return Boolean(
+    entry.signal &&
+      STORY_SIGNAL_KINDS.has(entry.signal.kind) &&
+      Number.isFinite(entryTime(entry))
+  );
+}
+
+function entryTime(entry: UpdateEntry): number {
+  return new Date(entry.occurredAt).getTime();
+}
+
+function storyRegions(entries: UpdateEntry[]): string[] {
+  const regions: string[] = [];
+  for (const entry of entries) {
+    if (!entry.signal) continue;
+    for (const region of [
+      entry.signal.region,
+      ...(entry.signal.relatedRegions ?? [])
+    ]) {
+      if (!regions.includes(region)) regions.push(region);
+    }
+  }
+  return regions;
 }
 
 export function updateSignalLabel(signal: WatchSignal): string {

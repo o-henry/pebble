@@ -104,6 +104,9 @@ Implemented:
 - Collapsible Updates feed with structured region, signal, engine or model,
   confidence, and duration metadata. Safe Watch lifecycle and result summaries
   are appended to one local Markdown journal under Downloads.
+- **Change Story** groups two to eight meaningful signals separated by no more
+  than five minutes into one oldest-to-newest timeline. Waiting and skipped
+  analysis messages remain separate, and the original journal stays unchanged.
 - Privacy blank hotkey/state that stops capture.
 - Low-FPS live tile path connected to the selected physical screen region.
 - Config-only store for named regions and safe capture settings.
@@ -246,6 +249,14 @@ in memory, detects distinct 2- to 4-step patterns only after three complete
 cycles, and emits one signal while that cycle continues. A nonmatching state
 breaks the cycle and rearms detection. Fingerprints are never serialized,
 persisted, included in Updates, sent to AI, or exposed to the webview.
+
+**Change Story** makes bursts of Watch results readable without collecting more
+screen data. The frontend groups only already-sanitized Match, Stuck, Conflict,
+No Follow-Through, and Loop entries when adjacent events are no more than five
+minutes apart. Each story is capped at eight events, preserves event metadata
+and summaries, and displays them oldest first. Waiting or skipped-analysis
+entries end a story. Grouping is derived in memory and never rewrites the local
+Markdown journal.
 
 Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed

@@ -183,8 +183,8 @@ controls mouse or keyboard input.
 
 Loop Detector is local visual fingerprint comparison. On the baseline and only
 after stable material changes, Pebble reduces the selected crop to an 8-by-8
-grid of quantized RGB and local contrast values. At most twelve 64-byte fingerprints exist per
-active loop target. Detection requires three complete repetitions of a distinct
+grid of quantized RGB and local contrast values. At most twelve 64-byte
+fingerprints exist per active loop target. Detection requires three complete repetitions of a distinct
 2- to 4-step pattern. The detector resets on capture failure or target reset and
 suppresses repeated alerts until the pattern breaks. Fingerprints have no
 serialization path and are never persisted, returned to the webview, included
@@ -198,6 +198,12 @@ coordinates, source-window IDs, OCR text, manual AI questions, AI answers,
 article bodies, credentials, or browser session data to that journal.
 The journal directory is mode 0700, the file is mode 0600, symbolic-link
 targets are rejected, and the document stops accepting entries at 25 MB.
+
+Change Story is a frontend-only projection of those already-sanitized entries.
+It groups two to eight meaningful signals with adjacent timestamps no more than
+five minutes apart and presents them oldest first. Operational messages end a
+story. Grouping performs no capture, OCR, AI call, network request, or new disk
+write and does not modify the source journal.
 
 Unchanged frames never reach AI. A locally detected material change sends the
 previous and current selected-region crops to the provider chosen at Watch

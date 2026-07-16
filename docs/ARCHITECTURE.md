@@ -30,6 +30,14 @@ Rules:
 - Frontend invokes backend only through `src/lib/invoke.ts`.
 - Capture, OCR, notifications, and AI handoff live behind adapters.
 
+### Change Story Presenter
+
+`UpdateFeedPanel` derives Change Story groups from the sanitized
+`UpdateFeedSnapshot` in the webview. The pure grouping function accepts the
+newest-first feed, separates operational signals, caps groups at eight entries,
+and returns story entries oldest first. It does not mutate the feed, invoke a
+Tauri command, or alter the append-only Markdown journal.
+
 ## Suggested Repository Shape
 
 ```text

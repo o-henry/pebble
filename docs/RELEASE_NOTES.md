@@ -38,6 +38,8 @@ This is a contributor-facing pre-alpha demo build.
   without OCR, AI, network access, or input control.
 - Local Loop Detector that recognizes 2- to 4-step visual cycles after three
   repetitions using a bounded memory-only fingerprint history with no OCR or AI.
+- Frontend-only Change Story timelines that group two to eight nearby meaningful
+  Watch results while leaving operational messages and the source journal intact.
 - Structured Watch signals with safe region, event, engine or model,
   confidence, and duration metadata separated from the human summary.
 - Stable-candidate animation suppression and per-region semantic event dedupe.

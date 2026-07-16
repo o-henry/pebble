@@ -16,7 +16,7 @@ off by default, with no frame history, telemetry, or continuous image upload.
 You can also explicitly ask OpenAI or Claude about one fresh selected crop.
 Zero-token local recipes can detect stalled activity, repeated visual loops,
 compare opposing status regions, or verify that a change in one app is followed
-by another app.
+by another app. Related results are grouped into compact Change Story timelines.
 
 It is pre-alpha and available on GitHub:
 https://github.com/o-henry/pebble
@@ -44,7 +44,8 @@ history and does not continuously upload the screen.
 
 Local-only recipes also cover stalled regions, repeated visual loops, opposing
 status regions, and cross-app follow-through deadlines without provider AI; the
-visual-only paths do not run OCR.
+visual-only paths do not run OCR. Nearby results appear as one chronological
+Change Story rather than a wall of alerts.
 
 For explicit questions, Pebble can send one freshly authorized selected crop to
 OpenAI through account sign-in, or to Claude through its CLI subscription or an
@@ -80,7 +81,7 @@ to the chosen provider, no more often than the interval selected by the user.
 
 It also includes local-only recipes for stalled activity, repeated visual
 loops, opposing states, and checking whether one app responds after another
-changes.
+changes. Nearby results are grouped into one chronological Change Story.
 
 There is also an optional Ask flow for OpenAI or Claude. It sends exactly one
 fresh selected crop only when the user presses Ask. OpenAI uses account sign-in;

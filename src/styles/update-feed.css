@@ -32,6 +32,13 @@
   text-transform: uppercase;
 }
 
+.update-feed li .update-feed__story-label {
+  color: var(--ink-strong);
+  font-size: 0.6rem;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
 .update-feed__toggle {
   width: 22px;
   min-width: 22px;
@@ -96,4 +103,36 @@ html[data-adaptive-theme="dark"] .update-feed__toggle img {
   font-size: 0.64rem;
   line-height: 1.45;
   text-transform: none;
+}
+
+.update-feed__timeline {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.update-feed__event {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.update-feed__event-time {
+  color: var(--ink-muted);
+  font-size: 0.54rem;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.update-feed__event-content {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.update-feed__event-content p {
+  margin: 0;
 }

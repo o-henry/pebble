@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import downIcon from "../assets/icons/down.svg";
 import {
+  buildChangeStoryItems,
+  changeStoryLabel,
   formatUpdateTime,
   mergeUpdateEntry,
   updateSignalLabel,
+  type ChangeStory,
+  type UpdateEntry,
   type UpdateFeedSnapshot
 } from "../features/updates/updateFeed";
 import { listenToUpdateFeed } from "../lib/events";
@@ -61,24 +65,72 @@ export function UpdateFeedPanel() {
       </div>
       {expanded ? (
         <div className="update-feed__body">
-          <ol>
-            {feed.entries.map((entry) => (
-              <li key={entry.id}>
-                {entry.signal ? (
-                  <span className="update-feed__signal">
-                    {updateSignalLabel(entry.signal)}
-                  </span>
-                ) : null}
-                <p>{entry.summary}</p>
-                <span className="update-feed__time">
-                  {entry.kind} · {formatUpdateTime(entry.occurredAt)}
-                  {entry.saved ? "" : " · NOT SAVED"}
-                </span>
-              </li>
-            ))}
-          </ol>
+          <UpdateFeedList entries={feed.entries} />
         </div>
       ) : null}
     </section>
+  );
+}
+
+export function UpdateFeedList({ entries }: { entries: UpdateEntry[] }) {
+  return (
+    <ol>
+      {buildChangeStoryItems(entries).map((item) =>
+        item.type === "story" ? (
+          <ChangeStoryItem key={item.story.id} story={item.story} />
+        ) : (
+          <UpdateEntryItem key={item.entry.id} entry={item.entry} />
+        )
+      )}
+    </ol>
+  );
+}
+
+function ChangeStoryItem({ story }: { story: ChangeStory }) {
+  const saved = story.entries.every((entry) => entry.saved);
+  return (
+    <li className="update-feed__story">
+      <span className="update-feed__story-label">
+        {changeStoryLabel(story)}
+      </span>
+      <div className="update-feed__timeline" role="list">
+        {story.entries.map((entry) => (
+          <div className="update-feed__event" role="listitem" key={entry.id}>
+            <span className="update-feed__event-time">
+              {formatUpdateTime(entry.occurredAt)}
+            </span>
+            <div className="update-feed__event-content">
+              {entry.signal ? (
+                <span className="update-feed__signal">
+                  {updateSignalLabel(entry.signal)}
+                </span>
+              ) : null}
+              <p>{entry.summary}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <span className="update-feed__time">
+        {formatUpdateTime(story.startedAt)} → {formatUpdateTime(story.endedAt)}
+        {saved ? "" : " · NOT SAVED"}
+      </span>
+    </li>
+  );
+}
+
+function UpdateEntryItem({ entry }: { entry: UpdateEntry }) {
+  return (
+    <li>
+      {entry.signal ? (
+        <span className="update-feed__signal">
+          {updateSignalLabel(entry.signal)}
+        </span>
+      ) : null}
+      <p>{entry.summary}</p>
+      <span className="update-feed__time">
+        {entry.kind} · {formatUpdateTime(entry.occurredAt)}
+        {entry.saved ? "" : " · NOT SAVED"}
+      </span>
+    </li>
   );
 }
