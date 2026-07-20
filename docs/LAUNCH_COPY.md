@@ -1,7 +1,8 @@
 # Pebble Launch Copy
 
-Pebble is pre-alpha, open source, and currently built from source on macOS. Do
-not describe it as packaged or production-ready until a signed installer ships.
+Pebble is pre-alpha and open source. Signed-release automation is configured,
+but no installer should be described as public or production-ready until a
+Developer ID-signed and Apple-notarized DMG actually passes the release gates.
 
 ## X
 

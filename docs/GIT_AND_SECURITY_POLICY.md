@@ -27,6 +27,10 @@ Do not commit:
 - `.env` files or local config containing secrets.
 - API keys, access tokens, refresh tokens, session cookies, SSH keys, signing
   keys, certificates, provisioning profiles, or passwords.
+- Apple Developer ID exports, App Store Connect private keys, temporary
+  keychains, and any plaintext copy of a GitHub Actions secret. Keep these only
+  in the repository's encrypted Actions secrets and the release runner's
+  temporary directory.
 - Captured frames, screenshots, OCR output, frame history, previews, or debug
   captures from a user's screen.
 - Browser history, URLs collected from the user's browser, clipboard contents,
@@ -72,6 +76,11 @@ Before every commit:
 5. Run the relevant tests/checks for the touched code.
 6. Confirm no generated private capture artifacts are staged.
 7. Run the review/refactor agent for feature or behavior changes.
+
+For macOS releases, also run `npm run release:check`. A public release must pass
+`npm run release:check:signed` inside the release workflow with a Developer ID
+Application identity and a private App Store Connect key readable only by its
+owner.
 
 ## Push-Time Checklist
 

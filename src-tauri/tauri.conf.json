@@ -18,7 +18,14 @@
   },
   "bundle": {
     "active": false,
+    "category": "Utility",
     "externalBin": ["binaries/codex"],
-    "targets": "all"
+    "shortDescription": "Keep a selected part of your Mac visible and watched.",
+    "longDescription": "Pebble is a local-first macOS utility for pinning and watching explicitly selected screen regions.",
+    "targets": ["app", "dmg"],
+    "macOS": {
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "14.0"
+    }
   }
 }

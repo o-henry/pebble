@@ -50,6 +50,10 @@ This is a contributor-facing pre-alpha demo build.
 - Desktop-wide product positioning that covers browsers and native apps rather
   than browser content alone.
 - Manual smoke checklist and issue templates.
+- Fail-closed Intel and Apple Silicon release automation that requires a stable
+  Developer ID identity, Apple notarization, stapling, and Gatekeeper checks
+  before publishing either DMG.
+- An explicit macOS 14 minimum deployment target for packaged builds.
 
 ### Security And Privacy
 
@@ -67,7 +71,8 @@ This is a contributor-facing pre-alpha demo build.
 
 ### Known Limits
 
-- No signed installer yet.
+- No signed installer is published until the repository owner configures the
+  required Apple Developer certificate and notarization secrets.
 - No Homebrew formula yet.
 - Multi-monitor selection is still limited to the display containing the main
   window.

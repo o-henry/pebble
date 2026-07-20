@@ -18,6 +18,7 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
+npm run release:check
 cd src-tauri
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
@@ -25,6 +26,19 @@ cargo test
 cd ..
 npm run tauri:build
 ```
+
+## Public Release Checks
+
+- The tag is exactly `v` plus the synchronized application version.
+- Both `arm64` and `x64` jobs use a `Developer ID Application` identity.
+- The workflow contains no ad-hoc signing fallback.
+- Both app bundles and DMGs pass Apple notarization and stapling validation.
+- Gatekeeper accepts each app bundle.
+- The GitHub prerelease is created only after both architecture jobs succeed.
+- No certificate, private key, password, Apple account value, or captured screen
+  content appears in the repository, workflow log, or release notes.
+- Installing an update over the previous official build retains Screen
+  Recording authorization.
 
 ## Manual App Checks
 

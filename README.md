@@ -306,6 +306,27 @@ Pebble captures only explicitly selected crops and does not save frame history.
 Manual AI sends only after **Send**; Watch AI sends only after per-region opt-in,
 a stable local gate, and the selected minimum interval.
 
+## Install
+
+The recommended public download is a Developer ID-signed and Apple-notarized
+DMG from GitHub Releases. Pebble publishes no DMG unless both the Apple Silicon
+and Intel builds pass signing, notarization, stapling, and Gatekeeper checks.
+
+No signed DMG has been published yet. Until the first verified release appears,
+use the source-build instructions below rather than downloading an unofficial
+app bundle.
+
+For a verified release:
+
+1. Download `arm64` on an Apple Silicon Mac or `x64` on an Intel Mac.
+2. Drag Pebble to Applications and open it.
+3. Approve Screen Recording when selecting a region for the first time.
+
+That first approval is required by macOS. Official updates keep the same bundle
+identifier and Developer ID, which lets macOS recognize them as the same app and
+normally preserves the approval. macOS can still ask again after the user resets
+Privacy & Security settings or after a major system security change.
+
 ## Install From Source
 
 Requirements:
@@ -327,6 +348,10 @@ The unsigned development binary is built at:
 src-tauri/target/release/pebble
 ```
 
+Source builds are for contributors. Their local signing identity can change
+after a rebuild, so macOS may request Screen Recording again. Never redistribute
+that binary as an official Pebble release.
+
 For development:
 
 ```bash
@@ -342,11 +367,14 @@ npm test
 npm run typecheck
 npm run lint
 npm run build
+npm run release:check
 cd src-tauri && cargo test && cargo clippy --all-targets -- -D warnings
 ```
 
 Before a public demo, also run the
-[manual smoke checklist](docs/MANUAL_SMOKE_CHECKLIST.md).
+[manual smoke checklist](docs/MANUAL_SMOKE_CHECKLIST.md). Maintainers should
+follow the fail-closed [macOS distribution guide](docs/MACOS_DISTRIBUTION.md)
+before creating a version tag.
 
 ## Repository Map
 

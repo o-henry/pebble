@@ -1,0 +1,297 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release (for example, v0.2.0)
+        required: true
+        type: string
+
+concurrency:
+  group: release-macos-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  resolve:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve immutable release commit
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use the exact vMAJOR.MINOR.PATCH format." >&2
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify release commit
+    needs: resolve
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable release commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.release_sha }}
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          npm ci
+
+      - name: Verify frontend and release policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run lint
+          npm run typecheck
+          npm run build
+          npm run release:check
+
+      - name: Verify Rust workspace
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --check
+          cargo test --all-targets
+          cargo clippy --all-targets -- -D warnings
+
+  build:
+    name: Build ${{ matrix.asset_arch }}
+    needs:
+      - resolve
+      - verify
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            asset_arch: arm64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            asset_arch: x64
+    steps:
+      - name: Check out immutable release commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.release_sha }}
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate tag and install toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$RELEASE_TAG" != "v$VERSION" ]]; then
+            echo "Release tag $RELEASE_TAG does not match package version v$VERSION." >&2
+            exit 1
+          fi
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+          npm ci
+
+      - name: Import Developer ID and notarization credentials
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            APPLE_CERTIFICATE
+            APPLE_CERTIFICATE_PASSWORD
+            APPLE_API_ISSUER
+            APPLE_API_KEY
+            APPLE_API_KEY_CONTENT
+            KEYCHAIN_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required GitHub Actions secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/pebble-release.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/pebble-signing.keychain-db"
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+
+          echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
+          echo "PEBBLE_CERTIFICATE_PATH=$CERTIFICATE_PATH" >> "$GITHUB_ENV"
+          echo "PEBBLE_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$CERTIFICATE_PATH"
+          printf '%s' "$APPLE_API_KEY_CONTENT" | base64 -D > "$API_KEY_PATH"
+          chmod 600 "$CERTIFICATE_PATH" "$API_KEY_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+            | head -n 1)"
+          if [[ -z "$IDENTITY" ]]; then
+            echo "The imported certificate is not a Developer ID Application identity." >&2
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build, sign, and notarize DMG
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        shell: bash
+        run: npm run release:macos -- --target "${{ matrix.target }}"
+
+      - name: Verify signed and notarized artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_ROOT="src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP_PATH="$BUNDLE_ROOT/macos/Pebble.app"
+          DMG_PATH="$(find "$BUNDLE_ROOT/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          if [[ -z "$DMG_PATH" ]]; then
+            echo "No DMG was produced." >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          xcrun stapler validate "$DMG_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+
+          VERSION="${RELEASE_TAG#v}"
+          cp "$DMG_PATH" "$RUNNER_TEMP/Pebble_${VERSION}_${{ matrix.asset_arch }}.dmg"
+
+      - name: Upload verified DMG
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pebble-macos-${{ matrix.asset_arch }}
+          path: ${{ runner.temp }}/Pebble_*.dmg
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${PEBBLE_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$PEBBLE_KEYCHAIN_PATH" || true
+          fi
+          rm -f \
+            "${PEBBLE_CERTIFICATE_PATH:-$RUNNER_TEMP/pebble-release.p12}" \
+            "${APPLE_API_KEY_PATH:-$RUNNER_TEMP/AuthKey_missing.p8}"
+
+  publish:
+    name: Publish verified release
+    needs:
+      - resolve
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+
+      - name: Confirm release tag has not moved
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "Release tag moved after verification; refusing publication." >&2
+            exit 1
+          fi
+
+      - name: Download verified DMGs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: pebble-macos-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          test "$(find release-assets -maxdepth 1 -type f -name '*.dmg' | wc -l | tr -d ' ')" = "2"
+          gh release create "$RELEASE_TAG" \
+            release-assets/*.dmg \
+            --verify-tag \
+            --prerelease \
+            --title "Pebble $RELEASE_TAG" \
+            --notes-file docs/RELEASE_NOTES.md
