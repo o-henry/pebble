@@ -47,6 +47,7 @@ describe("smart watch consent", () => {
         targets: [{
           id: "watch-1",
           name: "REGION 1",
+          watchingFor: "NOTIFY ME ABOUT A MEANINGFUL CHANGE",
           current: true,
           analysesCompleted: 12,
           localMatchesCompleted: 0,
@@ -94,6 +95,7 @@ describe("smart watch consent", () => {
     expect(smartWatchTargetSegments({
       id: "watch-1",
       name: "REGION 1",
+      watchingFor: "TEXT APPEARS: error",
       current: true,
       analysesCompleted: 0,
       localMatchesCompleted: 3,
@@ -117,6 +119,7 @@ describe("smart watch consent", () => {
     expect(smartWatchTargetSegments({
       id: "watch-1",
       name: "REGION 1",
+      watchingFor: "TELL ME WHEN PROGRESS STOPS",
       current: true,
       analysesCompleted: 0,
       localMatchesCompleted: 1,
@@ -139,6 +142,7 @@ describe("smart watch consent", () => {
     expect(smartWatchTargetSegments({
       id: "watch-1",
       name: "REGION 1",
+      watchingFor: "TELL ME WHEN REGIONS DISAGREE",
       current: true,
       analysesCompleted: 0,
       localMatchesCompleted: 1,
@@ -161,6 +165,7 @@ describe("smart watch consent", () => {
     const base = {
       id: "watch-1",
       name: "REGION 1",
+      watchingFor: "TELL ME WHEN FOLLOW-THROUGH IS MISSING",
       current: true,
       analysesCompleted: 0,
       localMatchesCompleted: 0,
@@ -196,6 +201,7 @@ describe("smart watch consent", () => {
     expect(smartWatchTargetSegments({
       id: "watch-1",
       name: "REGION 1",
+      watchingFor: "TELL ME WHEN A VISUAL LOOP REPEATS",
       current: true,
       analysesCompleted: 0,
       localMatchesCompleted: 1,

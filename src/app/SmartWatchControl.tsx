@@ -1,27 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  isSmartWatchInterval,
   rememberSmartWatchConsent,
-  rememberSmartWatchInterval,
-  smartWatchInterval,
   smartWatchTitle,
   type SmartWatchIntervalMinutes,
   type SmartWatchStatus
 } from "../features/ai/smartWatch";
 import {
   getSmartWatchStatus,
-  setSmartWatch,
-  setSmartWatchInterval
+  setSmartWatch
 } from "../lib/invoke";
 import { listenToSmartWatchStatus } from "../lib/events";
 import { errorMessage } from "./usePebbleSession";
 import type { AiProvider } from "../features/ai/regionQuestion";
-import { SmartWatchIntervalControl } from "./SmartWatchIntervalControl";
 
 export function SmartWatchControl({
   provider,
   model,
   intent,
+  intervalMinutes,
   disabled,
   privacyBlankActive,
   aiConnected,
@@ -32,6 +28,7 @@ export function SmartWatchControl({
   provider: AiProvider;
   model: string;
   intent: string;
+  intervalMinutes: SmartWatchIntervalMinutes;
   disabled: boolean;
   privacyBlankActive: boolean;
   aiConnected: boolean;
@@ -40,22 +37,11 @@ export function SmartWatchControl({
   onError: (message: string | null) => void;
 }) {
   const [status, setStatus] = useState<SmartWatchStatus | null>(null);
-  const [intervalMinutes, setIntervalMinutes] =
-    useState<SmartWatchIntervalMinutes>(() =>
-      smartWatchInterval(globalThis.localStorage)
-    );
   const [busy, setBusy] = useState(false);
 
   const acceptStatus = useCallback((next: SmartWatchStatus) => {
     setStatus(next);
     onStatusChange(next);
-    if (next.enabled) {
-      setIntervalMinutes(next.analysisIntervalMinutes);
-      rememberSmartWatchInterval(
-        globalThis.localStorage,
-        next.analysisIntervalMinutes
-      );
-    }
   }, [onStatusChange]);
 
   useEffect(() => () => onStatusChange(null), [onStatusChange]);
@@ -102,22 +88,6 @@ export function SmartWatchControl({
     }
   }, [acceptStatus, aiConnected, intent, intervalMinutes, model, onBusyChange, onError, provider]);
 
-  const updateInterval = useCallback(async (
-    nextInterval: SmartWatchIntervalMinutes
-  ) => {
-    try {
-      setBusy(true);
-      onBusyChange(true);
-      onError(null);
-      acceptStatus(await setSmartWatchInterval(nextInterval));
-    } catch (reason) {
-      onError(errorMessage(reason, "WATCH INTERVAL COULD NOT BE UPDATED."));
-    } finally {
-      setBusy(false);
-      onBusyChange(false);
-    }
-  }, [acceptStatus, onBusyChange, onError]);
-
   function toggle() {
     if (status?.enabled) {
       void update(false);
@@ -125,14 +95,6 @@ export function SmartWatchControl({
     }
     rememberSmartWatchConsent(globalThis.localStorage);
     void update(true);
-  }
-
-  function selectInterval(value: string) {
-    const nextInterval = Number(value);
-    if (!isSmartWatchInterval(nextInterval)) return;
-    setIntervalMinutes(nextInterval);
-    rememberSmartWatchInterval(globalThis.localStorage, nextInterval);
-    if (status?.enabled) void updateInterval(nextInterval);
   }
 
   return (
@@ -147,16 +109,6 @@ export function SmartWatchControl({
       >
         {status?.enabled ? "WATCHING" : "WATCH"}
       </button>
-      <SmartWatchIntervalControl
-        value={intervalMinutes}
-        disabled={
-          busy ||
-          status?.localEngine === "crossRegionOcr" ||
-          status?.localEngine === "followThroughResult" ||
-          status?.localEngine === "visualLoop"
-        }
-        onChange={(minutes) => selectInterval(String(minutes))}
-      />
     </div>
   );
 }

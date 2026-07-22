@@ -645,6 +645,7 @@ impl WatchTarget {
         SmartWatchTargetStatus {
             id: self.id.clone(),
             name: self.name.clone(),
+            watching_for: self.config.plan.intent().to_string(),
             current: self.revision == current_revision,
             analyses_completed: self.analyses_completed,
             local_matches_completed: self.local_matches_completed,

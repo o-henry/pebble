@@ -1,12 +1,17 @@
 import { useCallback, useState } from "react";
 import type { AiProvider } from "../features/ai/regionQuestion";
-import type { SmartWatchStatus } from "../features/ai/smartWatch";
+import {
+  rememberSmartWatchInterval,
+  type SmartWatchIntervalMinutes,
+  type SmartWatchStatus
+} from "../features/ai/smartWatch";
 import { AiProviderSwitch } from "./AiProviderSwitch";
 import type { AiConnectionState } from "./AiConnectionPrompt";
 import { SmartWatchControl } from "./SmartWatchControl";
 import { SmartWatchStatusLine } from "./SmartWatchStatusLine";
-import { removeSmartWatchTarget } from "../lib/invoke";
+import { removeSmartWatchTarget, setSmartWatchInterval } from "../lib/invoke";
 import { errorMessage } from "./usePebbleSession";
+import { SmartWatchIntervalControl } from "./SmartWatchIntervalControl";
 
 export function AiPanelHeader({
   browserPreview,
@@ -16,7 +21,11 @@ export function AiPanelHeader({
   watchIntent,
   disabled,
   privacyBlankActive,
+  optionsExpanded,
+  intervalMinutes,
   onProviderChange,
+  onToggleOptions,
+  onIntervalChange,
   onBusyChange,
   onError
 }: {
@@ -27,7 +36,11 @@ export function AiPanelHeader({
   watchIntent: string;
   disabled: boolean;
   privacyBlankActive: boolean;
+  optionsExpanded: boolean;
+  intervalMinutes: SmartWatchIntervalMinutes;
   onProviderChange: (provider: AiProvider) => void;
+  onToggleOptions: () => void;
+  onIntervalChange: (minutes: SmartWatchIntervalMinutes) => void;
   onBusyChange: (busy: boolean) => void;
   onError: (message: string | null) => void;
 }) {
@@ -35,7 +48,14 @@ export function AiPanelHeader({
   const [removingWatch, setRemovingWatch] = useState(false);
   const acceptWatchStatus = useCallback((status: SmartWatchStatus | null) => {
     setWatchStatus(status);
-  }, []);
+    if (status?.enabled) {
+      onIntervalChange(status.analysisIntervalMinutes);
+      rememberSmartWatchInterval(
+        globalThis.localStorage,
+        status.analysisIntervalMinutes
+      );
+    }
+  }, [onIntervalChange]);
 
   const removeWatch = useCallback(async (targetId: string) => {
     try {
@@ -51,6 +71,33 @@ export function AiPanelHeader({
     }
   }, [onBusyChange, onError]);
 
+  const updateInterval = useCallback(async (
+    nextInterval: SmartWatchIntervalMinutes
+  ) => {
+    const previousInterval = intervalMinutes;
+    onIntervalChange(nextInterval);
+    rememberSmartWatchInterval(globalThis.localStorage, nextInterval);
+    if (!watchStatus?.enabled) return;
+
+    try {
+      onBusyChange(true);
+      onError(null);
+      acceptWatchStatus(await setSmartWatchInterval(nextInterval));
+    } catch (reason) {
+      onIntervalChange(previousInterval);
+      rememberSmartWatchInterval(globalThis.localStorage, previousInterval);
+      onError(errorMessage(reason, "WATCH INTERVAL COULD NOT BE UPDATED."));
+    } finally {
+      onBusyChange(false);
+    }
+  }, [acceptWatchStatus, intervalMinutes, onBusyChange, onError, onIntervalChange, watchStatus?.enabled]);
+
+  const intervalDisabled =
+    disabled ||
+    watchStatus?.localEngine === "crossRegionOcr" ||
+    watchStatus?.localEngine === "followThroughResult" ||
+    watchStatus?.localEngine === "visualLoop";
+
   return (
     <div className="region-question__header-group">
       <div className="region-question__header">
@@ -61,6 +108,7 @@ export function AiPanelHeader({
               provider={provider}
               model={model}
               intent={watchIntent}
+              intervalMinutes={intervalMinutes}
               disabled={disabled || connection === "checking"}
               privacyBlankActive={privacyBlankActive}
               aiConnected={connection === "connected"}
@@ -69,13 +117,32 @@ export function AiPanelHeader({
               onError={onError}
             />
           ) : null}
+          <button
+            type="button"
+            className="region-question__options-toggle"
+            aria-expanded={optionsExpanded}
+            onClick={onToggleOptions}
+          >
+            {optionsExpanded ? "DONE" : "OPTIONS"}
+          </button>
+        </div>
+      </div>
+      {optionsExpanded ? (
+        <div className="region-question__advanced-controls">
+          <span>INTERVAL</span>
+          <SmartWatchIntervalControl
+            value={intervalMinutes}
+            disabled={intervalDisabled}
+            onChange={(minutes) => void updateInterval(minutes)}
+          />
+          <span>PROVIDER</span>
           <AiProviderSwitch
             provider={provider}
             disabled={disabled || connection === "checking"}
             onChange={onProviderChange}
           />
         </div>
-      </div>
+      ) : null}
       <SmartWatchStatusLine
         status={watchStatus}
         disabled={disabled || removingWatch}

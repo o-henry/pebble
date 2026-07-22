@@ -42,6 +42,7 @@ export interface SmartWatchStatus {
 export interface SmartWatchTargetStatus {
   id: string;
   name: string;
+  watchingFor: string;
   current: boolean;
   analysesCompleted: number;
   localMatchesCompleted: number;

@@ -28,18 +28,10 @@ export function LiveTileControls({
       aria-label="CAPTURE CONTROLS"
     >
       <TextAction
-        label="LIVE"
-        ariaLabel="RESUME LIVE CAPTURE"
-        active={mode === "live"}
+        label={mode === "paused" ? "LIVE" : "PAUSE"}
+        ariaLabel={mode === "paused" ? "RESUME LIVE CAPTURE" : "PAUSE LIVE CAPTURE"}
         disabled={disabled || mode === "blanked"}
-        onClick={onLive}
-      />
-      <TextAction
-        label="PAUSE"
-        ariaLabel="PAUSE LIVE CAPTURE"
-        active={mode === "paused"}
-        disabled={disabled || mode === "blanked"}
-        onClick={onPause}
+        onClick={mode === "paused" ? onLive : onPause}
       />
       <TextAction
         label="SELECT REGION"

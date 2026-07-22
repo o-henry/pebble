@@ -26,7 +26,10 @@ import { AiPanelHeader } from "./AiPanelHeader";
 import { ClaudeCredentialControl } from "./ClaudeCredentialControl";
 import { AiModelSwitch } from "./AiModelSwitch";
 import { WatchRecipeBar } from "./WatchRecipeBar";
-import { smartWatchInterval } from "../features/ai/smartWatch";
+import {
+  smartWatchInterval,
+  type SmartWatchIntervalMinutes
+} from "../features/ai/smartWatch";
 
 export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   browserPreview,
@@ -49,6 +52,11 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
   const [panelError, setPanelError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [optionsExpanded, setOptionsExpanded] = useState(false);
+  const [watchIntervalMinutes, setWatchIntervalMinutes] =
+    useState<SmartWatchIntervalMinutes>(() =>
+      smartWatchInterval(globalThis.localStorage)
+    );
   const [credentialRevision, setCredentialRevision] = useState(0);
   const [model, setModel] = useState(() => defaultAiModelId("openAi"));
   const normalizedQuestion = useMemo(
@@ -136,6 +144,8 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
 
   const models = status?.models ?? [];
   const accessLabel = aiAccessLabel(status?.connectionMode);
+  const activeModelLabel = models.find((option) => option.id === model)?.label
+    ?? model.toUpperCase();
 
   const selectModel = useCallback((nextModel: string) => {
     setModel(nextModel);
@@ -151,12 +161,16 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         watchIntent={normalizedQuestion ?? ""}
         disabled={disabled || asking || connecting}
         privacyBlankActive={privacyBlankActive}
+        optionsExpanded={optionsExpanded}
+        intervalMinutes={watchIntervalMinutes}
         onProviderChange={setProvider}
+        onToggleOptions={() => setOptionsExpanded((expanded) => !expanded)}
+        onIntervalChange={setWatchIntervalMinutes}
         onBusyChange={onBusyChange}
         onError={setPanelError}
       />
 
-      {provider === "claude" && !browserPreview ? (
+      {optionsExpanded && provider === "claude" && !browserPreview ? (
         <ClaudeCredentialControl
           disabled={disabled || asking || connecting}
           onChanged={() => setCredentialRevision((revision) => revision + 1)}
@@ -174,12 +188,27 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
         onConnect={() => void connect()}
       />
 
-      <WatchRecipeBar
-        intent={question}
-        disabled={disabled || asking || connecting || privacyBlankActive}
-        intervalMinutes={smartWatchInterval(globalThis.localStorage)}
-        onApply={(recipe) => setQuestion(recipe.intent)}
-      />
+      {optionsExpanded ? (
+        <>
+          {connection === "connected" ? (
+            <div className="region-question__advanced-model">
+              <span>MODEL</span>
+              <AiModelSwitch
+                models={models}
+                selectedModel={model}
+                disabled={disabled || asking}
+                onChange={selectModel}
+              />
+            </div>
+          ) : null}
+          <WatchRecipeBar
+            intent={question}
+            disabled={disabled || asking || connecting || privacyBlankActive}
+            intervalMinutes={watchIntervalMinutes}
+            onApply={(recipe) => setQuestion(recipe.intent)}
+          />
+        </>
+      ) : null}
 
       {connection === "connected" ? (
         <form className="region-question__form" onSubmit={(event) => void ask(event)}>
@@ -188,19 +217,14 @@ export const RegionQuestionPanel = memo(function RegionQuestionPanel({
             value={question}
             maxLength={MAX_REGION_QUESTION_LENGTH}
             rows={3}
-            placeholder="ASK OR TELL PEBBLE WHAT TO WATCH FOR"
+            placeholder="ASK OR DESCRIBE WHAT TO WATCH"
             autoFocus
             disabled={disabled || asking || privacyBlankActive}
             onChange={(event) => setQuestion(event.currentTarget.value)}
           />
           <div className="region-question__composer-footer">
-            <div className="region-question__model-choice">
-              <AiModelSwitch
-                models={models}
-                selectedModel={model}
-                disabled={disabled || asking}
-                onChange={selectModel}
-              />
+            <div className="region-question__model-current">
+              <span>{activeModelLabel}</span>
               {accessLabel ? <span>{accessLabel}</span> : null}
             </div>
             <button

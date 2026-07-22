@@ -70,6 +70,7 @@ pub struct SmartWatchStatus {
 pub struct SmartWatchTargetStatus {
     pub id: String,
     pub name: String,
+    pub watching_for: String,
     pub current: bool,
     pub analyses_completed: u32,
     pub local_matches_completed: u32,

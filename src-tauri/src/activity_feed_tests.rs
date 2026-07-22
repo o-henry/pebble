@@ -99,6 +99,67 @@ fn structured_signal_keeps_safe_metadata_separate_from_the_summary() {
 }
 
 #[test]
+fn rich_ai_summary_stays_in_memory_while_the_journal_is_redacted() {
+    let path = test_path("redacted-ai-summary");
+    let state = ActivityFeedState::default();
+    let signal = WatchSignal::new(
+        WatchSignalKind::Match,
+        "REGION 1",
+        WatchSignalEngine::OpenAi,
+        Some("gpt-5.6-terra"),
+        Some(WatchSignalConfidence::High),
+        Some(900),
+    )
+    .expect("valid signal");
+    let private_summary = "ACME changed from 123.45 to 129.80 (+5.1%).";
+    let journal_summary =
+        "A selected-region Watch condition matched. Detailed screen-derived values were omitted from the Pebble journal.";
+    let entry = state
+        .record_signal_with_journal_summary(
+            private_summary,
+            journal_summary,
+            "2026-07-22T10:00:00Z".into(),
+            Some(&path),
+            signal,
+        )
+        .expect("redacted signal entry");
+
+    assert_eq!(entry.summary, private_summary);
+    assert!(entry.saved);
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(document.contains(journal_summary));
+    assert!(!document.contains("ACME"));
+    assert!(!document.contains("123.45"));
+    assert!(!document.contains("129.80"));
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
+#[test]
+fn rich_ai_summary_is_redacted_even_without_structured_metadata() {
+    let path = test_path("redacted-ai-summary-without-signal");
+    let state = ActivityFeedState::default();
+    let private_summary = "Private row changed from pending to approved.";
+    let journal_summary = "A selected-region Watch condition matched.";
+    let entry = state
+        .record_with_journal_summary(
+            UpdateKind::Watch,
+            private_summary,
+            journal_summary,
+            "2026-07-22T10:00:00Z".into(),
+            Some(&path),
+        )
+        .expect("redacted entry without metadata");
+
+    assert_eq!(entry.summary, private_summary);
+    assert!(entry.signal.is_none());
+    let document = fs::read_to_string(&path).expect("journal");
+    assert!(document.contains(journal_summary));
+    assert!(!document.contains("Private row"));
+    assert!(!document.contains("approved"));
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
+#[test]
 fn structured_signal_rejects_untrusted_metadata() {
     assert!(WatchSignal::new(
         WatchSignalKind::Waiting,

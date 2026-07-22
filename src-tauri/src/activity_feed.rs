@@ -238,7 +238,7 @@ impl ActivityFeedState {
         occurred_at: String,
         journal_path: Option<&Path>,
     ) -> Option<UpdateEntry> {
-        self.record_entry(kind, summary, occurred_at, journal_path, None)
+        self.record_entry(kind, summary, None, occurred_at, journal_path, None)
     }
 
     pub(crate) fn record_signal(
@@ -251,9 +251,46 @@ impl ActivityFeedState {
         self.record_entry(
             UpdateKind::Watch,
             summary,
+            None,
             occurred_at,
             journal_path,
             Some(signal),
+        )
+    }
+
+    pub(crate) fn record_signal_with_journal_summary(
+        &self,
+        summary: &str,
+        journal_summary: &str,
+        occurred_at: String,
+        journal_path: Option<&Path>,
+        signal: WatchSignal,
+    ) -> Option<UpdateEntry> {
+        self.record_entry(
+            UpdateKind::Watch,
+            summary,
+            Some(journal_summary),
+            occurred_at,
+            journal_path,
+            Some(signal),
+        )
+    }
+
+    pub(crate) fn record_with_journal_summary(
+        &self,
+        kind: UpdateKind,
+        summary: &str,
+        journal_summary: &str,
+        occurred_at: String,
+        journal_path: Option<&Path>,
+    ) -> Option<UpdateEntry> {
+        self.record_entry(
+            kind,
+            summary,
+            Some(journal_summary),
+            occurred_at,
+            journal_path,
+            None,
         )
     }
 
@@ -261,14 +298,19 @@ impl ActivityFeedState {
         &self,
         kind: UpdateKind,
         summary: &str,
+        journal_summary: Option<&str>,
         occurred_at: String,
         journal_path: Option<&Path>,
         signal: Option<WatchSignal>,
     ) -> Option<UpdateEntry> {
         let summary = sanitize_summary(summary)?;
+        let journal_summary = match journal_summary {
+            Some(value) => sanitize_summary(value)?,
+            None => summary.clone(),
+        };
         let mut data = self.data.lock().ok()?;
         let saved = journal_path.is_some_and(|path| {
-            append_journal(path, kind, &summary, &occurred_at, signal.as_ref()).is_ok()
+            append_journal(path, kind, &journal_summary, &occurred_at, signal.as_ref()).is_ok()
         });
         data.next_id = data.next_id.saturating_add(1);
         let entry = UpdateEntry {
@@ -302,6 +344,47 @@ pub fn record_watch_signal(
     record_and_emit(app, state, UpdateKind::Watch, summary, Some(signal));
 }
 
+pub fn record_watch_signal_with_journal_summary(
+    app: &tauri::AppHandle,
+    state: &ActivityFeedState,
+    summary: &str,
+    journal_summary: &str,
+    signal: WatchSignal,
+) {
+    let occurred_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "UNKNOWN".to_string());
+    let path = journal_path(app);
+    let entry = state.record_signal_with_journal_summary(
+        summary,
+        journal_summary,
+        occurred_at,
+        path.as_deref(),
+        signal,
+    );
+    emit_entry(app, entry);
+}
+
+pub fn record_watch_with_journal_summary(
+    app: &tauri::AppHandle,
+    state: &ActivityFeedState,
+    summary: &str,
+    journal_summary: &str,
+) {
+    let occurred_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "UNKNOWN".to_string());
+    let path = journal_path(app);
+    let entry = state.record_with_journal_summary(
+        UpdateKind::Watch,
+        summary,
+        journal_summary,
+        occurred_at,
+        path.as_deref(),
+    );
+    emit_entry(app, entry);
+}
+
 fn record_and_emit(
     app: &tauri::AppHandle,
     state: &ActivityFeedState,
@@ -317,6 +400,10 @@ fn record_and_emit(
         Some(signal) => state.record_signal(summary, occurred_at, path.as_deref(), signal),
         None => state.record(kind, summary, occurred_at, path.as_deref()),
     };
+    emit_entry(app, entry);
+}
+
+fn emit_entry(app: &tauri::AppHandle, entry: Option<UpdateEntry>) {
     if let Some(entry) = entry {
         let _ = app.emit_to(
             crate::pebble_session::PEBBLE_TILE_LABEL,

@@ -1135,7 +1135,58 @@ fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
         duration_ms,
     )
     .and_then(|signal| signal.with_related_regions(related_regions));
-    record_signal_or_watch(app, &compact_watch_log(summary.to_string()), signal);
+    let summary = compact_watch_log(summary.to_string());
+    let state = app.state::<ActivityFeedState>();
+    if matches!(
+        engine,
+        WatchSignalEngine::OpenAi | WatchSignalEngine::Claude
+    ) {
+        let journal_summary = private_ai_watch_journal_summary(kind);
+        match signal {
+            Some(signal) => activity_feed::record_watch_signal_with_journal_summary(
+                app,
+                state.inner(),
+                &summary,
+                journal_summary,
+                signal,
+            ),
+            None => activity_feed::record_watch_with_journal_summary(
+                app,
+                state.inner(),
+                &summary,
+                journal_summary,
+            ),
+        }
+    } else {
+        match signal {
+            Some(signal) => {
+                activity_feed::record_watch_signal(app, state.inner(), &summary, signal)
+            }
+            None => activity_feed::record_watch(app, state.inner(), &summary),
+        }
+    }
+}
+
+fn private_ai_watch_journal_summary(kind: WatchSignalKind) -> &'static str {
+    match kind {
+        WatchSignalKind::Match => {
+            "A selected-region Watch condition matched. Detailed screen-derived values were omitted from the Pebble journal."
+        }
+        WatchSignalKind::Stuck => {
+            "A selected-region Watch detected stalled progress. Detailed screen-derived values were omitted from the Pebble journal."
+        }
+        WatchSignalKind::Conflict => {
+            "A selected-region Watch detected conflicting states. Detailed screen-derived values were omitted from the Pebble journal."
+        }
+        WatchSignalKind::NoFollowThrough => {
+            "A selected-region Watch detected no follow-through. Detailed screen-derived values were omitted from the Pebble journal."
+        }
+        WatchSignalKind::Loop => {
+            "A selected-region Watch detected a repeated loop. Detailed screen-derived values were omitted from the Pebble journal."
+        }
+        WatchSignalKind::Waiting => "A selected-region Watch is waiting for its source.",
+        WatchSignalKind::AnalysisSkipped => "A selected-region Watch analysis was skipped.",
+    }
 }
 
 fn record_signal_or_watch(app: &tauri::AppHandle, summary: &str, signal: Option<WatchSignal>) {

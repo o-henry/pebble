@@ -102,8 +102,8 @@ Implemented:
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
 - Collapsible Updates feed with structured region, signal, engine or model,
-  confidence, and duration metadata. Safe Watch lifecycle and result summaries
-  are appended to one local Markdown journal under Downloads.
+  confidence, and duration metadata. Safe Watch lifecycle markers and redacted
+  AI result markers are appended to one local Markdown journal under Downloads.
 - **Change Story** groups two to eight meaningful signals separated by no more
   than five minutes into one oldest-to-newest timeline. Waiting and skipped
   analysis messages remain separate, and the original journal stays unchanged.
@@ -158,11 +158,12 @@ An optional Anthropic API key is persisted only as a macOS Keychain generic
 password. Pebble never returns the saved key to the webview or writes it to a
 Pebble-managed file.
 
-Watch summaries and safe structured metadata such as region label, signal type,
-engine or model name, confidence, and generation time are appended to
-`Downloads/Pebble/pebble-updates.md`. Captured pixels, capture coordinates,
-window IDs, OCR text, manual AI questions, and manual AI answers are never
-written to that journal.
+Safe Watch event markers and structured metadata such as region label, signal
+type, engine or model name, confidence, and generation time are appended to
+`Downloads/Pebble/pebble-updates.md`. Detailed AI-generated Watch summaries can
+appear in Pebble and macOS notifications, but their screen-derived values are
+omitted from the journal. Captured pixels, capture coordinates, window IDs, OCR
+text, manual AI questions, and manual AI answers are never written there.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -286,8 +287,10 @@ is never persisted, included in Updates, or sent to AI.
    macOS grants this permission.
 4. Drag over a small region in any visible browser or native desktop app.
 5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
-6. Use **Live**, **Pause**, **Select Region**, **AI**, and preview visibility.
-7. Toggle **AI**, type what matters, choose an interval, then press **Watch**.
+6. Use the single **Live/Pause** toggle, **Select Region**, **AI**, and preview
+   visibility controls.
+7. Toggle **AI**, type what matters, then press **Watch**. Open **Options** only
+   when changing the interval, provider, model, or a saved Watch recipe.
    Local text, number, progress, and state rules can start without connecting a
    provider. Choose **No Progress** to detect an active region becoming stuck
    without OCR or AI. Semantic rules ask you to connect a provider.
@@ -299,8 +302,9 @@ is never persisted, included in Updates, or sent to AI.
    the source, choose its deadline, then apply **Follow Result** to one or two
    destination regions. Choose **Loop Detector** for repeated retry or refresh
    cycles; it uses a fixed three-cycle confirmation.
-9. Choose a provider, type a question, and press **Send** when one-shot analysis
-   is wanted. This sends one fresh crop only for that request.
+9. Type a question and press **Send** when one-shot analysis is wanted. Change
+   the provider or model under **Options** when the default is not appropriate.
+   This sends one fresh crop only for that request.
 
 Pebble captures only explicitly selected crops and does not save frame history.
 Manual AI sends only after **Send**; Watch AI sends only after per-region opt-in,

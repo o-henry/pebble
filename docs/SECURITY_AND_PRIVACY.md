@@ -190,12 +190,15 @@ suppresses repeated alerts until the pattern breaks. Fingerprints have no
 serialization path and are never persisted, returned to the webview, included
 in Updates, sent to AI, or used to control input.
 
-After activation, Pebble appends safe Watch lifecycle and result summaries plus
-structured region label, signal type, engine or model name, confidence, and
-duration metadata to one local Markdown document at
-`Downloads/Pebble/pebble-updates.md`. It never writes captured pixels, capture
-coordinates, source-window IDs, OCR text, manual AI questions, AI answers,
-article bodies, credentials, or browser session data to that journal.
+After activation, Pebble appends safe Watch lifecycle markers and structured
+region label, signal type, engine or model name, confidence, and duration
+metadata to one local Markdown document at
+`Downloads/Pebble/pebble-updates.md`. Detailed AI-generated Watch summaries can
+appear in Pebble and macOS notifications, but screen-derived names and values
+are replaced with a redacted event marker before journal persistence. Pebble
+never writes captured pixels, capture coordinates, source-window IDs, OCR text,
+manual AI questions, manual AI answers, article bodies, credentials, or browser
+session data to that journal.
 The journal directory is mode 0700, the file is mode 0600, symbolic-link
 targets are rejected, and the document stops accepting entries at 25 MB.
 
