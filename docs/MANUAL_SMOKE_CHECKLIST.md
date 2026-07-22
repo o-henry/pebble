@@ -33,12 +33,15 @@ npm run tauri:build
 - Both `arm64` and `x64` jobs use a `Developer ID Application` identity.
 - The workflow contains no ad-hoc signing fallback.
 - Both app bundles and DMGs pass Apple notarization and stapling validation.
-- Gatekeeper accepts each app bundle.
+- Gatekeeper accepts each app bundle and its containing DMG.
+- Both architecture reports contain the same non-empty Team ID, bundle ID, and
+  Apple-anchored designated requirement, with no `cdhash` requirement.
 - The GitHub prerelease is created only after both architecture jobs succeed.
 - No certificate, private key, password, Apple account value, or captured screen
   content appears in the repository, workflow log, or release notes.
 - Installing an update over the previous official build retains Screen
-  Recording authorization.
+  Recording authorization on both Intel and Apple Silicon without resetting
+  TCC between versions.
 
 ## Manual App Checks
 

@@ -221,15 +221,40 @@ jobs:
           xcrun stapler validate "$APP_PATH"
           xcrun stapler validate "$DMG_PATH"
           spctl --assess --type execute --verbose=2 "$APP_PATH"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_PATH"
 
           VERSION="${RELEASE_TAG#v}"
+          CODESIGN_DETAILS="$(codesign -dv --verbose=4 "$APP_PATH" 2>&1)"
+          TEAM_ID="$(printf '%s\n' "$CODESIGN_DETAILS" | sed -n 's/^TeamIdentifier=//p' | head -n 1)"
+          BUNDLE_ID="$(printf '%s\n' "$CODESIGN_DETAILS" | sed -n 's/^Identifier=//p' | head -n 1)"
+          REQUIREMENT="$(codesign -dr - "$APP_PATH" 2>&1 | sed -n 's/^designated => //p' | head -n 1)"
+          if [[ -z "$TEAM_ID" || "$TEAM_ID" == "not set" ]]; then
+            echo "A stable TeamIdentifier is required." >&2
+            exit 1
+          fi
+          if [[ "$BUNDLE_ID" != "com.ohenry.screenpebble" ]]; then
+            echo "Unexpected bundle identifier: $BUNDLE_ID" >&2
+            exit 1
+          fi
+          if [[ "$REQUIREMENT" != *"anchor apple generic"* || "$REQUIREMENT" == *"cdhash"* ]]; then
+            echo "The release designated requirement is not stable: $REQUIREMENT" >&2
+            exit 1
+          fi
+
           cp "$DMG_PATH" "$RUNNER_TEMP/Pebble_${VERSION}_${{ matrix.asset_arch }}.dmg"
+          {
+            printf 'teamIdentifier=%s\n' "$TEAM_ID"
+            printf 'bundleIdentifier=%s\n' "$BUNDLE_ID"
+            printf 'designatedRequirement=%s\n' "$REQUIREMENT"
+          } > "$RUNNER_TEMP/Pebble_${VERSION}_${{ matrix.asset_arch }}.signing.txt"
 
       - name: Upload verified DMG
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pebble-macos-${{ matrix.asset_arch }}
-          path: ${{ runner.temp }}/Pebble_*.dmg
+          path: |
+            ${{ runner.temp }}/Pebble_*.dmg
+            ${{ runner.temp }}/Pebble_*.signing.txt
           if-no-files-found: error
           retention-days: 3
 
@@ -289,6 +314,18 @@ jobs:
             exit 1
           fi
           test "$(find release-assets -maxdepth 1 -type f -name '*.dmg' | wc -l | tr -d ' ')" = "2"
+          test "$(find release-assets -maxdepth 1 -type f -name '*.signing.txt' | wc -l | tr -d ' ')" = "2"
+          test "$(grep -h '^teamIdentifier=' release-assets/*.signing.txt | wc -l | tr -d ' ')" = "2"
+          test "$(grep -h '^bundleIdentifier=' release-assets/*.signing.txt | wc -l | tr -d ' ')" = "2"
+          test "$(grep -h '^designatedRequirement=' release-assets/*.signing.txt | wc -l | tr -d ' ')" = "2"
+          test "$(sed -n 's/^teamIdentifier=//p' release-assets/*.signing.txt | sort -u | wc -l | tr -d ' ')" = "1"
+          test "$(sed -n 's/^bundleIdentifier=//p' release-assets/*.signing.txt | sort -u | wc -l | tr -d ' ')" = "1"
+          test "$(sed -n 's/^designatedRequirement=//p' release-assets/*.signing.txt | sort -u | wc -l | tr -d ' ')" = "1"
+          grep -q '^bundleIdentifier=com\.ohenry\.screenpebble$' release-assets/*.signing.txt
+          if grep -q '^designatedRequirement=.*cdhash' release-assets/*.signing.txt; then
+            echo "A cdhash-bound release would break macOS permission continuity." >&2
+            exit 1
+          fi
           gh release create "$RELEASE_TAG" \
             release-assets/*.dmg \
             --verify-tag \

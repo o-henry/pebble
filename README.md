@@ -331,6 +331,11 @@ identifier and Developer ID, which lets macOS recognize them as the same app and
 normally preserves the approval. macOS can still ask again after the user resets
 Privacy & Security settings or after a major system security change.
 
+Only DMGs published by the protected GitHub release workflow are official
+installers. The workflow refuses ad-hoc signatures, missing notarization,
+Gatekeeper failures, architecture builds with different Team IDs, and designated
+requirements tied to a changing code hash.
+
 ## Install From Source
 
 Requirements:
@@ -354,7 +359,17 @@ src-tauri/target/release/pebble
 
 Source builds are for contributors. Their local signing identity can change
 after a rebuild, so macOS may request Screen Recording again. Never redistribute
-that binary as an official Pebble release.
+that binary as an official Pebble release or copy an ad-hoc build over an
+installed Pebble. The guarded installer accepts only a Developer ID-signed,
+notarized app and checks identity continuity before replacing an installation:
+
+```bash
+npm run install:macos -- /path/to/Pebble.app
+```
+
+Replacing an older ad-hoc development install with the first official build is
+a deliberate one-time migration and requires `--replace-ad-hoc`; macOS will ask
+for Screen Recording again after that transition.
 
 For development:
 

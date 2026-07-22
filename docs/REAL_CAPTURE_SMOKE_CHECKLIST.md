@@ -19,6 +19,21 @@ Use this checklist on macOS before enabling real capture in a public build.
 - Confirm no screenshot, preview, or temporary capture file appears in the repo,
   app support directory, Downloads, Desktop, or system temp directory.
 
+## Signed Update Continuity
+
+- Start from the previous Developer ID-signed and notarized DMG.
+- Confirm its bundle identifier is `com.ohenry.screenpebble`, its Team ID matches
+  the candidate, and neither designated requirement contains `cdhash`.
+- Approve Screen Recording once and confirm a selected region captures.
+- Quit Pebble normally. Do not run `tccutil`, remove the Privacy & Security
+  entry, or change its toggle.
+- Install the candidate with `npm run install:macos -- /path/to/Pebble.app`.
+- Relaunch Pebble and confirm the selected-region flow works without another
+  Screen Recording prompt.
+- Repeat on clean Intel and Apple Silicon Macs using their matching DMGs.
+- Do not promote the prerelease when either architecture asks for permission a
+  second time.
+
 ## Lifecycle
 
 - Start a live tile and then pause it.
