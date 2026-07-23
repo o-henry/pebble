@@ -98,7 +98,8 @@ Implemented:
 - The built-in multi-region recipes are limited to **Cross Check** and the
   **Follow Start/Result** roles that cannot be inferred safely. Saved custom
   recipes store only a name, intent, and recommended interval. They never store
-  pixels, coordinates, OCR output, or credentials.
+  pixels, coordinates, OCR output, or credentials. **Clear** removes every
+  saved custom recipe from the Mac.
 - Production Apple Vision OCR runs only after a stable material-change candidate,
   except for the one baseline read explicitly required by each Cross Check
   region. OCR remains ephemeral in memory.
@@ -170,6 +171,10 @@ omitted from the journal. macOS controls banner duration, so meaningful alerts
 also expand the persistent Updates feed and keep the menu-bar attention marker
 active until Pebble is opened. Captured pixels, capture coordinates, window IDs,
 OCR text, manual AI questions, and manual AI answers are never written there.
+
+Custom Watch recipes are written only after **Save** is pressed. Their
+instruction text remains in the app's local browser storage until the recipe is
+removed or **Clear** is pressed.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -271,7 +276,8 @@ Watch freezes the provider, model, intent, interval, source-window binding, and
 AI-fallback choice for each region when it starts. The model returns a typed
 match decision, compact summary, and low/medium/high confidence. Pebble notifies
 only matched, deduplicated changes and labels the region and engine in its log.
-Tools, MCP, shell, files, and web search remain disabled.
+Shell, files, browser and computer control, apps, plugins, MCP, agents, memories,
+image generation, and web search remain disabled.
 
 **Live** and **Pause** control the visible preview, not background Watch. A
 region keeps watching while Pebble is hidden. Use that region's **Stop**,

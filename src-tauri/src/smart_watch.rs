@@ -1312,6 +1312,11 @@ mod tests {
                 height: 200,
                 source_window: Some(WindowCaptureTarget {
                     window_id: 1,
+                    owner_pid: 1,
+                    source_width_millipoints: 320_000,
+                    source_height_millipoints: 200_000,
+                    #[cfg(target_os = "macos")]
+                    native_window: None,
                     relative_x_millipoints: i64::from(x) * 1_000,
                     relative_y_millipoints: 0,
                     width_millipoints: 320_000,

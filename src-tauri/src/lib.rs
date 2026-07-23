@@ -18,6 +18,7 @@ mod capture_lifecycle_tests;
 pub mod capture_scheduler;
 mod claude_api;
 mod claude_credentials;
+mod codex_policy;
 pub mod diff_engine;
 #[cfg(test)]
 mod diff_engine_tests;
@@ -1167,11 +1168,7 @@ fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
     .and_then(|signal| signal.with_related_regions(related_regions));
     let summary = compact_watch_log(summary.to_string());
     let state = app.state::<ActivityFeedState>();
-    if matches!(
-        engine,
-        WatchSignalEngine::OpenAi | WatchSignalEngine::Claude
-    ) {
-        let journal_summary = private_ai_watch_journal_summary(kind);
+    if let Some(journal_summary) = private_watch_journal_summary(kind, engine) {
         match signal {
             Some(signal) => activity_feed::record_watch_signal_with_journal_summary(
                 app,
@@ -1197,25 +1194,37 @@ fn emit_watch_event(app: &tauri::AppHandle, event: WatchEventNotice<'_>) {
     }
 }
 
-fn private_ai_watch_journal_summary(kind: WatchSignalKind) -> &'static str {
+fn private_watch_journal_summary(
+    kind: WatchSignalKind,
+    engine: WatchSignalEngine,
+) -> Option<&'static str> {
+    if !matches!(
+        engine,
+        WatchSignalEngine::OpenAi | WatchSignalEngine::Claude | WatchSignalEngine::LocalOcr
+    ) {
+        return None;
+    }
+
     match kind {
         WatchSignalKind::Match => {
-            "A selected-region Watch condition matched. Detailed screen-derived values were omitted from the Pebble journal."
+            Some("A selected-region Watch condition matched. Detailed screen-derived values and watched text were omitted from the Pebble journal.")
         }
         WatchSignalKind::Stuck => {
-            "A selected-region Watch detected stalled progress. Detailed screen-derived values were omitted from the Pebble journal."
+            Some("A selected-region Watch detected stalled progress. Detailed screen-derived values and watched text were omitted from the Pebble journal.")
         }
         WatchSignalKind::Conflict => {
-            "A selected-region Watch detected conflicting states. Detailed screen-derived values were omitted from the Pebble journal."
+            Some("A selected-region Watch detected conflicting states. Detailed screen-derived values and watched text were omitted from the Pebble journal.")
         }
         WatchSignalKind::NoFollowThrough => {
-            "A selected-region Watch detected no follow-through. Detailed screen-derived values were omitted from the Pebble journal."
+            Some("A selected-region Watch detected no follow-through. Detailed screen-derived values and watched text were omitted from the Pebble journal.")
         }
         WatchSignalKind::Loop => {
-            "A selected-region Watch detected a repeated loop. Detailed screen-derived values were omitted from the Pebble journal."
+            Some("A selected-region Watch detected a repeated loop. Detailed screen-derived values and watched text were omitted from the Pebble journal.")
         }
-        WatchSignalKind::Waiting => "A selected-region Watch is waiting for its source.",
-        WatchSignalKind::AnalysisSkipped => "A selected-region Watch analysis was skipped.",
+        WatchSignalKind::Waiting => Some("A selected-region Watch is waiting for its source."),
+        WatchSignalKind::AnalysisSkipped => {
+            Some("A selected-region Watch analysis was skipped.")
+        }
     }
 }
 
@@ -1361,12 +1370,33 @@ mod tests {
     use super::{
         compact_watch_log, get_app_status, get_performance_limits,
         performance_limits::{PerformanceLimitErrorCode, PerformanceLimitRequest, RegionSize},
+        private_watch_journal_summary,
         region_selection_types::{
             LogicalPoint, LogicalSize, MonitorGeometry, PhysicalPoint, RegionSelectionRequest,
         },
         resolve_region_selection, validate_performance_request, watch_interval_log,
-        watch_started_log, AiProvider, WatchLocalEngine, WATCH_CAPTURE_INTERVAL,
+        watch_started_log, AiProvider, WatchLocalEngine, WatchSignalEngine, WatchSignalKind,
+        WATCH_CAPTURE_INTERVAL,
     };
+
+    #[test]
+    fn persisted_watch_journal_redacts_ai_and_local_ocr_details() {
+        for engine in [
+            WatchSignalEngine::OpenAi,
+            WatchSignalEngine::Claude,
+            WatchSignalEngine::LocalOcr,
+        ] {
+            let summary = private_watch_journal_summary(WatchSignalKind::Match, engine)
+                .expect("private journal summary");
+            assert!(summary.contains("omitted"));
+            assert!(summary.contains("watched text"));
+        }
+        assert!(private_watch_journal_summary(
+            WatchSignalKind::Loop,
+            WatchSignalEngine::LocalVisualLoop
+        )
+        .is_none());
+    }
 
     #[test]
     fn semantic_watch_log_is_single_line_and_bounded() {

@@ -9,9 +9,10 @@ use platform_capture_macos_sys::*;
 use screencapturekit::{
     cg::CGRect as ScreenCaptureRect,
     screenshot_manager::{CGImageExt, SCScreenshotManager},
-    shareable_content::SCShareableContent,
+    shareable_content::{SCShareableContent, SCWindow},
     stream::{configuration::SCStreamConfiguration, content_filter::SCContentFilter},
 };
+use std::sync::Arc;
 
 use super::BackdropColor;
 
@@ -44,7 +45,7 @@ pub(super) fn source_window_for_region(
     }
 
     let selection = capture_rect(region, scale_factor);
-    let source = topmost_source_window(selection)?;
+    let (source, native_window) = retain_topmost_source_window(selection)?;
     let relative_x = selection.origin.x - source.bounds.origin.x;
     let relative_y = selection.origin.y - source.bounds.origin.y;
 
@@ -58,6 +59,10 @@ pub(super) fn source_window_for_region(
 
     Some(WindowCaptureTarget {
         window_id: source.window_id,
+        owner_pid: source.owner_pid,
+        source_width_millipoints: to_unsigned_millipoints(source.bounds.size.width)?,
+        source_height_millipoints: to_unsigned_millipoints(source.bounds.size.height)?,
+        native_window: Some(Arc::new(native_window)),
         relative_x_millipoints: to_millipoints(relative_x)?,
         relative_y_millipoints: to_millipoints(relative_y)?,
         width_millipoints: to_unsigned_millipoints(selection.size.width)?,
@@ -69,19 +74,26 @@ fn capture_source_window_region(
     region: &PhysicalRegion,
     target: &WindowCaptureTarget,
 ) -> CaptureResult {
-    let content = SCShareableContent::create()
-        .with_exclude_desktop_windows(true)
-        .with_on_screen_windows_only(false)
-        .get()
-        .map_err(|_| {
-            capture_unavailable(region, "macOS could not list the selected source window.")
-        })?;
-    let windows = content.windows();
-    let source = windows
-        .iter()
-        .find(|window| window.window_id() == target.window_id)
+    let source = target
+        .native_window
+        .as_deref()
+        .filter(|window| {
+            let frame = window.frame();
+            window.owning_application().is_some_and(|application| {
+                source_window_identity_matches(
+                    window.window_id(),
+                    application.process_id(),
+                    frame.size.width,
+                    frame.size.height,
+                    target,
+                )
+            })
+        })
         .ok_or_else(|| {
-            capture_unavailable(region, "The selected source window is no longer available.")
+            capture_unavailable(
+                region,
+                "The selected source window identity is no longer available.",
+            )
         })?;
     let filter = SCContentFilter::create().with_window(source).build();
     let width = u32::try_from(region.width)
@@ -124,10 +136,74 @@ fn capture_source_window_region(
     Ok(cropped_frame(region, bytes))
 }
 
+fn source_window_identity_matches(
+    window_id: u32,
+    owner_pid: i32,
+    source_width: f64,
+    source_height: f64,
+    target: &WindowCaptureTarget,
+) -> bool {
+    source_window_identity_values_match(
+        window_id,
+        owner_pid,
+        source_width,
+        source_height,
+        target.window_id,
+        target.owner_pid,
+        target.source_width_millipoints,
+        target.source_height_millipoints,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn source_window_identity_values_match(
+    window_id: u32,
+    owner_pid: i32,
+    source_width: f64,
+    source_height: f64,
+    expected_window_id: u32,
+    expected_owner_pid: i32,
+    expected_source_width_millipoints: u64,
+    expected_source_height_millipoints: u64,
+) -> bool {
+    window_id == expected_window_id
+        && owner_pid == expected_owner_pid
+        && to_unsigned_millipoints(source_width) == Some(expected_source_width_millipoints)
+        && to_unsigned_millipoints(source_height) == Some(expected_source_height_millipoints)
+}
+
 #[derive(Clone, Copy)]
 struct WindowInfo {
     window_id: u32,
+    owner_pid: i32,
     bounds: CGRect,
+}
+
+fn retain_topmost_source_window(selection: CGRect) -> Option<(WindowInfo, SCWindow)> {
+    let content = SCShareableContent::create()
+        .with_exclude_desktop_windows(true)
+        .with_on_screen_windows_only(true)
+        .get()
+        .ok()?;
+    let source = topmost_source_window(selection)?;
+    let native_window = content.windows().into_iter().find(|window| {
+        let frame = window.frame();
+        window.owning_application().is_some_and(|application| {
+            source_window_identity_values_match(
+                window.window_id(),
+                application.process_id(),
+                frame.size.width,
+                frame.size.height,
+                source.window_id,
+                source.owner_pid,
+                to_unsigned_millipoints(source.bounds.size.width).unwrap_or_default(),
+                to_unsigned_millipoints(source.bounds.size.height).unwrap_or_default(),
+            )
+        })
+    })?;
+    let confirmed_source = topmost_source_window(selection)?;
+    (same_window_info(source, confirmed_source) && native_window.is_on_screen())
+        .then_some((source, native_window))
 }
 
 fn topmost_source_window(selection: CGRect) -> Option<WindowInfo> {
@@ -139,7 +215,6 @@ fn topmost_source_window(selection: CGRect) -> Option<WindowInfo> {
     };
     let list = ScopedCfRef::new(list.cast())?;
     let count = unsafe { CFArrayGetCount(list.as_cf_array()) };
-
     let windows = (0..count).filter_map(|index| {
         let dictionary = unsafe { CFArrayGetValueAtIndex(list.as_cf_array(), index) };
         unsafe { window_info_from_dictionary(dictionary.cast()) }
@@ -160,15 +235,31 @@ fn select_source_window(
     pebble_pid: i32,
     windows: impl IntoIterator<Item = RawWindowInfo>,
 ) -> Option<WindowInfo> {
-    windows.into_iter().find_map(|info| {
-        (info.owner_pid != pebble_pid
-            && info.layer == 0
-            && rect_contains_rect(info.bounds, selection))
+    windows
+        .into_iter()
+        .find_map(|info| source_window_candidate(selection, pebble_pid, info))
+}
+
+fn source_window_candidate(
+    selection: CGRect,
+    pebble_pid: i32,
+    info: RawWindowInfo,
+) -> Option<WindowInfo> {
+    (info.owner_pid != pebble_pid && info.layer == 0 && rect_contains_rect(info.bounds, selection))
         .then_some(WindowInfo {
             window_id: info.window_id,
+            owner_pid: info.owner_pid,
             bounds: info.bounds,
         })
-    })
+}
+
+fn same_window_info(left: WindowInfo, right: WindowInfo) -> bool {
+    left.window_id == right.window_id
+        && left.owner_pid == right.owner_pid
+        && (left.bounds.origin.x - right.bounds.origin.x).abs() < 0.5
+        && (left.bounds.origin.y - right.bounds.origin.y).abs() < 0.5
+        && (left.bounds.size.width - right.bounds.size.width).abs() < 0.5
+        && (left.bounds.size.height - right.bounds.size.height).abs() < 0.5
 }
 
 unsafe fn window_info_from_dictionary(dictionary: CFDictionaryRef) -> Option<RawWindowInfo> {
@@ -582,4 +673,56 @@ pub(super) fn test_select_source_window(
         );
 
     select_source_window(selection, pebble_pid, windows).map(|window| window.window_id)
+}
+
+#[cfg(test)]
+pub(super) fn test_source_window_identity_matches(
+    expected_window_id: u32,
+    expected_owner_pid: i32,
+    expected_source_size: (f64, f64),
+    actual_window_id: u32,
+    actual_owner_pid: i32,
+    actual_source_size: (f64, f64),
+) -> bool {
+    source_window_identity_matches(
+        actual_window_id,
+        actual_owner_pid,
+        actual_source_size.0,
+        actual_source_size.1,
+        &WindowCaptureTarget {
+            window_id: expected_window_id,
+            owner_pid: expected_owner_pid,
+            source_width_millipoints: to_unsigned_millipoints(expected_source_size.0)
+                .expect("width"),
+            source_height_millipoints: to_unsigned_millipoints(expected_source_size.1)
+                .expect("height"),
+            native_window: None,
+            relative_x_millipoints: 0,
+            relative_y_millipoints: 0,
+            width_millipoints: 1_000,
+            height_millipoints: 1_000,
+        },
+    )
+}
+
+#[cfg(test)]
+pub(super) fn test_same_window_info(
+    left: (u32, i32, f64, f64, f64, f64),
+    right: (u32, i32, f64, f64, f64, f64),
+) -> bool {
+    let info = |value: (u32, i32, f64, f64, f64, f64)| WindowInfo {
+        window_id: value.0,
+        owner_pid: value.1,
+        bounds: CGRect {
+            origin: CGPoint {
+                x: value.2,
+                y: value.3,
+            },
+            size: CGSize {
+                width: value.4,
+                height: value.5,
+            },
+        },
+    };
+    same_window_info(info(left), info(right))
 }

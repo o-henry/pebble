@@ -99,6 +99,7 @@ jobs:
     needs:
       - resolve
       - verify
+    environment: release
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     runs-on: ${{ matrix.runner }}

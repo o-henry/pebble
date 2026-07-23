@@ -128,6 +128,15 @@ impl PebbleSessionState {
         let (mut selection, scale_factor) = validated_selection(request)?;
         selection.region.source_window = Some(WindowCaptureTarget {
             window_id: 1,
+            owner_pid: 1,
+            source_width_millipoints: u64::try_from(selection.region.width)
+                .unwrap_or_default()
+                .saturating_mul(1_000),
+            source_height_millipoints: u64::try_from(selection.region.height)
+                .unwrap_or_default()
+                .saturating_mul(1_000),
+            #[cfg(target_os = "macos")]
+            native_window: None,
             relative_x_millipoints: 0,
             relative_y_millipoints: 0,
             width_millipoints: u64::try_from(selection.region.width)

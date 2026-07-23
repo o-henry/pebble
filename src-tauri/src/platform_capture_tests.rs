@@ -113,6 +113,69 @@ fn macos_source_binding_rejects_regions_that_span_multiple_windows() {
     assert_eq!(source, None);
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_capture_rejects_changed_source_window_identity() {
+    assert!(
+        platform_capture_test_support::source_window_identity_matches(
+            42,
+            700,
+            (900.0, 700.0),
+            42,
+            700,
+            (900.0, 700.0)
+        )
+    );
+    assert!(
+        !platform_capture_test_support::source_window_identity_matches(
+            42,
+            700,
+            (900.0, 700.0),
+            42,
+            701,
+            (900.0, 700.0)
+        )
+    );
+    assert!(
+        !platform_capture_test_support::source_window_identity_matches(
+            42,
+            700,
+            (900.0, 700.0),
+            43,
+            700,
+            (900.0, 700.0)
+        )
+    );
+    assert!(
+        !platform_capture_test_support::source_window_identity_matches(
+            42,
+            700,
+            (900.0, 700.0),
+            42,
+            700,
+            (800.0, 700.0)
+        )
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_source_binding_requires_the_same_frontmost_window_before_retaining() {
+    let original = (42, 700, 100.0, 80.0, 900.0, 700.0);
+
+    assert!(platform_capture_test_support::same_window_info(
+        original, original
+    ));
+    assert!(!platform_capture_test_support::same_window_info(
+        original,
+        (43, 700, 100.0, 80.0, 900.0, 700.0)
+    ));
+    assert!(!platform_capture_test_support::same_window_info(
+        original,
+        (42, 700, 130.0, 80.0, 900.0, 700.0)
+    ));
+}
+
 #[test]
 fn capture_bindings_do_not_expose_input_injection() {
     let bindings = include_str!("platform_capture/platform_capture_macos_sys.rs");
