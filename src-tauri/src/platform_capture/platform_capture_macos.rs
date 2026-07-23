@@ -29,10 +29,6 @@ pub(super) fn capture_region(region: &PhysicalRegion, _scale_factor: f64) -> Cap
             "The selected source window is not pinned. Select the region again.",
         )
     })?;
-    if !preflight_screen_capture_access() {
-        return Err(permission_denied(region));
-    }
-
     capture_source_window_region(region, target)
 }
 
@@ -40,7 +36,7 @@ pub(super) fn source_window_for_region(
     region: &PhysicalRegion,
     scale_factor: f64,
 ) -> Option<WindowCaptureTarget> {
-    if !preflight_screen_capture_access() {
+    if !screen_capture_access_available() {
         return None;
     }
 
@@ -112,12 +108,8 @@ fn capture_source_window_region(
         .with_source_rect(source_rect)
         .with_scales_to_fit(false)
         .with_shows_cursor(false);
-    let image = SCScreenshotManager::capture_image(&filter, &configuration).map_err(|_| {
-        capture_unavailable(
-            region,
-            "macOS could not capture the selected source window.",
-        )
-    })?;
+    let image = SCScreenshotManager::capture_image(&filter, &configuration)
+        .map_err(|_| failed_capture_error(region))?;
     if image.width() != region.width as usize || image.height() != region.height as usize {
         return Err(capture_unavailable(
             region,
@@ -462,11 +454,42 @@ fn median(values: &mut [u8]) -> Option<u8> {
 }
 
 pub(super) fn request_screen_capture_access() -> bool {
-    preflight_screen_capture_access() || unsafe { CGRequestScreenCaptureAccess() }
+    if preflight_screen_capture_access() {
+        return true;
+    }
+    if screen_capture_kit_access_available() {
+        return true;
+    }
+    if unsafe { CGRequestScreenCaptureAccess() } {
+        return true;
+    }
+    screen_capture_kit_access_available()
 }
 
 fn preflight_screen_capture_access() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
+}
+
+fn screen_capture_access_available() -> bool {
+    capture_access_from_signals(
+        preflight_screen_capture_access(),
+        screen_capture_kit_access_available,
+    )
+}
+
+fn screen_capture_kit_access_available() -> bool {
+    SCShareableContent::create()
+        .with_exclude_desktop_windows(true)
+        .with_on_screen_windows_only(true)
+        .get()
+        .is_ok()
+}
+
+fn capture_access_from_signals(
+    core_graphics_access: bool,
+    screen_capture_kit_access: impl FnOnce() -> bool,
+) -> bool {
+    core_graphics_access || screen_capture_kit_access()
 }
 
 fn capture_rect(region: &PhysicalRegion, scale_factor: f64) -> CGRect {
@@ -544,6 +567,17 @@ fn permission_denied(region: &PhysicalRegion) -> CaptureError {
         &region.monitor_id,
         "Screen recording permission is required before real capture can run.",
     )
+}
+
+fn failed_capture_error(region: &PhysicalRegion) -> CaptureError {
+    if screen_capture_access_available() {
+        capture_unavailable(
+            region,
+            "macOS could not capture the selected source window.",
+        )
+    } else {
+        permission_denied(region)
+    }
 }
 
 fn capture_unavailable(region: &PhysicalRegion, message: &'static str) -> CaptureError {
@@ -725,4 +759,12 @@ pub(super) fn test_same_window_info(
         },
     };
     same_window_info(info(left), info(right))
+}
+
+#[cfg(test)]
+pub(super) fn test_capture_access_from_signals(
+    core_graphics_access: bool,
+    screen_capture_kit_access: bool,
+) -> bool {
+    capture_access_from_signals(core_graphics_access, || screen_capture_kit_access)
 }

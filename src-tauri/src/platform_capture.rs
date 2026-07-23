@@ -206,4 +206,15 @@ pub(crate) mod platform_capture_test_support {
     ) -> bool {
         platform_capture_macos::test_same_window_info(left, right)
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn capture_access_from_signals(
+        core_graphics_access: bool,
+        screen_capture_kit_access: bool,
+    ) -> bool {
+        platform_capture_macos::test_capture_access_from_signals(
+            core_graphics_access,
+            screen_capture_kit_access,
+        )
+    }
 }

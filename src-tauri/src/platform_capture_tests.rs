@@ -36,6 +36,20 @@ fn macos_capture_never_falls_back_to_the_current_screen_coordinates() {
 
 #[cfg(target_os = "macos")]
 #[test]
+fn macos_capture_accepts_either_permission_signal() {
+    assert!(platform_capture_test_support::capture_access_from_signals(
+        true, false
+    ));
+    assert!(platform_capture_test_support::capture_access_from_signals(
+        false, true
+    ));
+    assert!(!platform_capture_test_support::capture_access_from_signals(
+        false, false
+    ));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 fn macos_capture_rect_uses_selected_region_dimensions() {
     let rect = platform_capture_test_support::capture_rect(&region(12, 34, 56, 78), 1.0);
 
