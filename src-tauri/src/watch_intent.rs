@@ -31,6 +31,7 @@ pub struct CompiledWatchIntent {
 
 #[derive(Debug, Clone, PartialEq)]
 enum WatchRule {
+    Automatic,
     Semantic,
     StuckAfterActivity,
     CrossRegionConflict,
@@ -92,6 +93,13 @@ impl CompiledWatchIntent {
         Self { intent, rule }
     }
 
+    pub fn automatic(intent: String) -> Self {
+        Self {
+            intent,
+            rule: WatchRule::Automatic,
+        }
+    }
+
     pub fn intent(&self) -> &str {
         &self.intent
     }
@@ -106,6 +114,7 @@ impl CompiledWatchIntent {
     pub fn local_engine(&self) -> Option<WatchLocalEngine> {
         match self.rule {
             WatchRule::Semantic => None,
+            WatchRule::Automatic => Some(WatchLocalEngine::Ocr),
             WatchRule::StuckAfterActivity => Some(WatchLocalEngine::VisualStability),
             WatchRule::CrossRegionConflict => Some(WatchLocalEngine::CrossRegionOcr),
             WatchRule::FollowThroughTrigger => Some(WatchLocalEngine::FollowThroughTrigger),
@@ -133,6 +142,10 @@ impl CompiledWatchIntent {
 
     pub fn detects_visual_loop(&self) -> bool {
         matches!(self.rule, WatchRule::VisualLoop)
+    }
+
+    pub fn detects_automatic_recipes(&self) -> bool {
+        matches!(self.rule, WatchRule::Automatic)
     }
 
     pub fn classify_cross_region_state(&self, text: &str) -> Option<CrossRegionState> {
@@ -212,6 +225,7 @@ impl CompiledWatchIntent {
 
     pub fn rule_summary(&self) -> String {
         match &self.rule {
+            WatchRule::Automatic => "AUTOMATIC WATCH".to_string(),
             WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
             WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
             WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),

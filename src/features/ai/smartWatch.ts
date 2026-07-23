@@ -127,7 +127,15 @@ export function smartWatchTitle(status: SmartWatchStatus | null): string {
 }
 
 export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string[] {
-  const engine = target.localEngine === "crossRegionOcr"
+  const automatic = target.ruleSummary === "AUTOMATIC WATCH";
+  const engine = automatic
+    ? automaticWatchEngine(
+        target.provider,
+        target.model,
+        target.analysisIntervalMinutes,
+        target.aiFallbackEnabled
+      )
+    : target.localEngine === "crossRegionOcr"
     ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
     : target.localEngine === "followThroughTrigger"
     ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(target.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
@@ -142,7 +150,9 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
       ? `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`
       : "LOCAL OCR ONLY · NO AI USAGE"
     : `${target.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${target.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(target.analysisIntervalMinutes)}`;
-  const completed = target.evaluationMode === "local"
+  const completed = automatic
+    ? `${target.localMatchesCompleted} LOCAL MATCHES · ${target.analysesCompleted} AI RUNS`
+    : target.evaluationMode === "local"
     ? `${target.localMatchesCompleted} MATCHES`
     : `${target.analysesCompleted} AI RUNS`;
   return [
@@ -157,7 +167,15 @@ export function smartWatchTargetSegments(target: SmartWatchTargetStatus): string
 
 export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
   if (!status.enabled) return [];
-  const engine = status.localEngine === "crossRegionOcr"
+  const automatic = status.ruleSummary === "AUTOMATIC WATCH";
+  const engine = automatic
+    ? automaticWatchEngine(
+        status.provider,
+        status.model,
+        status.analysisIntervalMinutes,
+        status.aiFallbackEnabled
+      )
+    : status.localEngine === "crossRegionOcr"
     ? "LOCAL CROSS-CHECK · USE ON 2+ REGIONS · OCR STATE ONLY · NO AI USAGE"
     : status.localEngine === "followThroughTrigger"
     ? `LOCAL FOLLOW START · EXPECT RESULT WITHIN ${smartWatchIntervalLabel(status.analysisIntervalMinutes)} · NO OCR · NO AI USAGE`
@@ -172,7 +190,9 @@ export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
       ? `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · LOCAL OCR FIRST · AI ONLY WHEN OCR CANNOT DECIDE · MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`
       : "LOCAL OCR ONLY · NO AI USAGE"
     : `${status.provider === "openAi" ? "OPENAI" : "CLAUDE"} · ${status.model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(status.analysisIntervalMinutes)}`;
-  const completed = status.evaluationMode === "local"
+  const completed = automatic
+    ? `${status.localMatchesCompleted} LOCAL MATCHES · ${status.analysesCompleted} AI RUNS`
+    : status.evaluationMode === "local"
     ? `${status.localMatchesCompleted} MATCHES`
     : `${status.analysesCompleted} AI RUNS`;
   return [
@@ -184,4 +204,16 @@ export function smartWatchStatusSegments(status: SmartWatchStatus): string[] {
       : []),
     "SELECTED REGION ONLY · MEMORY ONLY · NOTHING SAVED"
   ];
+}
+
+function automaticWatchEngine(
+  provider: AiProvider,
+  model: string,
+  minutes: SmartWatchIntervalMinutes,
+  aiFallbackEnabled: boolean
+): string {
+  const local = "AUTO LOCAL · ERROR + PROGRESS + QUEUE + STUCK + LOOP";
+  if (!aiFallbackEnabled) return `${local} · NO AI USAGE`;
+  const providerLabel = provider === "openAi" ? "OPENAI" : "CLAUDE";
+  return `${local} · ${providerLabel} · ${model.toUpperCase()} · AI MAX ${smartWatchIntervalLabel(minutes)}`;
 }

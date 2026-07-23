@@ -48,8 +48,8 @@ export function WatchRecipeBar({
   }
 
   return (
-    <div className="watch-recipes" aria-label="WATCH RECIPES">
-      <span>RECIPES</span>
+    <div className="watch-recipes" aria-label="WATCH PRESETS">
+      <span>LINK REGIONS</span>
       {BUILT_IN_WATCH_RECIPES.map((recipe) => (
         <RecipeButton
           key={recipe.id}
@@ -59,6 +59,7 @@ export function WatchRecipeBar({
           onClick={() => apply(recipe, false)}
         />
       ))}
+      {saved.length > 0 ? <span>SAVED</span> : null}
       {saved.map((recipe) => (
         <RecipeButton
           key={recipe.id}

@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { UpdateEntry } from "../features/updates/updateFeed";
+import { isAttentionEntry } from "../features/updates/updateFeed";
 import { UpdateFeedList, UpdateFeedPanel } from "./UpdateFeedPanel";
 
 describe("UpdateFeedPanel", () => {
@@ -30,6 +31,19 @@ describe("UpdateFeedPanel", () => {
     expect(markup).toContain('class="update-feed__timeline"');
     expect(markup.indexOf("FIRST")).toBeLessThan(markup.indexOf("SECOND"));
     expect(markup.indexOf("SECOND")).toBeLessThan(markup.indexOf("THIRD"));
+  });
+
+  it("keeps meaningful alerts visible without expanding routine status entries", () => {
+    expect(isAttentionEntry(entry(1, "2026-07-16T10:00:00Z", "MATCH", "REGION 1")))
+      .toBe(true);
+    expect(isAttentionEntry({
+      ...entry(2, "2026-07-16T10:01:00Z", "WAITING", "REGION 1"),
+      signal: {
+        kind: "waiting",
+        region: "REGION 1",
+        engine: "system"
+      }
+    })).toBe(false);
   });
 });
 

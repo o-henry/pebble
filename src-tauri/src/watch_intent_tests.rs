@@ -4,6 +4,32 @@ use crate::watch_intent::{
 };
 
 #[test]
+fn automatic_watch_combines_common_local_recipes_and_optional_ai_fallback() {
+    let automatic =
+        CompiledWatchIntent::automatic("Notify me about any meaningful content change.".into());
+    assert_eq!(automatic.mode(), WatchEvaluationMode::Local);
+    assert_eq!(automatic.local_engine(), Some(WatchLocalEngine::Ocr));
+    assert!(automatic.detects_automatic_recipes());
+    assert_eq!(automatic.rule_summary(), "AUTOMATIC WATCH");
+
+    for (previous, current) in [
+        ("BUILD RUNNING", "BUILD FAILED"),
+        ("QUEUE 1", "QUEUE EMPTY"),
+        ("PROGRESS 90%", "PROGRESS 100%"),
+        ("READY", "ERROR"),
+    ] {
+        assert!(matches!(
+            automatic.evaluate(Some(previous), Some(current), "en-US"),
+            LocalWatchDecision::Matched(_)
+        ));
+    }
+    assert_eq!(
+        automatic.evaluate(Some("READY"), Some("PROCESSING"), "en-US"),
+        LocalWatchDecision::NeedsAi
+    );
+}
+
+#[test]
 fn compiles_text_appearance_and_disappearance_rules() {
     let appears = CompiledWatchIntent::compile("Tell me when 'FAILED' appears".into());
     assert_eq!(appears.mode(), WatchEvaluationMode::Local);

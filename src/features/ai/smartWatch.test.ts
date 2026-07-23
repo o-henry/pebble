@@ -115,6 +115,29 @@ describe("smart watch consent", () => {
     ]);
   });
 
+  it("describes the default automatic detectors and optional AI fallback", () => {
+    expect(smartWatchTargetSegments({
+      id: "watch-1",
+      name: "REGION 1",
+      watchingFor: "NOTIFY ME ABOUT ANY MEANINGFUL CONTENT CHANGE",
+      current: true,
+      analysesCompleted: 2,
+      localMatchesCompleted: 4,
+      suppressedEvents: 0,
+      analysisIntervalMinutes: 5,
+      provider: "openAi",
+      model: "gpt-5.6-terra",
+      aiFallbackEnabled: true,
+      evaluationMode: "local",
+      localEngine: "ocr",
+      ruleSummary: "AUTOMATIC WATCH"
+    })).toEqual([
+      "REGION 1 · AUTOMATIC WATCH",
+      "AUTO LOCAL · ERROR + PROGRESS + QUEUE + STUCK + LOOP · OPENAI · GPT-5.6-TERRA · AI MAX 5 MIN",
+      "4 LOCAL MATCHES · 2 AI RUNS"
+    ]);
+  });
+
   it("describes stuck detection as local visual work with no OCR or AI", () => {
     expect(smartWatchTargetSegments({
       id: "watch-1",

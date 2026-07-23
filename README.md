@@ -69,12 +69,13 @@ Implemented:
   tile.
 - Explicit **Watch** mode with local prefiltering and a user-selected maximum AI
   cadence of 1, 5, 30, or 60 minutes. There is no fixed session analysis cap.
-- Intent Watch: text in the AI composer becomes the condition Watch evaluates;
-  an empty composer uses a general meaningful-change intent.
+- Intent Watch: text in the AI composer becomes the condition Watch evaluates.
+  An empty composer enables automatic local error, progress, queue, stuck, and
+  visual-loop detectors, with optional AI only for other meaningful changes.
 - Deterministic text appearance, disappearance, text-change, single-number
   threshold, progress, and state-word rules run locally without an AI
   connection or provider tokens.
-- **No Progress** detects when a region that was visibly active becomes stuck
+- Automatic **No Progress** detection notices when a region that was visibly active becomes stuck
   for 1, 5, 30, or 60 minutes. A static starting screen and one-poll noise do
   not alert; the rule uses local visual samples with no OCR, AI, or network use.
 - **Cross Check** compares two or three explicitly enrolled regions across
@@ -85,7 +86,7 @@ Implemented:
   stable trigger change starts the selected 1, 5, 30, or 60 minute deadline;
   Pebble alerts only for result regions that do not change in time. It uses
   local visual state with no OCR, AI, network request, or input control.
-- **Loop Detector** finds 2- to 4-step visual cycles repeated three times, such
+- Automatic **Loop Detector** finds 2- to 4-step visual cycles repeated three times, such
   as retry, refresh, or redirect loops. It compares at most twelve compact
   64-byte color fingerprints in memory and never retains frames, runs OCR, or
   calls AI.
@@ -94,14 +95,17 @@ Implemented:
 - Up to three independently bound Watch regions can stay active. Selecting a
   new region does not retarget an existing Watch, and every region can be
   stopped separately.
-- Privacy-safe Watch recipes store only a name, intent, and recommended
-  interval. They never store pixels, coordinates, OCR output, or credentials.
+- The built-in multi-region recipes are limited to **Cross Check** and the
+  **Follow Start/Result** roles that cannot be inferred safely. Saved custom
+  recipes store only a name, intent, and recommended interval. They never store
+  pixels, coordinates, OCR output, or credentials.
 - Production Apple Vision OCR runs only after a stable material-change candidate,
   except for the one baseline read explicitly required by each Cross Check
   region. OCR remains ephemeral in memory.
 - Changed before/after crops are sent only to the provider selected when Watch
   is enabled; unchanged frames never trigger AI.
-- Collapsible Updates feed with structured region, signal, engine or model,
+- Collapsible Updates feed that opens automatically for a meaningful alert and
+  retains structured region, signal, engine or model,
   confidence, and duration metadata. Safe Watch lifecycle markers and redacted
   AI result markers are appended to one local Markdown journal under Downloads.
 - **Change Story** groups two to eight meaningful signals separated by no more
@@ -133,7 +137,7 @@ Not shipped yet:
 | Low FPS on purpose | Default refresh is 1 FPS; first public target caps at 5 FPS. |
 | No frame history | Frames are not stored as a timeline, replay, or preview archive. |
 | Local first | Visual filtering and Apple Vision OCR run locally; AI handoff stays behind those gates. |
-| Watch is opt-in | Startup explains the scope; every new region starts with Watch off. |
+| Watch is opt-in | Every new region starts with Watch off and the AI panel keeps its active scope and Stop control visible. |
 | AI is bounded | Manual AI uses **Send**; Watch AI requires opt-in and only runs after a local material-change gate. |
 | Instant privacy | Privacy blank stops capture loops, not just the UI. |
 
@@ -162,8 +166,10 @@ Safe Watch event markers and structured metadata such as region label, signal
 type, engine or model name, confidence, and generation time are appended to
 `Downloads/Pebble/pebble-updates.md`. Detailed AI-generated Watch summaries can
 appear in Pebble and macOS notifications, but their screen-derived values are
-omitted from the journal. Captured pixels, capture coordinates, window IDs, OCR
-text, manual AI questions, and manual AI answers are never written there.
+omitted from the journal. macOS controls banner duration, so meaningful alerts
+also expand the persistent Updates feed and keep the menu-bar attention marker
+active until Pebble is opened. Captured pixels, capture coordinates, window IDs,
+OCR text, manual AI questions, and manual AI answers are never written there.
 
 Persisted configuration is limited to safe settings such as named regions,
 coordinates, and refresh configuration. See
@@ -211,14 +217,16 @@ not silently retarget or stop an existing Watch. The AI panel lists active
 regions; each row has its own **Stop** action. The menu-bar indicator marks new
 matched events rather than every local check.
 
-Every five seconds, Rust performs a local visual check. A candidate must settle
-before Apple Vision OCR runs. Common text, number, progress, and state rules are
-resolved locally and can run with no AI connection or token use. Ambiguous or
-semantic conditions require a connected provider; only then may one previous
-and current crop pair be sent, no more often than the selected 1, 5, 30, or 60
-minute interval. There is no fixed session count cap.
+Every five seconds, Rust performs a local visual check. With an empty composer,
+  one press of **Watch** automatically enables common error, progress, queue,
+stuck, and loop detectors without requiring recipe selection. A candidate must
+settle before Apple Vision OCR runs. Common text, number, progress, and state
+rules are resolved locally and can run with no AI connection or token use.
+Ambiguous or semantic changes use a connected provider when available; only
+then may one previous and current crop pair be sent, no more often than the
+selected 1, 5, 30, or 60 minute interval. There is no fixed session count cap.
 
-The built-in **No Progress** recipe follows a separate zero-token path. It first
+Automatic **No Progress** detection follows a separate zero-token path. It first
 requires repeated visible activity or one confirmed stable change, then starts
 the selected interval when the region becomes stable. It sends one **Stuck**
 signal if that interval expires, suppresses repeats while the screen remains
@@ -243,7 +251,7 @@ results still missing. A new trigger change rearms the check, while capture
 failure, target removal, privacy blank, or app shutdown cancels pending state.
 This path retains target IDs and ticks only and never runs OCR or AI.
 
-**Loop Detector** seeds one compact fingerprint from the selected baseline and
+Automatic **Loop Detector** seeds one compact fingerprint from the selected baseline and
 adds another only after a stable material change. Each fingerprint contains an
 8-by-8 grid of heavily quantized average RGB and local contrast values. Pebble keeps at most twelve
 in memory, detects distinct 2- to 4-step patterns only after three complete
@@ -289,19 +297,18 @@ is never persisted, included in Updates, or sent to AI.
 5. Release the pointer. The always-on-top Pebble opens and starts at 1 FPS.
 6. Use the single **Live/Pause** toggle, **Select Region**, **AI**, and preview
    visibility controls.
-7. Toggle **AI**, type what matters, then press **Watch**. Open **Options** only
-   when changing the interval, provider, model, or a saved Watch recipe.
-   Local text, number, progress, and state rules can start without connecting a
-   provider. Choose **No Progress** to detect an active region becoming stuck
-   without OCR or AI. Semantic rules ask you to connect a provider.
+7. Toggle **AI** and press **Watch** for automatic local error, progress,
+   queue, stuck, and loop detection. Type a condition first only when you want a
+   narrower rule. Open **Options** only when changing the interval, provider,
+   model, a saved condition, or an explicit multi-region role.
 8. Repeat selection and Watch activation for up to three independent regions.
    Their status rows remain visible in the AI panel and can be stopped one by
    one. To compare apps, choose **Cross Check** and enable Watch on at least two
    regions; the interval control is disabled because conflict confirmation is a
    fixed 10 seconds. To verify a downstream response, apply **Follow Start** to
    the source, choose its deadline, then apply **Follow Result** to one or two
-   destination regions. Choose **Loop Detector** for repeated retry or refresh
-   cycles; it uses a fixed three-cycle confirmation.
+   destination regions. Repeated retry or refresh loops are detected
+   automatically after three complete cycles.
 9. Type a question and press **Send** when one-shot analysis is wanted. Change
    the provider or model under **Options** when the default is not appropriate.
    This sends one fresh crop only for that request.

@@ -194,3 +194,12 @@ export function updateSignalLabel(signal: WatchSignal): string {
   }
   return segments.join(" · ");
 }
+
+export function isAttentionEntry(entry: UpdateEntry): boolean {
+  return Boolean(
+    entry.signal &&
+      ["match", "stuck", "conflict", "noFollowThrough", "loop"].includes(
+        entry.signal.kind
+      )
+  );
+}

@@ -15,10 +15,10 @@ The app must make capture visible:
   window is hidden; macOS owns the system capture indicator.
 - Every tile shows whether it is live, paused, hidden, or blanked.
 - Privacy blank is always reachable.
-- App startup shows a native Watch scope notice before region selection.
 - Watch starts off for every newly selected region, supports at most three
   active regions, and requires explicit per-region consent.
-- The startup notice discloses local monitoring before Watch can be enabled.
+- Watch starts only after the user presses its in-app control. The active target,
+  scope, processing path, and stop control remain visible in the AI panel.
 - Manual AI runs after **Send**; Watch AI runs only after its local change gate.
 
 ## Local-First Default

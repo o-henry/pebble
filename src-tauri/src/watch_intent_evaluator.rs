@@ -11,6 +11,9 @@ pub(super) fn evaluate(
     locale: &str,
 ) -> LocalWatchDecision {
     match rule {
+        WatchRule::Automatic => {
+            return evaluate_automatic(previous_text, current_text, locale);
+        }
         WatchRule::StuckAfterActivity
         | WatchRule::CrossRegionConflict
         | WatchRule::FollowThroughTrigger
@@ -26,7 +29,8 @@ pub(super) fn evaluate(
     let current = normalize(current);
 
     let matched = match rule {
-        WatchRule::Semantic
+        WatchRule::Automatic
+        | WatchRule::Semantic
         | WatchRule::StuckAfterActivity
         | WatchRule::CrossRegionConflict
         | WatchRule::FollowThroughTrigger
@@ -90,8 +94,29 @@ fn decision_for_match(rule: &WatchRule, matched: bool, locale: &str) -> LocalWat
     })
 }
 
+fn evaluate_automatic(
+    previous_text: Option<&str>,
+    current_text: Option<&str>,
+    locale: &str,
+) -> LocalWatchDecision {
+    for rule in [
+        WatchRule::TextAppears("build failed".to_string()),
+        WatchRule::TextAppears("queue empty".to_string()),
+        WatchRule::ProgressReaches(100.0),
+        WatchRule::StateAppears(WatchState::Error),
+    ] {
+        if let LocalWatchDecision::Matched(event) =
+            evaluate(&rule, previous_text, current_text, locale)
+        {
+            return LocalWatchDecision::Matched(event);
+        }
+    }
+    LocalWatchDecision::NeedsAi
+}
+
 fn rule_summary(rule: &WatchRule) -> String {
     match rule {
+        WatchRule::Automatic => "AUTOMATIC WATCH".to_string(),
         WatchRule::Semantic => "AI SEMANTIC MATCH".to_string(),
         WatchRule::StuckAfterActivity => "NO PROGRESS AFTER ACTIVITY".to_string(),
         WatchRule::CrossRegionConflict => "CROSS-REGION STATUS CONFLICT".to_string(),
@@ -127,6 +152,7 @@ fn contains_state(value: &str, state: WatchState) -> bool {
 
 fn local_summary(rule: &WatchRule, locale: &str) -> String {
     let condition = match rule {
+        WatchRule::Automatic => "AUTOMATIC WATCH MATCHED".to_string(),
         WatchRule::TextAppears(text) => format!("TEXT APPEARED: {text}"),
         WatchRule::TextDisappears(text) => format!("TEXT DISAPPEARED: {text}"),
         WatchRule::TextChanges => "VISIBLE TEXT CHANGED".to_string(),

@@ -283,6 +283,9 @@ impl WatchTargetRegistry {
         let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
             return false;
         };
+        if target.config.plan.detects_automatic_recipes() {
+            target.reset_visual_activity();
+        }
         if !target.accept_event(fingerprint, tick) {
             return false;
         }
@@ -487,7 +490,7 @@ impl WatchTargetRegistry {
         let Some(target) = self.targets.iter_mut().find(|target| target.id == id) else {
             return false;
         };
-        if !target.config.plan.detects_visual_loop() {
+        if !target.uses_visual_loop_detector() {
             return false;
         }
         target.visual_loop.seed(fingerprint);
@@ -500,7 +503,7 @@ impl WatchTargetRegistry {
         fingerprint: VisualFingerprint,
     ) -> Option<LocalWatchMatch> {
         let target = self.targets.iter_mut().find(|target| target.id == id)?;
-        if !target.config.plan.detects_visual_loop() {
+        if !target.uses_visual_loop_detector() {
             return None;
         }
         let pattern = target.visual_loop.observe(fingerprint)?;
@@ -628,6 +631,15 @@ impl WatchTargetRegistry {
 }
 
 impl WatchTarget {
+    fn uses_visual_stability_detector(&self) -> bool {
+        self.config.plan.detects_stuck_after_activity()
+            || self.config.plan.detects_automatic_recipes()
+    }
+
+    fn uses_visual_loop_detector(&self) -> bool {
+        self.config.plan.detects_visual_loop() || self.config.plan.detects_automatic_recipes()
+    }
+
     fn context(&self) -> WatchAnalysisContext {
         WatchAnalysisContext {
             provider: self.config.provider,
@@ -694,7 +706,7 @@ impl WatchTarget {
     }
 
     fn note_visual_activity(&mut self, tick: u64, settled: bool) {
-        if !self.config.plan.detects_stuck_after_activity() {
+        if !self.uses_visual_stability_detector() {
             return;
         }
         if settled {
@@ -713,7 +725,7 @@ impl WatchTarget {
     }
 
     fn observe_visual_stability(&mut self, tick: u64) -> Option<LocalWatchMatch> {
-        if !self.config.plan.detects_stuck_after_activity() {
+        if !self.uses_visual_stability_detector() {
             return None;
         }
         self.visual_activity_streak = 0;

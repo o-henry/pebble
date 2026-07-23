@@ -22,11 +22,6 @@ interface RecipeStorage {
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
   builtIn(
-    "visual-loop",
-    "LOOP DETECTOR",
-    "Tell me when this region repeats the same visual cycle"
-  ),
-  builtIn(
     "follow-through-trigger",
     "FOLLOW START",
     "Use this region as the FOLLOW THROUGH trigger"
@@ -40,16 +35,7 @@ export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
     "cross-region-conflict",
     "CROSS CHECK",
     "Tell me when watched regions show opposing success and error states"
-  ),
-  builtIn(
-    "stuck-after-activity",
-    "NO PROGRESS",
-    "Tell me when this region stops changing after activity"
-  ),
-  builtIn("build-failed", "BUILD FAILED", "Tell me when 'BUILD FAILED' appears"),
-  builtIn("error-appears", "ERROR APPEARS", "Tell me when 'ERROR' appears"),
-  builtIn("progress-complete", "PROGRESS 100%", "Tell me when progress reaches 100%"),
-  builtIn("queue-empty", "QUEUE EMPTY", "Tell me when 'QUEUE EMPTY' appears")
+  )
 ];
 
 export function loadWatchRecipes(storage: RecipeStorage): WatchRecipe[] {

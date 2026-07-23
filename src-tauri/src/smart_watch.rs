@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
-use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     ai_runtime::AiProvider,
@@ -26,20 +25,8 @@ pub const WATCH_CAPTURE_INTERVAL_SECONDS: u64 = 5;
 pub const DEFAULT_ANALYSIS_INTERVAL_MINUTES: u16 = 5;
 pub const ANALYSIS_INTERVAL_OPTIONS_MINUTES: [u16; 4] = [1, 5, 30, 60];
 pub const SMART_WATCH_STATUS_EVENT: &str = "pebble://smart-watch-status";
-pub const STARTUP_NOTICE_TITLE: &str = "PEBBLE WATCH";
-pub const STARTUP_NOTICE_BODY: &str =
-    "WHEN ENABLED, WATCH CHECKS ONLY YOUR EXPLICITLY SELECTED REGIONS (UP TO 3) EVERY 5S, INCLUDING WHILE THE WINDOW IS HIDDEN. LOCAL STABILITY, FOLLOW THROUGH, AND LOOP RULES USE VISUAL CHANGE STATE OR COMPACT MEMORY-ONLY FINGERPRINTS, WITH NO OCR OR AI, AND NEVER CONTROL INPUT. CROSS CHECK RUNS EPHEMERAL LOCAL OCR ON EACH ACTIVATED REGION BASELINE AND STABLE CHANGE. OTHER RULES USE APPLE VISION OCR AFTER A MATERIAL CHANGE, WITH AI ONLY WHEN ALLOWED AND NO MORE OFTEN THAN THE SELECTED INTERVAL.";
 pub const DEFAULT_WATCH_INTENT: &str = "Notify me about any meaningful content change.";
 const MAX_WATCH_INTENT_CHARS: usize = 500;
-
-pub fn show_startup_notice(app: &tauri::AppHandle) {
-    let _ = app
-        .notification()
-        .builder()
-        .title(STARTUP_NOTICE_TITLE)
-        .body(STARTUP_NOTICE_BODY)
-        .show();
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,7 +129,11 @@ impl SmartWatchState {
         validate_analysis_interval(analysis_interval_minutes)?;
         let model = normalized_model(provider, model)?;
         let (intent, custom_intent) = normalized_intent(intent)?;
-        let plan = CompiledWatchIntent::compile(intent);
+        let plan = if custom_intent {
+            CompiledWatchIntent::compile(intent)
+        } else {
+            CompiledWatchIntent::automatic(intent)
+        };
         if matches!(
             plan.local_engine(),
             Some(
@@ -355,7 +346,7 @@ impl Default for WatchTargetRegistry {
             analysis_interval_minutes: DEFAULT_ANALYSIS_INTERVAL_MINUTES,
             provider: AiProvider::OpenAi,
             model: "gpt-5.6-terra".to_string(),
-            plan: CompiledWatchIntent::compile(DEFAULT_WATCH_INTENT.to_string()),
+            plan: CompiledWatchIntent::automatic(DEFAULT_WATCH_INTENT.to_string()),
             custom_intent: false,
             locale: "und".to_string(),
             ai_fallback_enabled: true,
@@ -541,31 +532,14 @@ mod tests {
     use super::{
         SetSmartWatchRequest, SmartWatchErrorCode, SmartWatchState, WatchRegionAuthorization,
         DEFAULT_ANALYSIS_INTERVAL_MINUTES, DEFAULT_WATCH_INTENT, SMART_WATCH_CONSENT_VERSION,
-        STARTUP_NOTICE_BODY,
     };
     use crate::{
         ai_runtime::AiProvider,
         capture_backend::cropped_frame,
         region_selection_types::{PhysicalRegion, WindowCaptureTarget},
         visual_loop::VisualFingerprint,
-        watch_intent::CrossRegionState,
+        watch_intent::{CrossRegionState, WatchEvaluationMode, WatchLocalEngine},
     };
-
-    #[test]
-    fn startup_notice_explains_activation_and_local_privacy() {
-        assert!(STARTUP_NOTICE_BODY.contains("EVERY 5S"));
-        assert!(STARTUP_NOTICE_BODY.contains("EXPLICITLY SELECTED REGIONS"));
-        assert!(STARTUP_NOTICE_BODY.contains("UP TO 3"));
-        assert!(STARTUP_NOTICE_BODY.contains("WINDOW IS HIDDEN"));
-        assert!(STARTUP_NOTICE_BODY.contains("SELECTED INTERVAL"));
-        assert!(STARTUP_NOTICE_BODY.contains("NO OCR OR AI"));
-        assert!(STARTUP_NOTICE_BODY.contains("FOLLOW THROUGH"));
-        assert!(STARTUP_NOTICE_BODY.contains("LOOP RULES"));
-        assert!(STARTUP_NOTICE_BODY.contains("MEMORY-ONLY FINGERPRINTS"));
-        assert!(STARTUP_NOTICE_BODY.contains("NEVER CONTROL INPUT"));
-        assert!(STARTUP_NOTICE_BODY.contains("CROSS CHECK RUNS EPHEMERAL LOCAL OCR"));
-        assert!(!STARTUP_NOTICE_BODY.contains("6 ANALYSES"));
-    }
 
     #[test]
     fn watch_is_off_until_current_consent_is_supplied() {
@@ -853,7 +827,42 @@ mod tests {
             default_state.begin_analysis(&default_id, 1).unwrap().intent,
             DEFAULT_WATCH_INTENT
         );
-        assert!(!default_state.status().custom_intent);
+        let default_status = default_state.status();
+        assert!(!default_status.custom_intent);
+        assert_eq!(default_status.rule_summary, "AUTOMATIC WATCH");
+        assert_eq!(default_status.evaluation_mode, WatchEvaluationMode::Local);
+        assert_eq!(default_status.local_engine, Some(WatchLocalEngine::Ocr));
+    }
+
+    #[test]
+    fn automatic_watch_runs_local_detectors_without_an_ai_connection() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(SMART_WATCH_CONSENT_VERSION, "", 1);
+        request.ai_fallback_enabled = false;
+        let status = state.configure(authorization(1, 0), request).unwrap();
+        assert!(status.enabled);
+        assert_eq!(status.rule_summary, "AUTOMATIC WATCH");
+
+        let id = current_target_id(&state);
+        state.note_visual_activity(&id, 1, false);
+        state.note_visual_activity(&id, 2, false);
+        state.note_visual_activity(&id, 3, true);
+        assert!(state.observe_visual_stability(&id, 14).1.is_none());
+        assert!(state.observe_visual_stability(&id, 15).1.is_some());
+    }
+
+    #[test]
+    fn automatic_local_match_clears_the_stuck_timer() {
+        let state = SmartWatchState::default();
+        let mut request = watch_request(SMART_WATCH_CONSENT_VERSION, "", 1);
+        request.ai_fallback_enabled = false;
+        state.configure(authorization(1, 0), request).unwrap();
+        let id = current_target_id(&state);
+
+        state.note_visual_activity(&id, 1, true);
+        let (_, accepted) = state.finish_local_match(&id, "local:progress reaches 100", 2);
+        assert!(accepted);
+        assert!(state.observe_visual_stability(&id, 100).1.is_none());
     }
 
     #[test]

@@ -4,6 +4,7 @@ import {
   buildChangeStoryItems,
   changeStoryLabel,
   formatUpdateTime,
+  isAttentionEntry,
   mergeUpdateEntry,
   updateSignalLabel,
   type ChangeStory,
@@ -25,10 +26,16 @@ export function UpdateFeedPanel() {
     let active = true;
     let unlisten: () => void = () => undefined;
     getUpdateFeed()
-      .then((snapshot) => active && setFeed(snapshot))
+      .then((snapshot) => {
+        if (!active) return;
+        setFeed(snapshot);
+        if (snapshot.entries.some(isAttentionEntry)) setExpanded(true);
+      })
       .catch(() => undefined);
     void listenToUpdateFeed((entry) => {
-      if (active) setFeed((current) => mergeUpdateEntry(current, entry));
+      if (!active) return;
+      setFeed((current) => mergeUpdateEntry(current, entry));
+      if (isAttentionEntry(entry)) setExpanded(true);
     }).then((nextUnlisten) => {
       if (active) unlisten = nextUnlisten;
       else nextUnlisten();

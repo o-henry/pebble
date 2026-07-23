@@ -18,17 +18,11 @@ function memoryStorage(initial?: string) {
 }
 
 describe("watch recipes", () => {
-  it("ships local-first generic recipes", () => {
+  it("keeps only recipes that require explicit multi-region roles", () => {
     expect(BUILT_IN_WATCH_RECIPES.map((recipe) => recipe.name)).toEqual([
-      "LOOP DETECTOR",
       "FOLLOW START",
       "FOLLOW RESULT",
-      "CROSS CHECK",
-      "NO PROGRESS",
-      "BUILD FAILED",
-      "ERROR APPEARS",
-      "PROGRESS 100%",
-      "QUEUE EMPTY"
+      "CROSS CHECK"
     ]);
   });
 

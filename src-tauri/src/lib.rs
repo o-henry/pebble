@@ -655,7 +655,9 @@ async fn evaluate_watch_target(
                 if context.plan.detects_cross_region_conflict() {
                     let state = classify_cross_region_frame(&context.plan, &frame).await;
                     watch.update_cross_region_state(&target.id, state);
-                } else if context.plan.detects_visual_loop() {
+                } else if context.plan.detects_visual_loop()
+                    || context.plan.detects_automatic_recipes()
+                {
                     if let Some(fingerprint) = VisualFingerprint::from_frame(&frame) {
                         watch.seed_visual_loop(&target.id, fingerprint);
                     }
@@ -696,6 +698,16 @@ async fn evaluate_watch_target(
     let Some(context) = watch.current_context(&target.id) else {
         return;
     };
+    if context.plan.detects_automatic_recipes() {
+        watch.note_visual_activity(&target.id, tick, true);
+        if let Some(fingerprint) = VisualFingerprint::from_frame(&frame) {
+            let (status, matched) = watch.observe_visual_loop(&target.id, fingerprint);
+            if let Some(event) = matched {
+                smart_watch::emit_status(app, status);
+                emit_local_visual_loop_event(app, &target.name, &event.summary);
+            }
+        }
+    }
     if context.plan.detects_stuck_after_activity() {
         pending.remove(&target.id);
         watch.note_visual_activity(&target.id, tick, true);
@@ -719,19 +731,7 @@ async fn evaluate_watch_target(
             let (status, matched) = watch.observe_visual_loop(&target.id, fingerprint);
             if let Some(event) = matched {
                 smart_watch::emit_status(app, status);
-                emit_watch_event(
-                    app,
-                    WatchEventNotice {
-                        target_name: &target.name,
-                        related_regions: &[],
-                        kind: WatchSignalKind::Loop,
-                        engine: WatchSignalEngine::LocalVisualLoop,
-                        model: None,
-                        confidence: "HIGH",
-                        duration_ms: None,
-                        summary: &event.summary,
-                    },
-                );
+                emit_local_visual_loop_event(app, &target.name, &event.summary);
             }
         }
         return;
@@ -781,6 +781,22 @@ async fn evaluate_watch_target(
             }
         },
     }
+}
+
+fn emit_local_visual_loop_event(app: &AppHandle, target_name: &str, summary: &str) {
+    emit_watch_event(
+        app,
+        WatchEventNotice {
+            target_name,
+            related_regions: &[],
+            kind: WatchSignalKind::Loop,
+            engine: WatchSignalEngine::LocalVisualLoop,
+            model: None,
+            confidence: "HIGH",
+            duration_ms: None,
+            summary,
+        },
+    );
 }
 
 #[derive(Debug)]
@@ -903,6 +919,20 @@ fn watch_started_log(
     } else {
         "GENERAL MEANINGFUL CHANGE"
     };
+    if !custom_intent {
+        let ai = if ai_fallback_enabled {
+            format!(
+                " · {provider} · {} FOR OTHER MEANINGFUL CHANGES · MAX ONCE EVERY {}",
+                model.to_ascii_uppercase(),
+                watch_interval_label(analysis_interval_minutes)
+            )
+        } else {
+            " · NO AI CONNECTION".to_string()
+        };
+        return format!(
+            "WATCH STARTED · AUTOMATIC LOCAL DETECTORS · ERROR, PROGRESS, QUEUE, NO PROGRESS, AND VISUAL LOOP{ai}"
+        );
+    }
     if local_engine == Some(WatchLocalEngine::CrossRegionOcr) {
         return format!(
             "WATCH STARTED · {intent} · CROSS CHECK · USE ON 2+ REGIONS · LOCAL OCR ON BASELINE + STABLE CHANGES · FIXED 10S CONFIRMATION · NO AI USAGE"
@@ -1286,7 +1316,6 @@ pub fn run() -> tauri::Result<()> {
         .manage(PebbleSessionState::default())
         .setup(|app| {
             menu_bar::setup(app)?;
-            smart_watch::show_startup_notice(app.handle());
             start_background_watch(app.handle().clone());
             Ok(())
         })
