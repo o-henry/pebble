@@ -1780,13 +1780,19 @@ impl AppServerProcess {
         secure_directory(&app_data_dir)?;
         secure_directory(&codex_home)?;
 
+        #[cfg(target_os = "macos")]
+        let system_home = Some(app.path().home_dir().map_err(|_| sidecar_error())?);
+        #[cfg(not(target_os = "macos"))]
+        let system_home = None;
+        let environment_home = codex_environment_home(&app_data_dir, system_home)?;
+
         let command = app
             .shell()
             .sidecar("codex")
             .map_err(|_| sidecar_error())?
             .args(codex_policy::app_server_args())
             .env_clear()
-            .env("HOME", app_data_dir.as_os_str())
+            .env("HOME", environment_home.as_os_str())
             .env("CODEX_HOME", codex_home.as_os_str())
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .env("LANG", "en_US.UTF-8")
@@ -1905,6 +1911,22 @@ impl AppServerProcess {
     }
 }
 
+fn codex_environment_home(
+    app_data_dir: &Path,
+    system_home: Option<PathBuf>,
+) -> Result<PathBuf, AiRuntimeError> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app_data_dir;
+        system_home.ok_or_else(sidecar_error)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = system_home;
+        Ok(app_data_dir.to_path_buf())
+    }
+}
+
 impl Drop for AppServerProcess {
     fn drop(&mut self) {
         if let Some(child) = self.child.take() {
@@ -1949,6 +1971,8 @@ fn sidecar_error_for(provider: AiProvider) -> AiRuntimeError {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+
     #[cfg(unix)]
     use std::{
         fs,
@@ -1960,10 +1984,10 @@ mod tests {
 
     use super::{
         chatgpt_login_params, claude_api_runtime_error, claude_image_input, claude_status,
-        claude_subscription_models, encode_frame_data_url, login_failure_message,
-        normalize_question, normalized_locale, parse_claude_answer, parse_watch_analysis,
-        secure_directory, select_balanced_model, validate_auth_url, watch_prompt, AiConnectionMode,
-        AiRuntimeErrorCode, WATCH_INSTRUCTIONS,
+        claude_subscription_models, codex_environment_home, encode_frame_data_url,
+        login_failure_message, normalize_question, normalized_locale, parse_claude_answer,
+        parse_watch_analysis, secure_directory, select_balanced_model, validate_auth_url,
+        watch_prompt, AiConnectionMode, AiRuntimeErrorCode, WATCH_INSTRUCTIONS,
     };
     use crate::{
         capture_backend::{cropped_frame, FrameStoragePolicy},
@@ -2006,6 +2030,30 @@ mod tests {
 
         assert!(secure_directory(&link).is_err());
         fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_codex_process_uses_system_home_for_keychain_lookup() {
+        let app_data = Path::new("/private/pebble");
+        let system_home = PathBuf::from("/Users/person");
+
+        assert_eq!(
+            codex_environment_home(app_data, Some(system_home.clone())).expect("system home"),
+            system_home
+        );
+        assert!(codex_environment_home(app_data, None).is_err());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn non_macos_codex_process_keeps_private_home() {
+        let app_data = Path::new("/private/pebble");
+
+        assert_eq!(
+            codex_environment_home(app_data, None).expect("private home"),
+            app_data
+        );
     }
 
     #[test]

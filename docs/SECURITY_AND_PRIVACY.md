@@ -260,11 +260,13 @@ Webviews do not have:
 Rust alone starts the fixed bundled OpenAI sidecar or a validated installed
 Claude executable. It opens only an exact-host OpenAI sign-in URL or the fixed
 official Claude installation page. The webview cannot launch arbitrary
-commands or URLs. AI processes receive a private app-data directory as `HOME`,
-an otherwise cleared environment, and no inherited proxy or credential
-variables. Provider runtime state stays in private 0700 app-data directories.
-Any permission addition requires a decision note explaining why it is necessary
-and how it is bounded.
+commands or URLs. On macOS, the OpenAI sidecar receives the real `HOME` path
+only so the system can locate the default login keychain; its state remains
+isolated under Pebble's private 0700 `CODEX_HOME`. Other platforms keep the
+private app-data directory as `HOME`. AI processes otherwise receive a cleared
+environment with no inherited proxy or credential variables. Any permission
+addition requires a decision note explaining why it is necessary and how it is
+bounded.
 
 The named-region configuration is limited to 1 MiB, stored in a mode 0700
 directory, and atomically replaced through a mode 0600 temporary file after it
