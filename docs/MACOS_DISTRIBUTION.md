@@ -55,7 +55,7 @@ deletes the temporary keychain and files after every run.
 2. Update `docs/RELEASE_NOTES.md`.
 3. Run the normal test, lint, build, and Clippy checks.
 4. Run `npm run release:check`.
-5. Push a new immutable version tag matching those files, such as `v0.2.1`.
+5. Push a new immutable version tag matching those files, such as `v0.2.2`.
    Never move or reuse a failed release tag.
 6. Confirm both architecture jobs pass signing, notarization, stapling,
    Gatekeeper assessment, and artifact verification.

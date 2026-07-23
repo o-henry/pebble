@@ -73,6 +73,7 @@ jobs:
           rustup toolchain install stable --profile minimal --no-self-update
           rustup default stable
           npm ci
+          npm run prepare:sidecar
 
       - name: Verify frontend and release policy
         shell: bash
