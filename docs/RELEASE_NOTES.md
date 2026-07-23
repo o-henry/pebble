@@ -1,6 +1,6 @@
 # Release Notes
 
-## 0.2.0-pre-alpha
+## 0.2.1-pre-alpha
 
 This is a contributor-facing pre-alpha demo build.
 
@@ -26,6 +26,10 @@ This is a contributor-facing pre-alpha demo build.
   generation-time metadata.
 - Intent-aware material-change alerts with selectable 1, 5, 30, or 60 minute
   maximum AI cadence, orange menu-bar state, and native notifications.
+- Automatic default Watch rules for errors, failed builds, completed progress,
+  empty queues, stalled activity, and repeating visual loops.
+- Persistent in-app visibility for meaningful Watch results after the
+  system-controlled macOS notification banner disappears.
 - Local text, single-number threshold, progress, and state Watch rules that can
   run with no AI connection or token usage.
 - Local No Progress Watch that alerts once when a previously active region
@@ -45,8 +49,8 @@ This is a contributor-facing pre-alpha demo build.
 - Stable-candidate animation suppression and per-region semantic event dedupe.
 - Up to three independently source-bound Watch regions with stable labels,
   individual stop actions, and background operation while Pebble is hidden.
-- Privacy-safe local Watch recipes containing only names, intents, and
-  recommended intervals.
+- Privacy-safe local multi-region link presets containing only names, intents,
+  and recommended intervals.
 - Desktop-wide product positioning that covers browsers and native apps rather
   than browser content alone.
 - Manual smoke checklist and issue templates.
@@ -71,8 +75,8 @@ This is a contributor-facing pre-alpha demo build.
 
 ### Known Limits
 
-- No signed installer is published until the repository owner configures the
-  required Apple Developer certificate and notarization secrets.
+- This prerelease remains pre-alpha until Screen Recording permission
+  continuity is confirmed on clean Intel and Apple Silicon Macs.
 - No Homebrew formula yet.
 - Multi-monitor selection is still limited to the display containing the main
   window.
