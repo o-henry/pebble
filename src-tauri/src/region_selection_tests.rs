@@ -23,6 +23,11 @@ fn source_window_identity_is_never_serialized_with_region_geometry() {
         .expect("region selection");
     selection.region.source_window = Some(WindowCaptureTarget {
         window_id: 42,
+        owner_pid: 7,
+        source_width_millipoints: 800_000,
+        source_height_millipoints: 600_000,
+        #[cfg(target_os = "macos")]
+        native_window: None,
         relative_x_millipoints: 10_000,
         relative_y_millipoints: 20_000,
         width_millipoints: 200_000,

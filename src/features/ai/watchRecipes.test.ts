@@ -3,6 +3,7 @@ import {
   BUILT_IN_WATCH_RECIPES,
   MAX_WATCH_RECIPES,
   WATCH_RECIPE_STORAGE_KEY,
+  clearWatchRecipes,
   loadWatchRecipes,
   removeWatchRecipe,
   saveWatchRecipe
@@ -13,7 +14,8 @@ function memoryStorage(initial?: string) {
   if (initial) values.set(WATCH_RECIPE_STORAGE_KEY, initial);
   return {
     getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value)
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key)
   };
 }
 
@@ -49,7 +51,25 @@ describe("watch recipes", () => {
     recipes[0].intent = "x".repeat(501);
     const storage = memoryStorage(JSON.stringify({ version: 1, recipes }));
     expect(loadWatchRecipes(storage)).toHaveLength(MAX_WATCH_RECIPES);
-    expect(loadWatchRecipes(memoryStorage("not json"))).toEqual([]);
+    const malformed = memoryStorage("not json");
+    expect(loadWatchRecipes(malformed)).toEqual([]);
+    expect(malformed.getItem(WATCH_RECIPE_STORAGE_KEY)).toBeNull();
+  });
+
+  it("rewrites partially valid storage without unknown or sensitive fields", () => {
+    const storage = memoryStorage(JSON.stringify({
+      version: 1,
+      recipes: [{
+        id: "recipe-safe",
+        name: "SAFE",
+        intent: "Tell me when READY appears",
+        recommendedIntervalMinutes: 5,
+        capturedText: "private value"
+      }]
+    }));
+
+    expect(loadWatchRecipes(storage)).toHaveLength(1);
+    expect(storage.getItem(WATCH_RECIPE_STORAGE_KEY)).not.toContain("private value");
   });
 
   it("deduplicates and removes saved recipes", () => {
@@ -57,5 +77,14 @@ describe("watch recipes", () => {
     saveWatchRecipe(storage, "Tell me when READY appears", 5, "recipe-one");
     expect(saveWatchRecipe(storage, "Tell me when READY appears", 30, "recipe-two")).toHaveLength(1);
     expect(removeWatchRecipe(storage, "recipe-one")).toEqual([]);
+  });
+
+  it("clears every saved custom recipe without affecting built-ins", () => {
+    const storage = memoryStorage();
+    saveWatchRecipe(storage, "Tell me when READY appears", 5, "recipe-one");
+
+    expect(clearWatchRecipes(storage)).toEqual([]);
+    expect(loadWatchRecipes(storage)).toEqual([]);
+    expect(BUILT_IN_WATCH_RECIPES).toHaveLength(3);
   });
 });

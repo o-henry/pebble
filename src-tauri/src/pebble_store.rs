@@ -1,10 +1,14 @@
 use std::{
-    fs,
-    io::{self, ErrorKind},
-    path::PathBuf,
+    fs::{self, File, OpenOptions},
+    io::{self, ErrorKind, Read, Write},
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 use crate::{
     performance_limits::{
@@ -15,6 +19,8 @@ use crate::{
 
 pub const PEBBLE_STORE_SCHEMA_VERSION: u32 = 1;
 const PEBBLE_STORE_FILE_NAME: &str = "pebbles.json";
+const MAX_PEBBLE_STORE_BYTES: u64 = 1_048_576;
+static TEMP_FILE_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,8 +149,36 @@ impl PebbleStore {
     }
 
     pub fn load_or_default(&self) -> Result<PebbleStoreDocument, PebbleStoreError> {
-        match fs::read_to_string(&self.path) {
-            Ok(raw) => parse_document(&raw),
+        match open_config_for_read(&self.path) {
+            Ok(file) => {
+                let metadata = file.metadata().map_err(|error| {
+                    PebbleStoreError::io(
+                        PebbleStoreErrorCode::ReadFailed,
+                        "Could not inspect pebble configuration.",
+                        error,
+                    )
+                })?;
+                if !metadata.is_file() || metadata.len() > MAX_PEBBLE_STORE_BYTES {
+                    return Err(PebbleStoreError::invalid_store_file());
+                }
+                secure_loaded_store(&file, &self.path)?;
+
+                let mut raw = String::new();
+                file.take(MAX_PEBBLE_STORE_BYTES + 1)
+                    .read_to_string(&mut raw)
+                    .map_err(|error| {
+                        PebbleStoreError::io(
+                            PebbleStoreErrorCode::ReadFailed,
+                            "Could not read pebble configuration.",
+                            error,
+                        )
+                    })?;
+                if raw.len() as u64 > MAX_PEBBLE_STORE_BYTES {
+                    return Err(PebbleStoreError::invalid_store_file());
+                }
+
+                parse_document(&raw)
+            }
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(PebbleStoreDocument::default()),
             Err(error) => Err(PebbleStoreError::io(
                 PebbleStoreErrorCode::ReadFailed,
@@ -162,24 +196,59 @@ impl PebbleStore {
         document.validate_safe_config()?;
         let document = document.clone().into_current_schema();
         let raw = serde_json::to_string_pretty(&document).map_err(PebbleStoreError::corrupt)?;
+        if raw.len() as u64 > MAX_PEBBLE_STORE_BYTES {
+            return Err(PebbleStoreError::invalid_store_file());
+        }
 
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
+        let parent = self.path.parent().ok_or_else(|| {
+            PebbleStoreError::io(
+                PebbleStoreErrorCode::WriteFailed,
+                "Pebble configuration has no parent directory.",
+                io::Error::new(ErrorKind::InvalidInput, "missing parent directory"),
+            )
+        })?;
+        prepare_private_directory(parent)?;
+        reject_unsafe_destination(&self.path)?;
+
+        let (temp_path, mut temp_file) = create_private_temp_file(parent)?;
+        let write_result = (|| {
+            temp_file.write_all(raw.as_bytes()).map_err(|error| {
                 PebbleStoreError::io(
                     PebbleStoreErrorCode::WriteFailed,
-                    "Could not create pebble configuration directory.",
+                    "Could not write the private pebble configuration file.",
                     error,
                 )
             })?;
-        }
+            temp_file.sync_all().map_err(|error| {
+                PebbleStoreError::io(
+                    PebbleStoreErrorCode::WriteFailed,
+                    "Could not synchronize the private pebble configuration file.",
+                    error,
+                )
+            })?;
+            drop(temp_file);
+            reject_unsafe_destination(&self.path)?;
+            fs::rename(&temp_path, &self.path).map_err(|error| {
+                PebbleStoreError::io(
+                    PebbleStoreErrorCode::WriteFailed,
+                    "Could not atomically replace pebble configuration.",
+                    error,
+                )
+            })?;
+            sync_directory(parent).map_err(|error| {
+                PebbleStoreError::io(
+                    PebbleStoreErrorCode::WriteFailed,
+                    "Could not synchronize pebble configuration directory.",
+                    error,
+                )
+            })?;
+            Ok::<(), PebbleStoreError>(())
+        })();
 
-        fs::write(&self.path, raw).map_err(|error| {
-            PebbleStoreError::io(
-                PebbleStoreErrorCode::WriteFailed,
-                "Could not write pebble configuration.",
-                error,
-            )
-        })?;
+        if let Err(error) = write_result {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
 
         Ok(document)
     }
@@ -220,6 +289,15 @@ impl PebbleStoreError {
         }
     }
 
+    fn invalid_store_file() -> Self {
+        Self {
+            code: PebbleStoreErrorCode::InvalidConfig,
+            message: "Pebble configuration must be a regular file no larger than 1 MiB."
+                .to_string(),
+            recoverable: true,
+        }
+    }
+
     fn io(code: PebbleStoreErrorCode, message: &str, error: io::Error) -> Self {
         Self {
             code,
@@ -227,6 +305,160 @@ impl PebbleStoreError {
             recoverable: true,
         }
     }
+}
+
+fn open_config_for_read(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW);
+    options.open(path)
+}
+
+fn secure_loaded_store(file: &File, path: &Path) -> Result<(), PebbleStoreError> {
+    let parent = path.parent().ok_or_else(|| {
+        PebbleStoreError::io(
+            PebbleStoreErrorCode::ReadFailed,
+            "Pebble configuration has no parent directory.",
+            io::Error::new(ErrorKind::InvalidInput, "missing parent directory"),
+        )
+    })?;
+    let parent_metadata = fs::symlink_metadata(parent).map_err(|error| {
+        PebbleStoreError::io(
+            PebbleStoreErrorCode::ReadFailed,
+            "Could not inspect pebble configuration directory.",
+            error,
+        )
+    })?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return Err(PebbleStoreError::io(
+            PebbleStoreErrorCode::ReadFailed,
+            "Pebble configuration directory is not a private directory.",
+            io::Error::new(ErrorKind::InvalidInput, "unsafe configuration directory"),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        let parent_file = File::open(parent).map_err(|error| {
+            PebbleStoreError::io(
+                PebbleStoreErrorCode::ReadFailed,
+                "Could not open pebble configuration directory.",
+                error,
+            )
+        })?;
+        parent_file
+            .set_permissions(fs::Permissions::from_mode(0o700))
+            .map_err(|error| {
+                PebbleStoreError::io(
+                    PebbleStoreErrorCode::ReadFailed,
+                    "Could not secure pebble configuration directory.",
+                    error,
+                )
+            })?;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| {
+                PebbleStoreError::io(
+                    PebbleStoreErrorCode::ReadFailed,
+                    "Could not secure pebble configuration file.",
+                    error,
+                )
+            })?;
+    }
+
+    Ok(())
+}
+
+fn prepare_private_directory(path: &Path) -> Result<(), PebbleStoreError> {
+    fs::create_dir_all(path).map_err(|error| {
+        PebbleStoreError::io(
+            PebbleStoreErrorCode::WriteFailed,
+            "Could not create pebble configuration directory.",
+            error,
+        )
+    })?;
+
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        PebbleStoreError::io(
+            PebbleStoreErrorCode::WriteFailed,
+            "Could not inspect pebble configuration directory.",
+            error,
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(PebbleStoreError::io(
+            PebbleStoreErrorCode::WriteFailed,
+            "Pebble configuration directory is not a private directory.",
+            io::Error::new(ErrorKind::InvalidInput, "unsafe configuration directory"),
+        ));
+    }
+
+    #[cfg(unix)]
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|error| {
+        PebbleStoreError::io(
+            PebbleStoreErrorCode::WriteFailed,
+            "Could not secure pebble configuration directory.",
+            error,
+        )
+    })?;
+
+    Ok(())
+}
+
+fn reject_unsafe_destination(path: &Path) -> Result<(), PebbleStoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err(PebbleStoreError::io(
+                PebbleStoreErrorCode::WriteFailed,
+                "Pebble configuration destination is not a regular file.",
+                io::Error::new(ErrorKind::InvalidInput, "unsafe configuration destination"),
+            ))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(PebbleStoreError::io(
+            PebbleStoreErrorCode::WriteFailed,
+            "Could not inspect pebble configuration destination.",
+            error,
+        )),
+    }
+}
+
+fn create_private_temp_file(parent: &Path) -> Result<(PathBuf, File), PebbleStoreError> {
+    for _ in 0..16 {
+        let nonce = TEMP_FILE_NONCE.fetch_add(1, Ordering::Relaxed);
+        let path = parent.join(format!(
+            ".{PEBBLE_STORE_FILE_NAME}.{}.{}.tmp",
+            std::process::id(),
+            nonce
+        ));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+
+        match options.open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(PebbleStoreError::io(
+                    PebbleStoreErrorCode::WriteFailed,
+                    "Could not create a private pebble configuration file.",
+                    error,
+                ));
+            }
+        }
+    }
+
+    Err(PebbleStoreError::io(
+        PebbleStoreErrorCode::WriteFailed,
+        "Could not allocate a private pebble configuration file.",
+        io::Error::new(ErrorKind::AlreadyExists, "temporary file collision"),
+    ))
+}
+
+fn sync_directory(path: &Path) -> io::Result<()> {
+    File::open(path)?.sync_all()
 }
 
 fn parse_document(raw: &str) -> Result<PebbleStoreDocument, PebbleStoreError> {

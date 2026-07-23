@@ -18,6 +18,7 @@ export interface WatchRecipe {
 interface RecipeStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 export const BUILT_IN_WATCH_RECIPES: readonly WatchRecipe[] = [
@@ -44,13 +45,20 @@ export function loadWatchRecipes(storage: RecipeStorage): WatchRecipe[] {
     if (!value) return [];
     const parsed: unknown = JSON.parse(value);
     if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.recipes)) {
+      clearWatchRecipes(storage);
       return [];
     }
-    return parsed.recipes
+    const recipes = parsed.recipes
       .map(validRecipe)
       .filter((recipe): recipe is WatchRecipe => recipe !== null)
       .slice(0, MAX_WATCH_RECIPES);
+    const canonical = JSON.stringify({ version: 1, recipes });
+    if (canonical !== value) {
+      writeRecipes(storage, recipes);
+    }
+    return recipes;
   } catch {
+    clearWatchRecipes(storage);
     return [];
   }
 }
@@ -88,6 +96,15 @@ export function removeWatchRecipe(
   const next = loadWatchRecipes(storage).filter((recipe) => recipe.id !== id);
   writeRecipes(storage, next);
   return next;
+}
+
+export function clearWatchRecipes(storage: RecipeStorage): WatchRecipe[] {
+  try {
+    storage.removeItem(WATCH_RECIPE_STORAGE_KEY);
+  } catch {
+    writeRecipes(storage, []);
+  }
+  return [];
 }
 
 function builtIn(id: string, name: string, intent: string): WatchRecipe {

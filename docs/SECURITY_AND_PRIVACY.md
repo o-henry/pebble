@@ -51,8 +51,13 @@ Current desktop safeguards:
 - On macOS 14 or later, a region selected inside an app window is bound to that
   source window and captured with a desktop-independent ScreenCaptureKit filter.
   Covering the source with another window never changes the capture target.
-- The ephemeral source window ID and window-relative crop are kept in memory
-  only and are excluded from serialized region data, logs, and journals.
+- The original ScreenCaptureKit window object, source window ID, owning process
+  ID, source-window size, and window-relative crop are pinned in memory only and
+  excluded from serialized region data, logs, and journals. Every capture uses
+  that retained object and rechecks its identity, so closing the original
+  window cannot silently retarget Watch to a newly created window. Pebble uses
+  macOS's explicit front-to-back CGWindow order and confirms the same frontmost
+  identity before accepting the object from one ScreenCaptureKit snapshot.
 - If a bound source window closes or becomes unavailable, capture fails closed
   instead of falling back to whatever pixels occupy the old screen coordinates.
 - Hidden or minimized Pebble windows cannot request or receive live frames.
@@ -98,8 +103,12 @@ AI access is explicit, narrow in scope, and cheap by design:
   bounds, and display scale before capture and upload. Watch validates its
   bound display before capture and checks its revocable per-region
   authorization immediately before and after provider work.
-- OpenAI threads are ephemeral, sandboxed read-only, use approval policy `never`, and
-  have web search, MCP servers, and analytics disabled.
+- OpenAI threads are ephemeral, sandboxed read-only, and use approval policy
+  `never`. Before the app-server starts, Pebble disables shell and unified
+  execution, browser and computer control, apps, plugins, memories, agents,
+  hooks, workspace dependency access, image generation, tool suggestions, web
+  search, MCP servers, and analytics. The process receives an otherwise cleared
+  environment and the same feature denylist is repeated in every thread.
 - Claude runs in print mode with safe mode, slash commands disabled, strict
   empty MCP configuration, all tools denied, and one turn maximum when using
   the subscription path.
@@ -195,10 +204,11 @@ region label, signal type, engine or model name, confidence, and duration
 metadata to one local Markdown document at
 `Downloads/Pebble/pebble-updates.md`. Detailed AI-generated Watch summaries can
 appear in Pebble and macOS notifications, but screen-derived names and values
-are replaced with a redacted event marker before journal persistence. Pebble
-never writes captured pixels, capture coordinates, source-window IDs, OCR text,
-manual AI questions, manual AI answers, article bodies, credentials, or browser
-session data to that journal.
+are replaced with a redacted event marker before journal persistence. The same
+redaction applies to deterministic local OCR matches. Pebble never writes
+captured pixels, capture coordinates, source-window IDs, OCR text, manual AI
+questions, manual AI answers, article bodies, credentials, or browser session
+data to that journal.
 The journal directory is mode 0700, the file is mode 0600, symbolic-link
 targets are rejected, and the document stops accepting entries at 25 MB.
 
@@ -250,11 +260,18 @@ Webviews do not have:
 Rust alone starts the fixed bundled OpenAI sidecar or a validated installed
 Claude executable. It opens only an exact-host OpenAI sign-in URL or the fixed
 official Claude installation page. The webview cannot launch arbitrary
-commands or URLs. On macOS, AI processes receive the real `HOME` path only so
-the system can locate the default login keychain; Pebble clears all other
-inherited variables and keeps provider runtime state in private 0700 app-data
-directories. Any permission addition requires a decision note explaining why
-it is necessary and how it is bounded.
+commands or URLs. AI processes receive a private app-data directory as `HOME`,
+an otherwise cleared environment, and no inherited proxy or credential
+variables. Provider runtime state stays in private 0700 app-data directories.
+Any permission addition requires a decision note explaining why it is necessary
+and how it is bounded.
+
+The named-region configuration is limited to 1 MiB, stored in a mode 0700
+directory, and atomically replaced through a mode 0600 temporary file after it
+is synchronized. Symbolic links and non-regular destinations are rejected.
+Custom Watch recipes are persisted only after **Save**, contain the recipe
+instruction plus interval metadata, and can be removed individually or all at
+once with **Clear**.
 
 ## Continuous Security Review
 

@@ -26,6 +26,7 @@ use crate::{
     capture_backend::{capture_error, CaptureBackend, CaptureErrorCode, CroppedFramePayload},
     claude_api::{self, ClaudeApiRequest},
     claude_credentials::{self, ClaudeCredentialError, ClaudeCredentialStatus, StoredSecret},
+    codex_policy,
     pebble_session::{AuthorizedAiCapture, PebbleSessionState, PEBBLE_TILE_LABEL},
     platform_capture::PlatformCaptureBackend,
     smart_watch::WatchAuthorization,
@@ -423,15 +424,12 @@ async fn analyze_watch_openai(
     let thread = server
         .request(
             "thread/start",
-            json!({
-                "model": model,
-                "cwd": server.codex_home,
-                "approvalPolicy": "never",
-                "sandbox": "read-only",
-                "baseInstructions": WATCH_INSTRUCTIONS,
-                "developerInstructions": WATCH_DEVELOPER_INSTRUCTIONS,
-                "ephemeral": true
-            }),
+            codex_policy::thread_start_params(
+                &model,
+                &server.codex_home,
+                WATCH_INSTRUCTIONS,
+                WATCH_DEVELOPER_INSTRUCTIONS,
+            ),
             REQUEST_TIMEOUT,
         )
         .await?;
@@ -446,18 +444,26 @@ async fn analyze_watch_openai(
     server
         .request(
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "input": [
-                    { "type": "text", "text": watch_prompt(&locale, &intent, local_signal, previous_text.as_deref(), current_text.as_deref()), "text_elements": [] },
-                    { "type": "image", "url": previous_image },
-                    { "type": "image", "url": current_image }
+            codex_policy::turn_start_params(
+                &thread_id,
+                vec![
+                    json!({
+                        "type": "text",
+                        "text": watch_prompt(
+                            &locale,
+                            &intent,
+                            local_signal,
+                            previous_text.as_deref(),
+                            current_text.as_deref()
+                        ),
+                        "text_elements": []
+                    }),
+                    json!({ "type": "image", "url": previous_image }),
+                    json!({ "type": "image", "url": current_image }),
                 ],
-                "approvalPolicy": "never",
-                "model": model,
-                "effort": OPENAI_REASONING_EFFORT,
-                "summary": "none"
-            }),
+                &model,
+                OPENAI_REASONING_EFFORT,
+            ),
             REQUEST_TIMEOUT,
         )
         .await?;
@@ -500,15 +506,12 @@ async fn ask_openai(
     let thread = server
         .request(
             "thread/start",
-            json!({
-                "model": model,
-                "cwd": server.codex_home,
-                "approvalPolicy": "never",
-                "sandbox": "read-only",
-                "baseInstructions": BASE_INSTRUCTIONS,
-                "developerInstructions": DEVELOPER_INSTRUCTIONS,
-                "ephemeral": true
-            }),
+            codex_policy::thread_start_params(
+                &model,
+                &server.codex_home,
+                BASE_INSTRUCTIONS,
+                DEVELOPER_INSTRUCTIONS,
+            ),
             REQUEST_TIMEOUT,
         )
         .await?;
@@ -524,21 +527,19 @@ async fn ask_openai(
     server
         .request(
             "turn/start",
-            json!({
-                "threadId": thread_id,
-                "input": [
-                    {
+            codex_policy::turn_start_params(
+                &thread_id,
+                vec![
+                    json!({
                         "type": "text",
                         "text": question_prompt(&question, &locale),
                         "text_elements": []
-                    },
-                    { "type": "image", "url": image_data_url }
+                    }),
+                    json!({ "type": "image", "url": image_data_url }),
                 ],
-                "approvalPolicy": "never",
-                "model": model,
-                "effort": OPENAI_REASONING_EFFORT,
-                "summary": "none"
-            }),
+                &model,
+                OPENAI_REASONING_EFFORT,
+            ),
             REQUEST_TIMEOUT,
         )
         .await?;
@@ -1268,7 +1269,7 @@ async fn collect_answer(
             Some("item/started") | Some("item/completed") => {
                 let item = params.get("item").unwrap_or(&Value::Null);
                 let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
-                if !matches!(item_type, "userMessage" | "agentMessage" | "reasoning") {
+                if !codex_policy::allowed_stream_item_type(item_type) {
                     return Err(runtime_error(
                         AiRuntimeErrorCode::ResponseFailed,
                         "The AI response attempted an action outside the selected image, so Pebble stopped it.",
@@ -1779,30 +1780,13 @@ impl AppServerProcess {
         secure_directory(&app_data_dir)?;
         secure_directory(&codex_home)?;
 
-        #[cfg(target_os = "macos")]
-        let environment_home = app.path().home_dir().map_err(|_| sidecar_error())?;
-        #[cfg(not(target_os = "macos"))]
-        let environment_home = app_data_dir.clone();
         let command = app
             .shell()
             .sidecar("codex")
             .map_err(|_| sidecar_error())?
-            .args([
-                "app-server",
-                "--strict-config",
-                "-c",
-                "web_search=\"disabled\"",
-                "-c",
-                "cli_auth_credentials_store=\"keyring\"",
-                "-c",
-                "analytics.enabled=false",
-                "-c",
-                "mcp_servers={}",
-                "--listen",
-                "stdio://",
-            ])
+            .args(codex_policy::app_server_args())
             .env_clear()
-            .env("HOME", environment_home.as_os_str())
+            .env("HOME", app_data_dir.as_os_str())
             .env("CODEX_HOME", codex_home.as_os_str())
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .env("LANG", "en_US.UTF-8")
@@ -1819,17 +1803,7 @@ impl AppServerProcess {
         process
             .request(
                 "initialize",
-                json!({
-                    "clientInfo": {
-                        "name": "pebble",
-                        "title": "Pebble",
-                        "version": env!("CARGO_PKG_VERSION")
-                    },
-                    "capabilities": {
-                        "experimentalApi": false,
-                        "requestAttestation": false
-                    }
-                }),
+                codex_policy::initialize_params(env!("CARGO_PKG_VERSION")),
                 STARTUP_TIMEOUT,
             )
             .await?;
@@ -1939,8 +1913,12 @@ impl Drop for AppServerProcess {
     }
 }
 
-fn secure_directory(path: &PathBuf) -> Result<(), AiRuntimeError> {
+fn secure_directory(path: &Path) -> Result<(), AiRuntimeError> {
     fs::create_dir_all(path).map_err(|_| sidecar_error())?;
+    let metadata = fs::symlink_metadata(path).map_err(|_| sidecar_error())?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(sidecar_error());
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1971,13 +1949,20 @@ fn sidecar_error_for(provider: AiProvider) -> AiRuntimeError {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::{
+        fs,
+        os::unix::fs::symlink,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use serde_json::json;
 
     use super::{
         chatgpt_login_params, claude_api_runtime_error, claude_image_input, claude_status,
         claude_subscription_models, encode_frame_data_url, login_failure_message,
         normalize_question, normalized_locale, parse_claude_answer, parse_watch_analysis,
-        select_balanced_model, validate_auth_url, watch_prompt, AiConnectionMode,
+        secure_directory, select_balanced_model, validate_auth_url, watch_prompt, AiConnectionMode,
         AiRuntimeErrorCode, WATCH_INSTRUCTIONS,
     };
     use crate::{
@@ -2004,6 +1989,23 @@ mod tests {
             normalize_question("unsafe\0question").unwrap_err().code,
             AiRuntimeErrorCode::InvalidQuestion
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_ai_runtime_directory_rejects_symbolic_links() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("pebble-ai-runtime-{nonce}"));
+        let target = root.join("target");
+        let link = root.join("link");
+        fs::create_dir_all(&target).expect("target");
+        symlink(&target, &link).expect("symlink");
+
+        assert!(secure_directory(&link).is_err());
+        fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]

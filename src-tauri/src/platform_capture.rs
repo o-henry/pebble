@@ -179,4 +179,31 @@ pub(crate) mod platform_capture_test_support {
     ) -> Option<u32> {
         platform_capture_macos::test_select_source_window(selection, pebble_pid, windows)
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn source_window_identity_matches(
+        expected_window_id: u32,
+        expected_owner_pid: i32,
+        expected_source_size: (f64, f64),
+        actual_window_id: u32,
+        actual_owner_pid: i32,
+        actual_source_size: (f64, f64),
+    ) -> bool {
+        platform_capture_macos::test_source_window_identity_matches(
+            expected_window_id,
+            expected_owner_pid,
+            expected_source_size,
+            actual_window_id,
+            actual_owner_pid,
+            actual_source_size,
+        )
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn same_window_info(
+        left: (u32, i32, f64, f64, f64, f64),
+        right: (u32, i32, f64, f64, f64, f64),
+    ) -> bool {
+        platform_capture_macos::test_same_window_info(left, right)
+    }
 }

@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::performance_limits::RegionSize;
 
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+
+#[cfg(target_os = "macos")]
+use screencapturekit::shareable_content::SCWindow;
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogicalPoint {
@@ -44,6 +50,11 @@ pub struct RegionSelectionRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowCaptureTarget {
     pub window_id: u32,
+    pub owner_pid: i32,
+    pub source_width_millipoints: u64,
+    pub source_height_millipoints: u64,
+    #[cfg(target_os = "macos")]
+    pub native_window: Option<Arc<SCWindow>>,
     pub relative_x_millipoints: i64,
     pub relative_y_millipoints: i64,
     pub width_millipoints: u64,

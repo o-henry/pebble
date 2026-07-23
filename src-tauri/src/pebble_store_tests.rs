@@ -4,6 +4,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(unix)]
+use std::os::unix::fs::{symlink, PermissionsExt};
+
 use crate::{
     pebble_store::{
         PebbleStore, PebbleStoreDocument, PebbleStoreErrorCode, PebbleStoreMigration,
@@ -50,6 +53,115 @@ fn save_and_load_restore_named_regions_without_frame_data() {
         .expect("store file")
         .to_ascii_lowercase()
         .contains("frame"));
+}
+
+#[cfg(unix)]
+#[test]
+fn load_migrates_existing_store_to_private_permissions() {
+    let path = test_store_path("migrate-permissions");
+    let parent = path.parent().expect("parent");
+    fs::create_dir_all(parent).expect("test dir");
+    fs::write(
+        &path,
+        serde_json::to_string(&sample_document()).expect("json"),
+    )
+    .expect("write config");
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o755)).expect("directory mode");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("file mode");
+
+    PebbleStore::new(path.clone())
+        .load_or_default()
+        .expect("load config");
+
+    assert_eq!(
+        fs::metadata(parent)
+            .expect("directory")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::metadata(path).expect("file").permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn save_uses_private_permissions_and_leaves_no_temp_file() {
+    let path = test_store_path("private-permissions");
+    let store = PebbleStore::new(path.clone());
+
+    store.save(&sample_document()).expect("save config");
+
+    let file_mode = fs::metadata(&path)
+        .expect("store metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    let directory_mode = fs::metadata(path.parent().expect("parent"))
+        .expect("directory metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(file_mode, 0o600);
+    assert_eq!(directory_mode, 0o700);
+    assert_eq!(
+        fs::read_dir(path.parent().expect("parent"))
+            .expect("read directory")
+            .count(),
+        1
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn load_rejects_symbolic_link_store() {
+    let path = test_store_path("symlink-load");
+    let parent = path.parent().expect("parent");
+    fs::create_dir_all(parent).expect("test dir");
+    let target = parent.join("outside.json");
+    fs::write(
+        &target,
+        serde_json::to_string(&sample_document()).expect("json"),
+    )
+    .expect("write target");
+    symlink(&target, &path).expect("create symlink");
+    let store = PebbleStore::new(path);
+
+    let error = store.load_or_default().expect_err("reject symlink");
+
+    assert_eq!(error.code, PebbleStoreErrorCode::ReadFailed);
+}
+
+#[cfg(unix)]
+#[test]
+fn save_rejects_symbolic_link_destination_without_touching_target() {
+    let path = test_store_path("symlink-save");
+    let parent = path.parent().expect("parent");
+    fs::create_dir_all(parent).expect("test dir");
+    let target = parent.join("outside.json");
+    fs::write(&target, "unchanged").expect("write target");
+    symlink(&target, &path).expect("create symlink");
+    let store = PebbleStore::new(path);
+
+    let error = store.save(&sample_document()).expect_err("reject symlink");
+
+    assert_eq!(error.code, PebbleStoreErrorCode::WriteFailed);
+    assert_eq!(fs::read_to_string(target).expect("target"), "unchanged");
+}
+
+#[test]
+fn load_rejects_store_larger_than_one_mibibyte() {
+    let path = test_store_path("oversized");
+    fs::create_dir_all(path.parent().expect("parent")).expect("test dir");
+    fs::write(&path, vec![b' '; 1_048_577]).expect("write oversized config");
+    let store = PebbleStore::new(path);
+
+    let error = store.load_or_default().expect_err("reject oversized");
+
+    assert_eq!(error.code, PebbleStoreErrorCode::InvalidConfig);
 }
 
 #[test]

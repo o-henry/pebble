@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { SmartWatchIntervalMinutes } from "../features/ai/smartWatch";
 import {
   BUILT_IN_WATCH_RECIPES,
+  clearWatchRecipes,
   loadWatchRecipes,
   removeWatchRecipe,
   saveWatchRecipe,
@@ -47,6 +48,11 @@ export function WatchRecipeBar({
     setSelectedSavedId(null);
   }
 
+  function clear() {
+    setSaved(clearWatchRecipes(globalThis.localStorage));
+    setSelectedSavedId(null);
+  }
+
   return (
     <div className="watch-recipes" aria-label="WATCH PRESETS">
       <span>LINK REGIONS</span>
@@ -69,12 +75,27 @@ export function WatchRecipeBar({
           onClick={() => apply(recipe, true)}
         />
       ))}
-      <button type="button" disabled={disabled || !canSave} onClick={save}>
+      <button
+        type="button"
+        title="SAVES THIS WATCH INSTRUCTION ON THIS MAC"
+        disabled={disabled || !canSave}
+        onClick={save}
+      >
         SAVE
       </button>
       {selectedSavedId ? (
         <button type="button" disabled={disabled} onClick={remove}>
           REMOVE
+        </button>
+      ) : null}
+      {saved.length > 0 ? (
+        <button
+          type="button"
+          title="REMOVES ALL SAVED WATCH INSTRUCTIONS FROM THIS MAC"
+          disabled={disabled}
+          onClick={clear}
+        >
+          CLEAR
         </button>
       ) : null}
     </div>
